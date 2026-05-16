@@ -130,8 +130,19 @@ export default function App() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [authRole, setAuthRole] = useState("user");
   const [authMode, setAuthMode] = useState("login");
-  const [currentUser, setCurrentUser] = useState(null);
+const [currentUser, setCurrentUser] = useState(() => {
+  const savedUser = localStorage.getItem("printease_user");
 
+  if (!savedUser) return null;
+
+  try {
+    return JSON.parse(savedUser);
+  } catch (error) {
+    localStorage.removeItem("printease_user");
+    localStorage.removeItem("printease_token");
+    return null;
+  }
+});
   const [mobile, setMobile] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -172,6 +183,52 @@ export default function App() {
     return () => {
       ignore = true;
     };
+  }, []);
+
+  useEffect(() => {
+    async function restoreSession() {
+      const token = localStorage.getItem("printease_token");
+
+      if (!token) return;
+
+      try {
+        const data = await apiRequest("/api/auth/me");
+
+        if (!data || !data.user) throw new Error("Invalid session response");
+
+        const signedInRole = toFrontendRole(data.user.role);
+        let signedInCentre = findCentreForUser(data.user, centres, data.centre);
+
+        if (signedInRole === "hub" && !signedInCentre) {
+          const freshCentres = await refreshCentres();
+          signedInCentre = findCentreForUser(data.user, freshCentres);
+        }
+
+        if (signedInRole === "hub" && !signedInCentre) {
+          localStorage.removeItem("printease_token");
+          localStorage.removeItem("printease_user");
+          setCurrentUser(null);
+          return;
+        }
+
+        const nextUser = toCurrentUser(data.user, signedInCentre);
+        const nextCentres = signedInCentre ? upsertCentre(centres, signedInCentre) : centres;
+
+        if (signedInCentre) setCentres((prev) => upsertCentre(prev, signedInCentre));
+
+        localStorage.setItem("printease_user", JSON.stringify(nextUser));
+        setCurrentUser(nextUser);
+        await loadOrdersForSession(nextUser, nextCentres);
+      } catch (error) {
+        console.error("Session restore failed:", error?.message || error);
+
+        localStorage.removeItem("printease_token");
+        localStorage.removeItem("printease_user");
+        setCurrentUser(null);
+      }
+    }
+
+    restoreSession();
   }, []);
 
   const pricePerPage = useMemo(
@@ -277,6 +334,7 @@ export default function App() {
 
         const nextUser = toCurrentUser(data.user);
         localStorage.setItem("printease_token", data.token);
+        localStorage.setItem("printease_user", JSON.stringify(nextUser));
         setCurrentUser(nextUser);
         await loadOrdersForSession(nextUser);
         navigate("userDashboard");
@@ -304,6 +362,7 @@ export default function App() {
         const nextUser = toCurrentUser(data.user, centre);
         const nextCentres = upsertCentre(centres, centre);
         localStorage.setItem("printease_token", data.token);
+        localStorage.setItem("printease_user", JSON.stringify(nextUser));
         setCentres((prev) => upsertCentre(prev, centre));
         setCurrentUser(nextUser);
         await loadOrdersForSession(nextUser, nextCentres);
@@ -336,6 +395,7 @@ export default function App() {
 
       localStorage.setItem("printease_token", data.token);
       const nextUser = toCurrentUser(data.user, signedInCentre);
+      localStorage.setItem("printease_user", JSON.stringify(nextUser));
       const nextCentres = signedInCentre ? upsertCentre(centres, signedInCentre) : centres;
       if (signedInCentre) setCentres((prev) => upsertCentre(prev, signedInCentre));
       setCurrentUser(nextUser);
@@ -350,6 +410,7 @@ export default function App() {
 
   function logout() {
     localStorage.removeItem("printease_token");
+    localStorage.removeItem("printease_user");
     setCurrentUser(null);
     setDocumentFile(null);
     navigate("home");
