@@ -1,11 +1,40 @@
 import { CheckCircle } from "lucide-react";
 import Card from "../components/Card";
 import Row from "../components/Row";
-import { orderStatuses } from "../data/demoData";
+
+const orderStatuses = [
+  "Payment Pending",
+  "Payment Verified",
+  "Accepted by Centre",
+  "Printing",
+  "Ready for Pickup",
+  "Collected",
+];
+
+const statusMap = {
+  payment_pending: "Payment Pending",
+  pending: "Payment Pending",
+  payment_verified: "Payment Verified",
+  verified: "Payment Verified",
+  accepted: "Accepted by Centre",
+  accepted_by_centre: "Accepted by Centre",
+  printing: "Printing",
+  ready: "Ready for Pickup",
+  ready_for_pickup: "Ready for Pickup",
+  collected: "Collected",
+};
+
+function normalizeStatus(status) {
+  if (!status) return "";
+
+  const key = String(status).trim().toLowerCase().replace(/\s+/g, "_");
+  return statusMap[key] || status;
+}
 
 export default function TrackPage({ order }) {
   if (!order) return <Card>No active order found.</Card>;
-  const activeIndex = Math.max(0, orderStatuses.indexOf(order.status));
+  const currentStatus = normalizeStatus(order.status);
+  const activeIndex = orderStatuses.indexOf(currentStatus);
 
   return (
     <Card className="mx-auto max-w-2xl">
@@ -16,12 +45,13 @@ export default function TrackPage({ order }) {
         <Row label="Document" value={order.document} />
         <Row label="Amount Paid" value={`₹${order.amount}`} />
         <Row label="Pickup Code" value={order.pickupCode} />
+        {activeIndex === -1 && <Row label="Current Status" value={order.status || "Unknown"} />}
       </div>
       <div className="mt-6 space-y-3">
         {orderStatuses.map((status, index) => (
           <div key={status} className="flex items-center gap-3 rounded-2xl border p-4">
-            <CheckCircle className={index <= activeIndex ? "text-green-600" : "text-slate-300"} />
-            <span className={index <= activeIndex ? "font-bold text-green-700" : "text-slate-500"}>{status}</span>
+            <CheckCircle className={activeIndex >= 0 && index <= activeIndex ? "text-green-600" : "text-slate-300"} />
+            <span className={activeIndex >= 0 && index <= activeIndex ? "font-bold text-green-700" : "text-slate-500"}>{status}</span>
           </div>
         ))}
       </div>

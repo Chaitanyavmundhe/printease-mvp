@@ -8,7 +8,7 @@ export const uploadDocument = asyncHandler(async (req, res) => {
   }
 
   const document = await createDocument({
-    id: generateId('doc'),
+    id: generateId(),
     userId: req.user?.id || null,
     fileName: req.file.originalname,
     fileType: req.file.mimetype,

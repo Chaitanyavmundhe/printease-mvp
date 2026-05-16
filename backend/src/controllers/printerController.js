@@ -30,7 +30,7 @@ export const addPrinter = asyncHandler(async (req, res) => {
   }
 
   const printer = await createPrinter({
-    id: generateId('printer'),
+    id: generateId(),
     centreId,
     printerName,
     printerType,
@@ -100,5 +100,17 @@ export const printOrder = asyncHandler(async (req, res) => {
 
   const result = sendOrderToPrinter({ printer, order });
 
-  res.json({ success: true, ...result });
+  if (!result.printable) {
+    return res.status(400).json({ success: false, ...result });
+  }
+
+  const savedOrder = await saveOrderStatus(order.id, req.user.centreId, result.orderStatus);
+  const savedPrinter = await savePrinterStatus(printer.id, req.user.centreId, result.printerStatus);
+
+  res.json({
+    success: true,
+    ...result,
+    order: savedOrder,
+    printer: savedPrinter
+  });
 });

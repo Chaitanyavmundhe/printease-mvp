@@ -16,6 +16,7 @@ export default function HubPricingPage({ currentHub, updateCentrePrice, updateCe
           <NumberInput label="A4 B/W Double Side" value={currentHub.bwDouble} onChange={(value) => updateCentrePrice("bwDouble", value)} />
           <NumberInput label="A4 Color Single Side" value={currentHub.colorSingle} onChange={(value) => updateCentrePrice("colorSingle", value)} />
           <NumberInput label="A4 Color Double Side" value={currentHub.colorDouble} onChange={(value) => updateCentrePrice("colorDouble", value)} />
+          <NumberInput label="Watermark Charge" value={currentHub.watermarkCharge} onChange={(value) => updateCentrePrice("watermarkCharge", value)} />
         </div>
       </Card>
 

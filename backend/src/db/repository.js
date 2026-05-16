@@ -138,6 +138,11 @@ const centreSelect = `
     c.mobile,
     c.status,
     c.upi_id,
+    c.bw_single,
+    c.bw_double,
+    c.color_single,
+    c.color_double,
+    c.watermark_charge,
     c.created_at,
     u.name as owner_name
   from print_hubs c
@@ -193,10 +198,6 @@ export async function createUser(user, client) {
   return mapUser(result.rows[0]);
 }
 
-export async function updateUserCentreId(userId, centreId, client) {
-  return findUserById(userId, client);
-}
-
 export async function listCentres() {
   const result = await query(`${centreSelect} order by c.created_at desc`);
   return result.rows.map(mapCentre);
@@ -224,11 +225,13 @@ export async function findCentreForUser(user, client) {
 }
 
 export async function createCentre(centre, client) {
+  const pricing = centre.pricing || {};
   const result = await executor(client).query(
     `insert into print_hubs (
-       id, owner_id, hub_name, centre_code, mobile, status, upi_id, created_at
+       id, owner_id, hub_name, centre_code, mobile, status, upi_id,
+       bw_single, bw_double, color_single, color_double, watermark_charge, created_at
      )
-     values ($1, $2, $3, $4, $5, $6, $7, coalesce($8, now()))
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, coalesce($13, now()))
      returning *`,
     [
       centre.id,
@@ -238,6 +241,11 @@ export async function createCentre(centre, client) {
       centre.mobile,
       centre.status || 'available',
       centre.upiId || null,
+      pricing.bwSingle ?? centre.bwSingle ?? 1,
+      pricing.bwDouble ?? centre.bwDouble ?? 1.5,
+      pricing.colorSingle ?? centre.colorSingle ?? 2,
+      pricing.colorDouble ?? centre.colorDouble ?? 3,
+      pricing.watermarkCharge ?? centre.watermarkCharge ?? 2,
       centre.createdAt || null
     ]
   );
@@ -246,7 +254,28 @@ export async function createCentre(centre, client) {
 }
 
 export async function updateCentrePricing(centreId, pricing) {
-  return findCentreById(centreId);
+  const result = await query(
+    `update print_hubs
+     set
+       bw_single = coalesce($2, bw_single),
+       bw_double = coalesce($3, bw_double),
+       color_single = coalesce($4, color_single),
+       color_double = coalesce($5, color_double),
+       watermark_charge = coalesce($6, watermark_charge)
+     where id = $1
+     returning id`,
+    [
+      centreId,
+      pricing.bwSingle,
+      pricing.bwDouble,
+      pricing.colorSingle,
+      pricing.colorDouble,
+      pricing.watermarkCharge
+    ]
+  );
+
+  if (!result.rows[0]) return null;
+  return findCentreById(result.rows[0].id);
 }
 
 export async function updateCentrePaymentMethod(centreId, upiId) {

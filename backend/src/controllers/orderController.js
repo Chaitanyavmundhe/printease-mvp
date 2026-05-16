@@ -1,6 +1,7 @@
 import {
   createOrder as saveOrder,
   findCentreByCode,
+  findCentreById,
   findOrderByIdOrCode,
   listOrdersByCentre,
   listOrdersByUser,
@@ -13,6 +14,7 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 export const createOrder = asyncHandler(async (req, res) => {
   const {
     centreCode,
+    hubId,
     documentId,
     documentName,
     pages,
@@ -22,27 +24,45 @@ export const createOrder = asyncHandler(async (req, res) => {
     watermarkEnabled = false
   } = req.body;
 
-  const centre = await findCentreByCode(centreCode);
-  if (!centre) {
-    return res.status(404).json({ success: false, message: 'Centre not found' });
+  const trimmedCentreCode = typeof centreCode === 'string' ? centreCode.trim() : '';
+  const pageCount = Number(pages);
+  const copyCount = Number(copies);
+  const allowedColorTypes = ['bw', 'color'];
+  const allowedSideTypes = ['single', 'double'];
+
+  if (!trimmedCentreCode && !hubId) {
+    return res.status(400).json({ success: false, message: 'Centre code or hub ID is required' });
   }
 
   if (!documentName || !pages || !copies) {
     return res.status(400).json({ success: false, message: 'Document name, pages, and copies are required' });
   }
 
-  const price = calculatePrice({ centre, pages, copies, colorType, sideType, watermarkEnabled });
+  if (!Number.isFinite(pageCount) || pageCount <= 0 || !Number.isFinite(copyCount) || copyCount <= 0) {
+    return res.status(400).json({ success: false, message: 'Pages and copies must be positive numbers' });
+  }
+
+  if (!allowedColorTypes.includes(colorType) || !allowedSideTypes.includes(sideType)) {
+    return res.status(400).json({ success: false, message: 'Invalid print options' });
+  }
+
+  const centre = hubId ? await findCentreById(hubId) : await findCentreByCode(trimmedCentreCode);
+  if (!centre) {
+    return res.status(404).json({ success: false, message: 'Centre not found' });
+  }
+
+  const price = calculatePrice({ centre, pages: pageCount, copies: copyCount, colorType, sideType, watermarkEnabled });
   const orderCode = generateOrderCode(centre.centreCode);
 
   const order = await saveOrder({
-    id: generateId('order'),
+    id: generateId(),
     orderCode,
     userId: req.user?.id || null,
     centreId: centre.id,
     documentId: documentId || null,
     documentName,
-    pages: Number(pages),
-    copies: Number(copies),
+    pages: pageCount,
+    copies: copyCount,
     colorType,
     sideType,
     watermarkEnabled: Boolean(watermarkEnabled),

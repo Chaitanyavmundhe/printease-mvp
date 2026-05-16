@@ -23,7 +23,8 @@ export default function BackendStatus() {
 
         console.error("[BACKEND HEALTH CHECK FAILED]", {
           apiBaseUrl: API_BASE_URL,
-          error,
+          message: error.message,
+          status: error.status,
         });
 
         setStatus("failed");

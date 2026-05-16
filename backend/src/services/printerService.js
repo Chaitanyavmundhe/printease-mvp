@@ -16,14 +16,11 @@ export function sendOrderToPrinter({ printer, order }) {
     };
   }
 
-  order.status = 'Printing';
-  printer.status = 'printing';
-
   return {
     message: 'Order sent to printer simulation successfully',
     printable: true,
-    order,
-    printer,
+    orderStatus: 'Printing',
+    printerStatus: 'printing',
     note: 'For production, integrate CUPS, IPP, or a local print agent.'
   };
 }

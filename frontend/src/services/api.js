@@ -4,14 +4,16 @@ const API_BASE_URL = (configuredApiUrl || DEFAULT_API_BASE_URL).replace(/\/+$/, 
 
 export default API_BASE_URL;
 
-console.log("[API CONFIG]", {
-  API_BASE_URL,
-  VITE_API_URL: import.meta.env.VITE_API_URL || null,
-  MODE: import.meta.env.MODE,
-});
+if (import.meta.env.DEV) {
+  console.log("[API CONFIG]", {
+    API_BASE_URL,
+    VITE_API_URL: import.meta.env.VITE_API_URL || null,
+    MODE: import.meta.env.MODE,
+  });
+}
 
 export class ApiError extends Error {
-  constructor(message, status, details = null) {
+  constructor(message, status = 0, details = null) {
     super(message);
     this.name = "ApiError";
     this.status = status;
@@ -47,6 +49,10 @@ function createHeaders(options) {
 }
 
 export async function apiRequest(endpoint, options = {}) {
+  if (!endpoint || typeof endpoint !== "string") {
+    throw new ApiError("Invalid API endpoint", 400);
+  }
+
   try {
     if (!endpoint.startsWith("/")) {
       throw new ApiError(
@@ -56,11 +62,15 @@ export async function apiRequest(endpoint, options = {}) {
     }
 
     const url = joinApiUrl(API_BASE_URL, endpoint);
+    const token = localStorage.getItem("printease_token");
 
-    console.log("[API REQUEST]", {
-      url,
-      method: options.method || "GET",
-    });
+    if (import.meta.env.DEV) {
+      console.log("[API REQUEST]", {
+        url,
+        method: options.method || "GET",
+        hasToken: Boolean(token),
+      });
+    }
 
     const response = await fetch(url, {
       ...options,
@@ -80,11 +90,13 @@ export async function apiRequest(endpoint, options = {}) {
     }
 
     if (!response.ok) {
-      console.error("[API ERROR RESPONSE]", {
-        url,
-        status: response.status,
-        data,
-      });
+      if (import.meta.env.DEV) {
+        console.error("[API ERROR]", {
+          url,
+          status: response.status,
+          message: data.message,
+        });
+      }
 
       throw new ApiError(
         data.message || `API request failed with status ${response.status}`,
@@ -93,11 +105,12 @@ export async function apiRequest(endpoint, options = {}) {
       );
     }
 
-    console.log("[API SUCCESS]", {
-      url,
-      status: response.status,
-      data,
-    });
+    if (import.meta.env.DEV) {
+      console.log("[API SUCCESS]", {
+        url,
+        status: response.status,
+      });
+    }
 
     return data;
   } catch (error) {
@@ -105,11 +118,13 @@ export async function apiRequest(endpoint, options = {}) {
       throw error;
     }
 
-    console.error("[API NETWORK ERROR]", {
-      endpoint,
-      baseUrl: API_BASE_URL,
-      error,
-    });
+    if (import.meta.env.DEV) {
+      console.error("[API NETWORK ERROR]", {
+        endpoint,
+        baseUrl: API_BASE_URL,
+        message: error.message,
+      });
+    }
 
     throw new ApiError(
       `Backend API is unreachable at ${API_BASE_URL}. Please check Render backend, CORS, Vercel VITE_API_URL, and deployment status.`,

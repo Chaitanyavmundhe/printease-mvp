@@ -27,7 +27,7 @@ function normalizeCentre(centre) {
     id: centre.id,
     ownerId: centre.ownerId,
     code: centre.centreCode || centre.code,
-    name: centre.name,
+    name: centre.name || centre.hubName,
     owner: centre.owner || "Hub Owner",
     mobile: centre.mobile || "",
     status: formatStatus(centre.status),
@@ -36,6 +36,7 @@ function normalizeCentre(centre) {
     bwDouble: pricing.bwDouble ?? centre.bwDouble ?? 1.5,
     colorSingle: pricing.colorSingle ?? centre.colorSingle ?? 2,
     colorDouble: pricing.colorDouble ?? centre.colorDouble ?? 3,
+    watermarkCharge: pricing.watermarkCharge ?? centre.watermarkCharge ?? 2,
   };
 }
 
@@ -62,14 +63,18 @@ function findCentreForUser(user, centreList, responseCentre) {
 
 function toCurrentUser(user, centre) {
   const role = toFrontendRole(user.role);
+  const hubId = user.hubId || user.centreId || centre?.id || null;
 
   return {
     id: user.id,
     role,
     name: user.name,
     mobile: user.mobile,
-    centreId: user.centreId,
-    hubCode: role === "hub" ? centre?.code : undefined,
+    centreId: hubId,
+    hubId,
+    hubName: user.hubName || centre?.name || null,
+    centreCode: user.centreCode || centre?.code || null,
+    hubCode: role === "hub" ? user.centreCode || centre?.code : undefined,
   };
 }
 
@@ -130,19 +135,20 @@ export default function App() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [authRole, setAuthRole] = useState("user");
   const [authMode, setAuthMode] = useState("login");
-const [currentUser, setCurrentUser] = useState(() => {
-  const savedUser = localStorage.getItem("printease_user");
+  const [currentUser, setCurrentUser] = useState(() => {
+    const savedUser = localStorage.getItem("printease_user");
 
-  if (!savedUser) return null;
+    if (!savedUser) return null;
 
-  try {
-    return JSON.parse(savedUser);
-  } catch (error) {
-    localStorage.removeItem("printease_user");
-    localStorage.removeItem("printease_token");
-    return null;
-  }
-});
+    try {
+      return JSON.parse(savedUser);
+    } catch (error) {
+      localStorage.removeItem("printease_user");
+      localStorage.removeItem("printease_token");
+      return null;
+    }
+  });
+  const [postAuthRedirect, setPostAuthRedirect] = useState(null);
   const [mobile, setMobile] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -152,6 +158,8 @@ const [currentUser, setCurrentUser] = useState(() => {
   const [authLoading, setAuthLoading] = useState(false);
 
   const [centreCode, setCentreCode] = useState("");
+  const [centreLookupLoading, setCentreLookupLoading] = useState(false);
+  const [centreLookupError, setCentreLookupError] = useState("");
   const [selectedCentre, setSelectedCentre] = useState(null);
   const [documentFile, setDocumentFile] = useState(null);
   const [documentName, setDocumentName] = useState("");
@@ -237,13 +245,28 @@ const [currentUser, setCurrentUser] = useState(() => {
   );
 
   const totalAmount = useMemo(
-    () => calculateTotalAmount({ pages, copies, pricePerPage, watermark }),
-    [pages, copies, pricePerPage, watermark]
+    () =>
+      calculateTotalAmount({
+        pages,
+        copies,
+        pricePerPage,
+        watermark,
+        watermarkCharge: selectedCentre?.watermarkCharge,
+      }),
+    [pages, copies, pricePerPage, watermark, selectedCentre?.watermarkCharge]
   );
 
   const currentHub = useMemo(() => {
     if (!currentUser || currentUser.role !== "hub") return null;
-    return centres.find((centre) => centre.code === currentUser.hubCode) || null;
+    return (
+      centres.find(
+        (centre) =>
+          centre.id === currentUser.hubId ||
+          centre.id === currentUser.centreId ||
+          centre.code === currentUser.hubCode ||
+          centre.code === currentUser.centreCode
+      ) || null
+    );
   }, [currentUser, centres]);
 
   const hubOrders = useMemo(() => {
@@ -257,6 +280,7 @@ const [currentUser, setCurrentUser] = useState(() => {
   }
 
   function startLogin(role) {
+    if (page !== "payment") setPostAuthRedirect(null);
     setAuthRole(role);
     setAuthMode("login");
     setAuthError("");
@@ -264,6 +288,7 @@ const [currentUser, setCurrentUser] = useState(() => {
   }
 
   function startRegister(role) {
+    setPostAuthRedirect(null);
     setAuthRole(role);
     setAuthMode("register");
     setAuthError("");
@@ -347,14 +372,19 @@ const [currentUser, setCurrentUser] = useState(() => {
           return;
         }
 
-        const data = await apiRequest("/api/auth/register-centre", {
+        if (!trimmedHubCode) {
+          setAuthError("Enter centre code.");
+          return;
+        }
+
+        const data = await apiRequest("/api/auth/register-hub", {
           method: "POST",
           body: JSON.stringify({
             ownerName: trimmedName,
             mobile: trimmedMobile,
             password,
-            centreName: trimmedHubName,
-            centreCode: trimmedHubCode || undefined,
+            hubName: trimmedHubName,
+            centreCode: trimmedHubCode,
           }),
         });
 
@@ -400,7 +430,10 @@ const [currentUser, setCurrentUser] = useState(() => {
       if (signedInCentre) setCentres((prev) => upsertCentre(prev, signedInCentre));
       setCurrentUser(nextUser);
       await loadOrdersForSession(nextUser, nextCentres);
-      navigate(signedInRole === "hub" ? "hubDashboard" : "userDashboard");
+      const destination = postAuthRedirect || (signedInRole === "hub" ? "hubDashboard" : "userDashboard");
+      setPostAuthRedirect(null);
+      if (destination === "payment") setPaymentError("");
+      navigate(destination);
     } catch (error) {
       setAuthError(error.message || "Authentication failed. Please try again.");
     } finally {
@@ -412,17 +445,39 @@ const [currentUser, setCurrentUser] = useState(() => {
     localStorage.removeItem("printease_token");
     localStorage.removeItem("printease_user");
     setCurrentUser(null);
+    setPostAuthRedirect(null);
     setDocumentFile(null);
     navigate("home");
   }
 
-  function handleCentreCode() {
-    const centre = centres.find((c) => c.code === centreCode.trim());
-    if (centre) {
+  async function handleCentreCode() {
+    const code = centreCode.trim();
+    setCentreLookupError("");
+
+    if (!code) {
+      setCentreLookupError("Enter a centre code.");
+      return;
+    }
+
+    const localCentre = centres.find((c) => c.code === code);
+    if (localCentre) {
+      setSelectedCentre(localCentre);
+      navigate("upload");
+      return;
+    }
+
+    setCentreLookupLoading(true);
+
+    try {
+      const data = await apiRequest(`/api/centres/${encodeURIComponent(code)}`);
+      const centre = normalizeCentre(data.centre);
+      setCentres((prev) => upsertCentre(prev, centre));
       setSelectedCentre(centre);
       navigate("upload");
-    } else {
-      alert("Invalid centre code. Try 2045 or 7832 for demo.");
+    } catch (error) {
+      setCentreLookupError(error.message || "Centre not found.");
+    } finally {
+      setCentreLookupLoading(false);
     }
   }
 
@@ -448,6 +503,13 @@ const [currentUser, setCurrentUser] = useState(() => {
     if (!documentFile) {
       setPaymentError("Please upload a PDF, PNG, or JPG document first.");
       navigate("upload");
+      return;
+    }
+
+    if (!currentUser) {
+      setPaymentError("Please login before payment.");
+      setPostAuthRedirect("payment");
+      startLogin("user");
       return;
     }
 
@@ -522,18 +584,34 @@ const [currentUser, setCurrentUser] = useState(() => {
     if (order?.id === orderId) setOrder((prev) => ({ ...prev, status: nextStatus }));
   }
 
-  function updateCentrePrice(field, value) {
+  async function updateCentrePrice(field, value) {
     if (!currentHub) return;
-    setCentres((prev) =>
-      prev.map((centre) => (centre.code === currentHub.code ? { ...centre, [field]: Number(value) } : centre))
-    );
+
+    try {
+      const data = await apiRequest("/api/centres/me/pricing", {
+        method: "PATCH",
+        body: JSON.stringify({ [field]: Number(value) }),
+      });
+      const centre = normalizeCentre(data.centre);
+      setCentres((prev) => upsertCentre(prev, centre));
+    } catch (error) {
+      alert(error.message || "Could not update pricing.");
+    }
   }
 
-  function updateCentrePayment(field, value) {
+  async function updateCentrePayment(field, value) {
     if (!currentHub) return;
-    setCentres((prev) =>
-      prev.map((centre) => (centre.code === currentHub.code ? { ...centre, [field]: value } : centre))
-    );
+
+    try {
+      const data = await apiRequest("/api/centres/me/payment-method", {
+        method: "PATCH",
+        body: JSON.stringify({ [field]: value }),
+      });
+      const centre = normalizeCentre(data.centre);
+      setCentres((prev) => upsertCentre(prev, centre));
+    } catch (error) {
+      alert(error.message || "Could not update payment method.");
+    }
   }
 
   return (
@@ -588,7 +666,7 @@ const [currentUser, setCurrentUser] = useState(() => {
         {page === "userDashboard" && <UserDashboard currentUser={currentUser} navigate={navigate} orders={orders} />}
         {page === "hubDashboard" && <HubDashboard currentHub={currentHub} hubOrders={hubOrders} updateOrderStatus={updateOrderStatus} navigate={navigate} />}
         {page === "hubPricing" && <HubPricingPage currentHub={currentHub} updateCentrePrice={updateCentrePrice} updateCentrePayment={updateCentrePayment} />}
-        {page === "centre" && <CentreCodePage centreCode={centreCode} setCentreCode={setCentreCode} handleCentreCode={handleCentreCode} centres={centres} selectCentreAndUpload={selectCentreAndUpload} />}
+        {page === "centre" && <CentreCodePage centreCode={centreCode} setCentreCode={setCentreCode} handleCentreCode={handleCentreCode} centres={centres} selectCentreAndUpload={selectCentreAndUpload} lookupLoading={centreLookupLoading} lookupError={centreLookupError} />}
         {page === "upload" && <UploadPage selectedCentre={selectedCentre} documentFile={documentFile} setDocumentFile={setDocumentFile} documentName={documentName} setDocumentName={setDocumentName} pages={pages} setPages={setPages} copies={copies} setCopies={setCopies} colorType={colorType} setColorType={setColorType} sideType={sideType} setSideType={setSideType} watermark={watermark} setWatermark={setWatermark} totalAmount={totalAmount} paymentError={paymentError} navigate={navigate} />}
         {page === "payment" && <PaymentPage selectedCentre={selectedCentre} documentName={documentName} pages={pages} copies={copies} totalAmount={totalAmount} handlePayment={handlePayment} paymentLoading={paymentLoading} paymentError={paymentError} />}
         {page === "track" && <TrackPage order={order} />}

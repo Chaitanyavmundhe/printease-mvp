@@ -5,8 +5,8 @@ import {
   createUser,
   findCentreByCode,
   findCentreForUser,
+  findUserById,
   findUserByMobile,
-  updateUserCentreId,
   withTransaction
 } from '../db/repository.js';
 import { generateId } from '../utils/generateCode.js';
@@ -53,7 +53,7 @@ export const registerUser = asyncHandler(async (req, res) => {
 
   const passwordHash = await bcrypt.hash(password, 10);
   const user = await createUser({
-    id: generateId('user'),
+    id: generateId(),
     name,
     mobile,
     passwordHash,
@@ -102,7 +102,7 @@ export const registerCentre = asyncHandler(async (req, res) => {
   const passwordHash = await bcrypt.hash(password, 10);
   const { owner, centre } = await withTransaction(async (client) => {
     const newOwner = await createUser({
-      id: generateId('hub-owner'),
+      id: generateId(),
       name: finalOwnerName,
       mobile,
       passwordHash,
@@ -111,7 +111,7 @@ export const registerCentre = asyncHandler(async (req, res) => {
     }, client);
 
     const newCentre = await createCentre({
-      id: generateId('centre'),
+      id: generateId(),
       hubName: finalHubName,
       name: finalHubName,
       ownerId: newOwner.id,
@@ -129,7 +129,7 @@ export const registerCentre = asyncHandler(async (req, res) => {
       createdAt: new Date().toISOString()
     }, client);
 
-    const ownerWithCentre = await updateUserCentreId(newOwner.id, newCentre.id, client);
+    const ownerWithCentre = await findUserById(newOwner.id, client);
 
     return { owner: ownerWithCentre, centre: newCentre };
   });

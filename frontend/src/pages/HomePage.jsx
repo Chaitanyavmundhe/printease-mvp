@@ -45,7 +45,7 @@ export default function HomePage({
               onClick={() => navigate("centre")}
               className="rounded-2xl border bg-white px-6 py-3 font-semibold shadow-sm hover:bg-slate-50"
             >
-              Scan QR Demo
+              QR Scanner Coming Soon
             </button>
           </div>
         </motion.section>

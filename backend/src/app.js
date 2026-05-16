@@ -105,10 +105,12 @@ app.use((err, req, res, next) => {
   });
 
   const databaseMessage = getDatabaseErrorMessage(err);
+  const uploadMessage = err.code === 'LIMIT_FILE_SIZE' ? 'Uploaded file is too large. Maximum size is 10MB.' : null;
+  const status = err.code === 'LIMIT_FILE_SIZE' ? 413 : err.status || err.statusCode || 500;
 
-  res.status(err.status || err.statusCode || 500).json({
+  res.status(status).json({
     success: false,
-    message: databaseMessage || err.message || 'Internal server error',
+    message: databaseMessage || uploadMessage || err.message || 'Internal server error',
     route: req.originalUrl
   });
 });

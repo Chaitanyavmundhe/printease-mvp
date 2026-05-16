@@ -30,6 +30,11 @@ insert into print_hubs (
   mobile,
   status,
   upi_id,
+  bw_single,
+  bw_double,
+  color_single,
+  color_double,
+  watermark_charge,
   created_at
 )
 values
@@ -41,6 +46,11 @@ values
     '9998887776',
     'available',
     'saiprint@upi',
+    1,
+    1.5,
+    2,
+    3,
+    2,
     now()
   ),
   (
@@ -51,6 +61,11 @@ values
     '8887776665',
     'busy',
     'collegeprint@upi',
+    1,
+    1.5,
+    2,
+    3,
+    2,
     now()
   )
 on conflict (id) do update set
@@ -59,7 +74,12 @@ on conflict (id) do update set
   centre_code = excluded.centre_code,
   mobile = excluded.mobile,
   status = excluded.status,
-  upi_id = excluded.upi_id;
+  upi_id = excluded.upi_id,
+  bw_single = excluded.bw_single,
+  bw_double = excluded.bw_double,
+  color_single = excluded.color_single,
+  color_double = excluded.color_double,
+  watermark_charge = excluded.watermark_charge;
 
 insert into printers (
   id,

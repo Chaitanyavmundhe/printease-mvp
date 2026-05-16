@@ -9,16 +9,33 @@ import {
 import { generateId } from '../utils/generateCode.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 
+function canAccessOrder(user, order) {
+  if (!user || !order) return false;
+  if (user.role === 'admin') return true;
+  if (user.role === 'user') return order.userId === user.id;
+  if (user.role === 'hub') return Boolean(user.centreId && order.centreId === user.centreId);
+  return false;
+}
+
 export const createPayment = asyncHandler(async (req, res) => {
   const { orderId } = req.body;
+
+  if (!orderId) {
+    return res.status(400).json({ success: false, message: 'Order ID is required' });
+  }
+
   const order = await findOrderByIdOrCode(orderId);
 
   if (!order) {
     return res.status(404).json({ success: false, message: 'Order not found' });
   }
 
+  if (!canAccessOrder(req.user, order)) {
+    return res.status(403).json({ success: false, message: 'You are not allowed to create payment for this order' });
+  }
+
   const payment = await savePayment({
-    id: generateId('payment'),
+    id: generateId(),
     orderId: order.id,
     amount: order.amount,
     method: 'DEMO_UPI',
@@ -38,6 +55,11 @@ export const createPayment = asyncHandler(async (req, res) => {
 
 export const verifyPayment = asyncHandler(async (req, res) => {
   const { paymentId, demoSuccess = true } = req.body;
+
+  if (!paymentId) {
+    return res.status(400).json({ success: false, message: 'Payment ID is required' });
+  }
+
   const payment = await findPaymentById(paymentId);
 
   if (!payment) {
@@ -47,6 +69,10 @@ export const verifyPayment = asyncHandler(async (req, res) => {
   const order = await findOrderByIdOrCode(payment.orderId);
   if (!order) {
     return res.status(404).json({ success: false, message: 'Linked order not found' });
+  }
+
+  if (!canAccessOrder(req.user, order)) {
+    return res.status(403).json({ success: false, message: 'You are not allowed to verify this payment' });
   }
 
   if (!demoSuccess) {
