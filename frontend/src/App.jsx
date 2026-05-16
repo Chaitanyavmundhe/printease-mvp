@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import Navbar from "./components/Navbar";
 import BackendStatus from "./components/BackendStatus";
 import HomePage from "./pages/HomePage";
@@ -14,6 +15,39 @@ import HistoryPage from "./pages/HistoryPage";
 import { initialCentres, initialOrders } from "./data/demoData";
 import { calculateTotalAmount, getPricePerPage } from "./utils/price";
 import { apiRequest } from "./services/api";
+
+const ROUTES = {
+  home: "/",
+  auth: "/auth",
+  userDashboard: "/user/dashboard",
+  hubDashboard: "/hub/dashboard",
+  hubPricing: "/hub/pricing",
+  centre: "/centre",
+  upload: "/upload",
+  payment: "/payment",
+  track: "/track",
+  history: "/history",
+};
+
+function getPageFromPath(pathname) {
+  const normalizedPath = pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
+  const foundRoute = Object.entries(ROUTES).find(([, path]) => path === normalizedPath);
+  return foundRoute?.[0] || "home";
+}
+
+function RouteNotice({ title, message, actionLabel, onAction }) {
+  return (
+    <section className="mx-auto max-w-xl rounded-2xl border bg-white p-6 text-center shadow-sm">
+      <h2 className="text-2xl font-bold">{title}</h2>
+      <p className="mt-2 text-slate-600">{message}</p>
+      {actionLabel && (
+        <button onClick={onAction} className="mt-5 rounded-2xl bg-slate-900 px-5 py-3 font-semibold text-white">
+          {actionLabel}
+        </button>
+      )}
+    </section>
+  );
+}
 
 function formatStatus(status) {
   if (!status) return "Available";
@@ -131,7 +165,9 @@ function upsertOrder(orderList, nextOrder) {
 }
 
 export default function App() {
-  const [page, setPage] = useState("home");
+  const routerNavigate = useNavigate();
+  const location = useLocation();
+  const page = getPageFromPath(location.pathname);
   const [profileOpen, setProfileOpen] = useState(false);
   const [authRole, setAuthRole] = useState("user");
   const [authMode, setAuthMode] = useState("login");
@@ -301,8 +337,15 @@ export default function App() {
     return orders.filter((item) => item.centreCode === currentHub.code || item.centreId === currentHub.id);
   }, [orders, currentHub]);
 
-  function navigate(nextPage) {
-    setPage(nextPage);
+  function navigate(nextPage, options = {}) {
+    if (typeof nextPage === "number") {
+      routerNavigate(nextPage);
+      setProfileOpen(false);
+      return;
+    }
+
+    const path = ROUTES[nextPage] || nextPage || ROUTES.home;
+    routerNavigate(path, options);
     setProfileOpen(false);
   }
 
@@ -389,7 +432,7 @@ export default function App() {
         localStorage.setItem("printease_user", JSON.stringify(nextUser));
         setCurrentUser(nextUser);
         await loadOrdersForSession(nextUser);
-        navigate("userDashboard");
+        navigate("userDashboard", { replace: true });
         return;
       }
 
@@ -423,7 +466,7 @@ export default function App() {
         setCentres((prev) => upsertCentre(prev, centre));
         setCurrentUser(nextUser);
         await loadOrdersForSession(nextUser, nextCentres);
-        navigate("hubDashboard");
+        navigate("hubDashboard", { replace: true });
         return;
       }
 
@@ -460,7 +503,7 @@ export default function App() {
       const destination = postAuthRedirect || (signedInRole === "hub" ? "hubDashboard" : "userDashboard");
       setPostAuthRedirect(null);
       if (destination === "payment") setPaymentError("");
-      navigate(destination);
+      navigate(destination, { replace: true });
     } catch (error) {
       setAuthError(error.message || "Authentication failed. Please try again.");
     } finally {
@@ -657,47 +700,92 @@ export default function App() {
       <main className="mx-auto max-w-6xl px-4 py-8">
         <BackendStatus />
 
-        {page === "home" && (
-          <HomePage
-            navigate={navigate}
-            centres={centres}
-            startLogin={startLogin}
-            startRegister={startRegister}
-            startDirectUpload={startDirectUpload}
-            selectCentreAndUpload={selectCentreAndUpload}
+        <Routes>
+          <Route
+            path={ROUTES.home}
+            element={
+              <HomePage
+                navigate={navigate}
+                centres={centres}
+                startLogin={startLogin}
+                startRegister={startRegister}
+                startDirectUpload={startDirectUpload}
+                selectCentreAndUpload={selectCentreAndUpload}
+              />
+            }
           />
-        )}
 
-        {page === "auth" && (
-          <AuthPage
-            authRole={authRole}
-            setAuthRole={changeAuthRole}
-            authMode={authMode}
-            setAuthMode={changeAuthMode}
-            mobile={mobile}
-            setMobile={setMobile}
-            password={password}
-            setPassword={setPassword}
-            name={name}
-            setName={setName}
-            hubName={hubName}
-            setHubName={setHubName}
-            hubCode={hubCode}
-            setHubCode={setHubCode}
-            handleAuthSubmit={handleAuthSubmit}
-            authError={authError}
-            authLoading={authLoading}
+          <Route
+            path={ROUTES.auth}
+            element={
+              <AuthPage
+                authRole={authRole}
+                setAuthRole={changeAuthRole}
+                authMode={authMode}
+                setAuthMode={changeAuthMode}
+                mobile={mobile}
+                setMobile={setMobile}
+                password={password}
+                setPassword={setPassword}
+                name={name}
+                setName={setName}
+                hubName={hubName}
+                setHubName={setHubName}
+                hubCode={hubCode}
+                setHubCode={setHubCode}
+                handleAuthSubmit={handleAuthSubmit}
+                authError={authError}
+                authLoading={authLoading}
+              />
+            }
           />
-        )}
 
-        {page === "userDashboard" && <UserDashboard currentUser={currentUser} navigate={navigate} orders={orders} />}
-        {page === "hubDashboard" && <HubDashboard currentHub={currentHub} hubOrders={hubOrders} updateOrderStatus={updateOrderStatus} navigate={navigate} />}
-        {page === "hubPricing" && <HubPricingPage currentHub={currentHub} updateCentrePrice={updateCentrePrice} updateCentrePayment={updateCentrePayment} />}
-        {page === "centre" && <CentreCodePage centreCode={centreCode} setCentreCode={setCentreCode} handleCentreCode={handleCentreCode} centres={centres} selectCentreAndUpload={selectCentreAndUpload} lookupLoading={centreLookupLoading} lookupError={centreLookupError} />}
-        {page === "upload" && <UploadPage selectedCentre={selectedCentre} documentFile={documentFile} setDocumentFile={setDocumentFile} documentName={documentName} setDocumentName={setDocumentName} pages={pages} setPages={setPages} copies={copies} setCopies={setCopies} colorType={colorType} setColorType={setColorType} sideType={sideType} setSideType={setSideType} watermark={watermark} setWatermark={setWatermark} totalAmount={totalAmount} paymentError={paymentError} navigate={navigate} />}
-        {page === "payment" && <PaymentPage selectedCentre={selectedCentre} documentName={documentName} pages={pages} copies={copies} totalAmount={totalAmount} handlePayment={handlePayment} paymentLoading={paymentLoading} paymentError={paymentError} />}
-        {page === "track" && <TrackPage order={order} />}
-        {page === "history" && <HistoryPage orders={orders} currentUser={currentUser} />}
+          <Route
+            path={ROUTES.userDashboard}
+            element={
+              currentUser?.role === "user" ? (
+                <UserDashboard currentUser={currentUser} navigate={navigate} orders={orders} />
+              ) : (
+                <RouteNotice title="Login Required" message="Please login as a user to view your dashboard." actionLabel="Login as User" onAction={() => startLogin("user")} />
+              )
+            }
+          />
+          <Route
+            path={ROUTES.hubDashboard}
+            element={
+              currentUser?.role === "hub" ? (
+                <HubDashboard currentHub={currentHub} hubOrders={hubOrders} updateOrderStatus={updateOrderStatus} navigate={navigate} />
+              ) : (
+                <RouteNotice title="Print Hub Login Required" message="Please login as a print hub to view this dashboard." actionLabel="Login as Print Hub" onAction={() => startLogin("hub")} />
+              )
+            }
+          />
+          <Route
+            path={ROUTES.hubPricing}
+            element={
+              currentUser?.role === "hub" ? (
+                <HubPricingPage currentHub={currentHub} updateCentrePrice={updateCentrePrice} updateCentrePayment={updateCentrePayment} />
+              ) : (
+                <RouteNotice title="Print Hub Login Required" message="Please login as a print hub to manage pricing and payment details." actionLabel="Login as Print Hub" onAction={() => startLogin("hub")} />
+              )
+            }
+          />
+          <Route path={ROUTES.centre} element={<CentreCodePage centreCode={centreCode} setCentreCode={setCentreCode} handleCentreCode={handleCentreCode} centres={centres} selectCentreAndUpload={selectCentreAndUpload} lookupLoading={centreLookupLoading} lookupError={centreLookupError} />} />
+          <Route path={ROUTES.upload} element={<UploadPage selectedCentre={selectedCentre} documentFile={documentFile} setDocumentFile={setDocumentFile} documentName={documentName} setDocumentName={setDocumentName} pages={pages} setPages={setPages} copies={copies} setCopies={setCopies} colorType={colorType} setColorType={setColorType} sideType={sideType} setSideType={setSideType} watermark={watermark} setWatermark={setWatermark} totalAmount={totalAmount} paymentError={paymentError} navigate={navigate} />} />
+          <Route
+            path={ROUTES.payment}
+            element={
+              selectedCentre && documentFile ? (
+                <PaymentPage selectedCentre={selectedCentre} documentName={documentName} pages={pages} copies={copies} totalAmount={totalAmount} handlePayment={handlePayment} paymentLoading={paymentLoading} paymentError={paymentError} />
+              ) : (
+                <RouteNotice title="Payment Not Ready" message="Please select a centre and upload a document first." actionLabel="Select Centre" onAction={() => navigate("centre")} />
+              )
+            }
+          />
+          <Route path={ROUTES.track} element={<TrackPage order={order} />} />
+          <Route path={ROUTES.history} element={<HistoryPage orders={orders} currentUser={currentUser} />} />
+          <Route path="*" element={<Navigate to={ROUTES.home} replace />} />
+        </Routes>
       </main>
     </div>
   );
