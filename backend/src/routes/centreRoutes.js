@@ -7,7 +7,7 @@ const router = express.Router();
 
 router.get('/', getCentres);
 router.get('/:code', getCentreByCode);
-router.patch('/me/pricing', authMiddleware, roleMiddleware('centre'), updateCentrePricing);
-router.patch('/me/payment-method', authMiddleware, roleMiddleware('centre'), updatePaymentMethod);
+router.patch('/me/pricing', authMiddleware, roleMiddleware('hub'), updateCentrePricing);
+router.patch('/me/payment-method', authMiddleware, roleMiddleware('hub'), updatePaymentMethod);
 
 export default router;

@@ -13,8 +13,8 @@ const router = express.Router();
 
 router.post('/', optionalAuthMiddleware, createOrder);
 router.get('/mine', authMiddleware, roleMiddleware('user'), getMyOrders);
-router.get('/centre/mine', authMiddleware, roleMiddleware('centre'), getCentreOrders);
+router.get('/centre/mine', authMiddleware, roleMiddleware('hub'), getCentreOrders);
 router.get('/:id', getOrderById);
-router.patch('/:id/status', authMiddleware, roleMiddleware('centre'), updateOrderStatus);
+router.patch('/:id/status', authMiddleware, roleMiddleware('hub'), updateOrderStatus);
 
 export default router;

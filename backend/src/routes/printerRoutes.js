@@ -12,7 +12,7 @@ import { roleMiddleware } from '../middleware/roleMiddleware.js';
 
 const router = express.Router();
 
-router.use(authMiddleware, roleMiddleware('centre'));
+router.use(authMiddleware, roleMiddleware('hub'));
 
 router.post('/', addPrinter);
 router.get('/mine', getMyCentrePrinters);

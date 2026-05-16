@@ -13,7 +13,7 @@ export const db = {
       name: 'Sai Owner',
       mobile: '9998887776',
       passwordHash: '$2a$10$UivK/fMiwE3SqsFyHQv7VOQnqnL2cOdp7Mj9/zdjwGz6N7sH0iDbW',
-      role: 'centre',
+      role: 'hub',
       centreId: 'centre-1',
       createdAt: new Date().toISOString()
     }

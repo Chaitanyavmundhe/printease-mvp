@@ -80,7 +80,7 @@ export const registerCentre = asyncHandler(async (req, res) => {
       name: ownerName,
       mobile,
       passwordHash,
-      role: 'centre',
+        role: 'hub',
       createdAt: new Date().toISOString()
     }, client);
 

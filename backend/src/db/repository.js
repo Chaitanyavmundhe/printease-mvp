@@ -184,7 +184,7 @@ export async function findCentreById(id, client) {
 }
 
 export async function findCentreForUser(user, client) {
-  if (!user || user.role !== 'centre') return null;
+  if (!user || user.role !== 'hub') return null;
 
   const result = await executor(client).query(
     `${centreSelect} where c.id = $1 or c.owner_id = $2 limit 1`,
