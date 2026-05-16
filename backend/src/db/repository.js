@@ -1,0 +1,434 @@
+import { pool, query, withTransaction } from '../config/db.js';
+
+function timestamp(value) {
+  return value instanceof Date ? value.toISOString() : value;
+}
+
+function number(value) {
+  return value === null || value === undefined ? value : Number(value);
+}
+
+export function mapUser(row) {
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    name: row.name,
+    mobile: row.mobile,
+    passwordHash: row.password_hash,
+    role: row.role,
+    centreId: row.centre_id,
+    createdAt: timestamp(row.created_at)
+  };
+}
+
+export function mapCentre(row) {
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    name: row.name,
+    ownerId: row.owner_id,
+    owner: row.owner_name,
+    centreCode: row.centre_code,
+    mobile: row.mobile,
+    status: row.status,
+    upiId: row.upi_id,
+    pricing: {
+      bwSingle: number(row.bw_single),
+      bwDouble: number(row.bw_double),
+      colorSingle: number(row.color_single),
+      colorDouble: number(row.color_double),
+      watermarkCharge: number(row.watermark_charge)
+    },
+    createdAt: timestamp(row.created_at)
+  };
+}
+
+export function mapDocument(row) {
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    userId: row.user_id,
+    fileName: row.file_name,
+    fileType: row.file_type,
+    fileSize: row.file_size,
+    fileUrl: row.file_url,
+    createdAt: timestamp(row.created_at)
+  };
+}
+
+export function mapOrder(row) {
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    orderCode: row.order_code,
+    userId: row.user_id,
+    centreId: row.centre_id,
+    documentId: row.document_id,
+    documentName: row.document_name,
+    pages: row.pages,
+    copies: row.copies,
+    colorType: row.color_type,
+    sideType: row.side_type,
+    watermarkEnabled: row.watermark_enabled,
+    amount: number(row.amount),
+    paymentStatus: row.payment_status,
+    status: row.status,
+    pickupCode: row.pickup_code,
+    createdAt: timestamp(row.created_at)
+  };
+}
+
+export function mapPayment(row) {
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    orderId: row.order_id,
+    amount: number(row.amount),
+    gateway: row.gateway,
+    gatewayOrderId: row.gateway_order_id,
+    gatewayPaymentId: row.gateway_payment_id,
+    status: row.status,
+    createdAt: timestamp(row.created_at),
+    verifiedAt: timestamp(row.verified_at)
+  };
+}
+
+export function mapPrinter(row) {
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    centreId: row.centre_id,
+    printerName: row.printer_name,
+    printerType: row.printer_type,
+    protocol: row.protocol,
+    ipAddress: row.ip_address,
+    port: row.port,
+    status: row.status,
+    isActive: row.is_active,
+    createdAt: timestamp(row.created_at)
+  };
+}
+
+const centreSelect = `
+  select c.*, u.name as owner_name
+  from centres c
+  left join users u on u.id = c.owner_id
+`;
+
+function executor(client) {
+  return client || pool;
+}
+
+export { withTransaction };
+
+export async function findUserById(id, client) {
+  const result = await executor(client).query('select * from users where id = $1', [id]);
+  return mapUser(result.rows[0]);
+}
+
+export async function findUserByMobile(mobile, client) {
+  const result = await executor(client).query('select * from users where mobile = $1', [mobile]);
+  return mapUser(result.rows[0]);
+}
+
+export async function createUser(user, client) {
+  const result = await executor(client).query(
+    `insert into users (id, name, mobile, password_hash, role, centre_id, created_at)
+     values ($1, $2, $3, $4, $5, $6, coalesce($7, now()))
+     returning *`,
+    [user.id, user.name, user.mobile, user.passwordHash, user.role, user.centreId || null, user.createdAt || null]
+  );
+
+  return mapUser(result.rows[0]);
+}
+
+export async function updateUserCentreId(userId, centreId, client) {
+  const result = await executor(client).query(
+    'update users set centre_id = $2 where id = $1 returning *',
+    [userId, centreId]
+  );
+  return mapUser(result.rows[0]);
+}
+
+export async function listCentres() {
+  const result = await query(`${centreSelect} order by c.created_at asc`);
+  return result.rows.map(mapCentre);
+}
+
+export async function findCentreByCode(code, client) {
+  const result = await executor(client).query(`${centreSelect} where c.centre_code = $1`, [code]);
+  return mapCentre(result.rows[0]);
+}
+
+export async function findCentreById(id, client) {
+  const result = await executor(client).query(`${centreSelect} where c.id = $1`, [id]);
+  return mapCentre(result.rows[0]);
+}
+
+export async function findCentreForUser(user, client) {
+  if (!user || user.role !== 'centre') return null;
+
+  const result = await executor(client).query(
+    `${centreSelect} where c.id = $1 or c.owner_id = $2 limit 1`,
+    [user.centreId, user.id]
+  );
+
+  return mapCentre(result.rows[0]);
+}
+
+export async function createCentre(centre, client) {
+  const pricing = centre.pricing || {};
+  const result = await executor(client).query(
+    `insert into centres (
+       id, name, owner_id, centre_code, mobile, status, upi_id,
+       bw_single, bw_double, color_single, color_double, watermark_charge, created_at
+     )
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, coalesce($13, now()))
+     returning *`,
+    [
+      centre.id,
+      centre.name,
+      centre.ownerId,
+      centre.centreCode,
+      centre.mobile,
+      centre.status || 'available',
+      centre.upiId || '',
+      pricing.bwSingle ?? 1,
+      pricing.bwDouble ?? 1.5,
+      pricing.colorSingle ?? 2,
+      pricing.colorDouble ?? 3,
+      pricing.watermarkCharge ?? 2,
+      centre.createdAt || null
+    ]
+  );
+
+  return findCentreById(result.rows[0].id, client);
+}
+
+export async function updateCentrePricing(centreId, pricing) {
+  const result = await query(
+    `update centres
+     set
+       bw_single = coalesce($2, bw_single),
+       bw_double = coalesce($3, bw_double),
+       color_single = coalesce($4, color_single),
+       color_double = coalesce($5, color_double),
+       watermark_charge = coalesce($6, watermark_charge)
+     where id = $1
+     returning id`,
+    [
+      centreId,
+      pricing.bwSingle,
+      pricing.bwDouble,
+      pricing.colorSingle,
+      pricing.colorDouble,
+      pricing.watermarkCharge
+    ]
+  );
+
+  if (!result.rows[0]) return null;
+  return findCentreById(result.rows[0].id);
+}
+
+export async function updateCentrePaymentMethod(centreId, upiId) {
+  const result = await query(
+    'update centres set upi_id = coalesce($2, upi_id) where id = $1 returning id',
+    [centreId, upiId]
+  );
+
+  if (!result.rows[0]) return null;
+  return findCentreById(result.rows[0].id);
+}
+
+export async function createDocument(document) {
+  const result = await query(
+    `insert into documents (id, user_id, file_name, file_type, file_size, file_url, created_at)
+     values ($1, $2, $3, $4, $5, $6, coalesce($7, now()))
+     returning *`,
+    [
+      document.id,
+      document.userId || null,
+      document.fileName,
+      document.fileType || null,
+      document.fileSize || null,
+      document.fileUrl,
+      document.createdAt || null
+    ]
+  );
+
+  return mapDocument(result.rows[0]);
+}
+
+export async function createOrder(order) {
+  const result = await query(
+    `insert into orders (
+       id, order_code, user_id, centre_id, document_id, document_name, pages, copies,
+       color_type, side_type, watermark_enabled, amount, payment_status, status, pickup_code, created_at
+     )
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, coalesce($16, now()))
+     returning *`,
+    [
+      order.id,
+      order.orderCode,
+      order.userId || null,
+      order.centreId,
+      order.documentId || null,
+      order.documentName,
+      order.pages,
+      order.copies,
+      order.colorType,
+      order.sideType,
+      order.watermarkEnabled,
+      order.amount,
+      order.paymentStatus,
+      order.status,
+      order.pickupCode,
+      order.createdAt || null
+    ]
+  );
+
+  return mapOrder(result.rows[0]);
+}
+
+export async function findOrderByIdOrCode(id, client) {
+  const result = await executor(client).query(
+    'select * from orders where id = $1 or order_code = $1',
+    [id]
+  );
+  return mapOrder(result.rows[0]);
+}
+
+export async function listOrdersByUser(userId) {
+  const result = await query('select * from orders where user_id = $1 order by created_at desc', [userId]);
+  return result.rows.map(mapOrder);
+}
+
+export async function listOrdersByCentre(centreId) {
+  const result = await query('select * from orders where centre_id = $1 order by created_at desc', [centreId]);
+  return result.rows.map(mapOrder);
+}
+
+export async function updateOrderStatus(orderId, centreId, status) {
+  const result = await query(
+    'update orders set status = coalesce($3, status) where id = $1 and centre_id = $2 returning *',
+    [orderId, centreId, status]
+  );
+  return mapOrder(result.rows[0]);
+}
+
+export async function updateOrderPayment(orderId, paymentStatus, status, client) {
+  const result = await executor(client).query(
+    'update orders set payment_status = $2, status = $3 where id = $1 returning *',
+    [orderId, paymentStatus, status]
+  );
+  return mapOrder(result.rows[0]);
+}
+
+export async function createPayment(payment) {
+  const result = await query(
+    `insert into payments (
+       id, order_id, amount, gateway, gateway_order_id, gateway_payment_id, status, created_at, verified_at
+     )
+     values ($1, $2, $3, $4, $5, $6, $7, coalesce($8, now()), $9)
+     returning *`,
+    [
+      payment.id,
+      payment.orderId,
+      payment.amount,
+      payment.gateway,
+      payment.gatewayOrderId,
+      payment.gatewayPaymentId || null,
+      payment.status,
+      payment.createdAt || null,
+      payment.verifiedAt || null
+    ]
+  );
+
+  return mapPayment(result.rows[0]);
+}
+
+export async function findPaymentById(id, client) {
+  const result = await executor(client).query('select * from payments where id = $1', [id]);
+  return mapPayment(result.rows[0]);
+}
+
+export async function updatePayment(paymentId, updates, client) {
+  const result = await executor(client).query(
+    `update payments
+     set
+       gateway_payment_id = coalesce($2, gateway_payment_id),
+       status = coalesce($3, status),
+       verified_at = coalesce($4, verified_at)
+     where id = $1
+     returning *`,
+    [paymentId, updates.gatewayPaymentId, updates.status, updates.verifiedAt]
+  );
+
+  return mapPayment(result.rows[0]);
+}
+
+export async function createPrinter(printer) {
+  const result = await query(
+    `insert into printers (
+       id, centre_id, printer_name, printer_type, protocol, ip_address, port, status, is_active, created_at
+     )
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, coalesce($10, now()))
+     returning *`,
+    [
+      printer.id,
+      printer.centreId,
+      printer.printerName,
+      printer.printerType,
+      printer.protocol,
+      printer.ipAddress,
+      printer.port,
+      printer.status,
+      printer.isActive,
+      printer.createdAt || null
+    ]
+  );
+
+  return mapPrinter(result.rows[0]);
+}
+
+export async function listPrintersByCentre(centreId) {
+  const result = await query('select * from printers where centre_id = $1 order by created_at desc', [centreId]);
+  return result.rows.map(mapPrinter);
+}
+
+export async function findPrinterByIdAndCentre(printerId, centreId) {
+  const result = await query(
+    'select * from printers where id = $1 and centre_id = $2',
+    [printerId, centreId]
+  );
+  return mapPrinter(result.rows[0]);
+}
+
+export async function updatePrinterStatus(printerId, centreId, status) {
+  const result = await query(
+    'update printers set status = coalesce($3, status) where id = $1 and centre_id = $2 returning *',
+    [printerId, centreId, status]
+  );
+  return mapPrinter(result.rows[0]);
+}
+
+export async function updatePrinterProtocol(printerId, centreId, updates) {
+  const result = await query(
+    `update printers
+     set
+       protocol = coalesce($3, protocol),
+       ip_address = coalesce($4, ip_address),
+       port = coalesce($5, port)
+     where id = $1 and centre_id = $2
+     returning *`,
+    [printerId, centreId, updates.protocol, updates.ipAddress, updates.port]
+  );
+
+  return mapPrinter(result.rows[0]);
+}

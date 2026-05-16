@@ -1,0 +1,79 @@
+import {
+  createPayment as savePayment,
+  findOrderByIdOrCode,
+  findPaymentById,
+  updateOrderPayment,
+  updatePayment,
+  withTransaction
+} from '../db/repository.js';
+import { generateId } from '../utils/generateCode.js';
+import { asyncHandler } from '../utils/asyncHandler.js';
+
+export const createPayment = asyncHandler(async (req, res) => {
+  const { orderId } = req.body;
+  const order = await findOrderByIdOrCode(orderId);
+
+  if (!order) {
+    return res.status(404).json({ success: false, message: 'Order not found' });
+  }
+
+  const payment = await savePayment({
+    id: generateId('payment'),
+    orderId: order.id,
+    amount: order.amount,
+    gateway: 'DEMO_UPI',
+    gatewayOrderId: `demo_order_${Date.now()}`,
+    gatewayPaymentId: null,
+    status: 'created',
+    createdAt: new Date().toISOString(),
+    verifiedAt: null
+  });
+
+  res.status(201).json({
+    success: true,
+    message: 'Demo payment order created',
+    payment,
+    note: 'Production should create Razorpay order from backend.'
+  });
+});
+
+export const verifyPayment = asyncHandler(async (req, res) => {
+  const { paymentId, demoSuccess = true } = req.body;
+  const payment = await findPaymentById(paymentId);
+
+  if (!payment) {
+    return res.status(404).json({ success: false, message: 'Payment not found' });
+  }
+
+  const order = await findOrderByIdOrCode(payment.orderId);
+  if (!order) {
+    return res.status(404).json({ success: false, message: 'Linked order not found' });
+  }
+
+  if (!demoSuccess) {
+    const result = await withTransaction(async (client) => {
+      const failedPayment = await updatePayment(payment.id, { status: 'failed' }, client);
+      const failedOrder = await updateOrderPayment(order.id, 'failed', 'Payment Failed', client);
+      return { payment: failedPayment, order: failedOrder };
+    });
+
+    return res.json({ success: true, message: 'Payment marked failed in demo', ...result });
+  }
+
+  const result = await withTransaction(async (client) => {
+    const verifiedPayment = await updatePayment(payment.id, {
+      status: 'verified',
+      gatewayPaymentId: `demo_payment_${Date.now()}`,
+      verifiedAt: new Date().toISOString()
+    }, client);
+    const verifiedOrder = await updateOrderPayment(order.id, 'verified', 'Payment Verified', client);
+    return { payment: verifiedPayment, order: verifiedOrder };
+  });
+
+  res.json({
+    success: true,
+    message: 'Payment verified in demo mode',
+    ...result,
+    securityNote: 'Real project must verify Razorpay signature/webhook on backend.'
+  });
+});
