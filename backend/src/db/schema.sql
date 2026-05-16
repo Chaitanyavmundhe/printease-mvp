@@ -10,6 +10,18 @@ create table if not exists users (
 
 do $$
 begin
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'users'
+      and column_name = 'id'
+      and data_type = 'uuid'
+  ) then
+    alter table users alter column id drop default;
+    alter table users alter column id type text using id::text;
+  end if;
+
   if not exists (
     select 1
     from information_schema.columns
@@ -28,6 +40,18 @@ begin
       and column_name = 'centre_id'
   ) then
     alter table users add column centre_id text;
+  end if;
+
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'users'
+      and column_name = 'centre_id'
+      and data_type = 'uuid'
+  ) then
+    alter table users alter column centre_id drop default;
+    alter table users alter column centre_id type text using centre_id::text;
   end if;
 
   if not exists (
