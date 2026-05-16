@@ -12,7 +12,7 @@ import TrackPage from "./pages/TrackPage";
 import HistoryPage from "./pages/HistoryPage";
 import { initialCentres, initialOrders } from "./data/demoData";
 import { calculateTotalAmount, getPricePerPage } from "./utils/price";
-import { apiRequest } from "./utils/api";
+import { apiRequest } from "./services/api";
 
 function formatStatus(status) {
   if (!status) return "Available";
@@ -158,7 +158,7 @@ export default function App() {
   useEffect(() => {
     let ignore = false;
 
-    apiRequest("/centres")
+    apiRequest("/api/centres")
       .then((data) => {
         if (!ignore && Array.isArray(data.centres)) {
           setCentres(data.centres.map(normalizeCentre));
@@ -223,7 +223,7 @@ export default function App() {
   }
 
   async function refreshCentres() {
-    const data = await apiRequest("/centres");
+    const data = await apiRequest("/api/centres");
     const nextCentres = Array.isArray(data.centres) ? data.centres.map(normalizeCentre) : [];
     setCentres(nextCentres);
     return nextCentres;
@@ -233,7 +233,7 @@ export default function App() {
     if (!user) return [];
 
     try {
-      const data = await apiRequest(user.role === "hub" ? "/orders/centre/mine" : "/orders/mine");
+      const data = await apiRequest(user.role === "hub" ? "/api/orders/centre/mine" : "/api/orders/mine");
       const nextOrders = Array.isArray(data.orders) ? data.orders.map((item) => normalizeOrder(item, centreList)) : [];
       setOrders(nextOrders);
       return nextOrders;
@@ -269,7 +269,7 @@ export default function App() {
 
     try {
       if (authMode === "register" && authRole === "user") {
-        const data = await apiRequest("/auth/register-user", {
+        const data = await apiRequest("/api/auth/register-user", {
           method: "POST",
           body: JSON.stringify({ name: trimmedName, mobile: trimmedMobile, password }),
         });
@@ -288,7 +288,7 @@ export default function App() {
           return;
         }
 
-        const data = await apiRequest("/auth/register-centre", {
+        const data = await apiRequest("/api/auth/register-centre", {
           method: "POST",
           body: JSON.stringify({
             ownerName: trimmedName,
@@ -310,7 +310,7 @@ export default function App() {
         return;
       }
 
-      const data = await apiRequest("/auth/login", {
+      const data = await apiRequest("/api/auth/login", {
         method: "POST",
         body: JSON.stringify({ mobile: trimmedMobile, password }),
       });
@@ -396,12 +396,12 @@ export default function App() {
       const formData = new FormData();
       formData.append("document", documentFile);
 
-      const uploadData = await apiRequest("/uploads", {
+      const uploadData = await apiRequest("/api/uploads", {
         method: "POST",
         body: formData,
       });
 
-      const orderData = await apiRequest("/orders", {
+      const orderData = await apiRequest("/api/orders", {
         method: "POST",
         body: JSON.stringify({
           centreCode: selectedCentre.code,
@@ -415,12 +415,12 @@ export default function App() {
         }),
       });
 
-      const paymentData = await apiRequest("/payments/create", {
+      const paymentData = await apiRequest("/api/payments/create", {
         method: "POST",
         body: JSON.stringify({ orderId: orderData.order.id }),
       });
 
-      const verifiedData = await apiRequest("/payments/verify-demo", {
+      const verifiedData = await apiRequest("/api/payments/verify-demo", {
         method: "POST",
         body: JSON.stringify({ paymentId: paymentData.payment.id, demoSuccess: true }),
       });
@@ -442,7 +442,7 @@ export default function App() {
 
     try {
       if (existingOrder?.backendId) {
-        const data = await apiRequest(`/orders/${existingOrder.backendId}/status`, {
+        const data = await apiRequest(`/api/orders/${existingOrder.backendId}/status`, {
           method: "PATCH",
           body: JSON.stringify({ status: nextStatus }),
         });

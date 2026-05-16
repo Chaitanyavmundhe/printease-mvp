@@ -1,4 +1,3 @@
-import { checkBackendHealth } from "../services/api";
 import { motion } from "framer-motion";
 
 import { User, Upload, Store, Plus, Building2 } from "lucide-react";
