@@ -5,23 +5,37 @@ create table if not exists users (
   name text not null,
   mobile text not null unique,
   password_hash text not null,
-  role text not null check (role in ('user', 'centre')),
+  role text not null check (role in ('user', 'hub', 'admin')),
   created_at timestamptz not null default now()
 );
 
+do $$
+begin
+  if exists (
+    select 1
+    from pg_constraint
+    where conname = 'users_role_check'
+  ) then
+    alter table users drop constraint users_role_check;
+  end if;
+
+  update users
+  set role = 'hub'
+  where role not in ('user', 'hub', 'admin');
+
+  alter table users
+    add constraint users_role_check
+    check (role in ('user', 'hub', 'admin'));
+end $$;
+
 create table if not exists print_hubs (
   id uuid primary key default gen_random_uuid(),
-  name text not null,
   owner_id uuid references users(id) on delete cascade,
+  hub_name text not null,
   centre_code text not null unique,
   mobile text not null,
   status text not null default 'available',
-  upi_id text not null default '',
-  bw_single numeric(10, 2) not null default 1,
-  bw_double numeric(10, 2) not null default 1.5,
-  color_single numeric(10, 2) not null default 2,
-  color_double numeric(10, 2) not null default 3,
-  watermark_charge numeric(10, 2) not null default 2,
+  upi_id text,
   created_at timestamptz not null default now()
 );
 
@@ -40,8 +54,8 @@ create table if not exists print_orders (
   order_code text not null unique,
   user_id uuid references users(id) on delete set null,
   hub_id uuid not null references print_hubs(id) on delete cascade,
-  document_id uuid references documents(id) on delete set null,
   document_name text not null,
+  document_url text,
   pages integer not null,
   copies integer not null,
   color_type text not null default 'bw',
@@ -58,9 +72,8 @@ create table if not exists payments (
   id uuid primary key default gen_random_uuid(),
   order_id uuid not null references print_orders(id) on delete cascade,
   amount numeric(10, 2) not null,
-  gateway text not null default 'DEMO_UPI',
-  gateway_order_id text,
-  gateway_payment_id text,
+  method text,
+  transaction_id text,
   status text not null default 'created',
   created_at timestamptz not null default now(),
   verified_at timestamptz

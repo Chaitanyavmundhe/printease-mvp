@@ -21,7 +21,10 @@ export function mapUser(row) {
     mobile: row.mobile,
     passwordHash: row.password_hash,
     role: row.role,
-    centreId: row.centre_id,
+    centreId: row.hub_id || row.centre_id || null,
+    hubId: row.hub_id || row.centre_id || null,
+    hubName: row.hub_name || null,
+    centreCode: row.centre_code || null,
     createdAt: timestamp(row.created_at)
   };
 }
@@ -31,19 +34,21 @@ export function mapCentre(row) {
 
   return {
     id: row.id,
-    name: row.name,
+    name: row.name || row.hub_name,
+    hubName: row.hub_name || row.name,
     ownerId: row.owner_id,
     owner: row.owner_name,
     centreCode: row.centre_code,
+    code: row.code || row.centre_code,
     mobile: row.mobile,
     status: row.status,
     upiId: row.upi_id,
     pricing: {
-      bwSingle: number(row.bw_single),
-      bwDouble: number(row.bw_double),
-      colorSingle: number(row.color_single),
-      colorDouble: number(row.color_double),
-      watermarkCharge: number(row.watermark_charge)
+      bwSingle: number(row.bw_single) ?? 1,
+      bwDouble: number(row.bw_double) ?? 1.5,
+      colorSingle: number(row.color_single) ?? 2,
+      colorDouble: number(row.color_double) ?? 3,
+      watermarkCharge: number(row.watermark_charge) ?? 2
     },
     createdAt: timestamp(row.created_at)
   };
@@ -71,8 +76,9 @@ export function mapOrder(row) {
     orderCode: row.order_code,
     userId: row.user_id,
     centreId: row.centre_id || row.hub_id,
-    documentId: row.document_id,
+    documentId: row.document_id || null,
     documentName: row.document_name,
+    documentUrl: row.document_url,
     pages: row.pages,
     copies: row.copies,
     colorType: row.color_type,
@@ -93,9 +99,11 @@ export function mapPayment(row) {
     id: row.id,
     orderId: row.order_id,
     amount: number(row.amount),
-    gateway: row.gateway,
-    gatewayOrderId: row.gateway_order_id,
-    gatewayPaymentId: row.gateway_payment_id,
+    method: row.method,
+    gateway: row.method,
+    transactionId: row.transaction_id,
+    gatewayOrderId: row.transaction_id,
+    gatewayPaymentId: row.transaction_id,
     status: row.status,
     createdAt: timestamp(row.created_at),
     verifiedAt: timestamp(row.verified_at)
@@ -120,7 +128,18 @@ export function mapPrinter(row) {
 }
 
 const centreSelect = `
-  select c.*, u.name as owner_name
+  select
+    c.id,
+    c.owner_id,
+    c.hub_name,
+    c.hub_name as name,
+    c.centre_code,
+    c.centre_code as code,
+    c.mobile,
+    c.status,
+    c.upi_id,
+    c.created_at,
+    u.name as owner_name
   from print_hubs c
   left join users u on u.id = c.owner_id
 `;
@@ -133,7 +152,12 @@ export { withTransaction };
 
 export async function findUserById(id, client) {
   const result = await executor(client).query(
-    `select u.*, h.id as centre_id
+    `select
+       u.*,
+       h.id as hub_id,
+       h.id as centre_id,
+       h.hub_name,
+       h.centre_code
      from users u
      left join print_hubs h on h.owner_id = u.id
      where u.id = $1`,
@@ -144,7 +168,12 @@ export async function findUserById(id, client) {
 
 export async function findUserByMobile(mobile, client) {
   const result = await executor(client).query(
-    `select u.*, h.id as centre_id
+    `select
+       u.*,
+       h.id as hub_id,
+       h.id as centre_id,
+       h.hub_name,
+       h.centre_code
      from users u
      left join print_hubs h on h.owner_id = u.id
      where u.mobile = $1`,
@@ -157,7 +186,7 @@ export async function createUser(user, client) {
   const result = await executor(client).query(
     `insert into users (id, name, mobile, password_hash, role, created_at)
      values ($1, $2, $3, $4, $5, coalesce($6, now()))
-     returning *, null::uuid as centre_id`,
+     returning *, null::uuid as hub_id, null::uuid as centre_id, null::text as hub_name, null::text as centre_code`,
     [user.id, user.name, user.mobile, user.passwordHash, user.role, user.createdAt || null]
   );
 
@@ -169,7 +198,7 @@ export async function updateUserCentreId(userId, centreId, client) {
 }
 
 export async function listCentres() {
-  const result = await query(`${centreSelect} order by c.created_at asc`);
+  const result = await query(`${centreSelect} order by c.created_at desc`);
   return result.rows.map(mapCentre);
 }
 
@@ -195,27 +224,20 @@ export async function findCentreForUser(user, client) {
 }
 
 export async function createCentre(centre, client) {
-  const pricing = centre.pricing || {};
   const result = await executor(client).query(
     `insert into print_hubs (
-       id, name, owner_id, centre_code, mobile, status, upi_id,
-       bw_single, bw_double, color_single, color_double, watermark_charge, created_at
+       id, owner_id, hub_name, centre_code, mobile, status, upi_id, created_at
      )
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, coalesce($13, now()))
+     values ($1, $2, $3, $4, $5, $6, $7, coalesce($8, now()))
      returning *`,
     [
       centre.id,
-      centre.name,
       centre.ownerId,
+      centre.hubName || centre.name,
       centre.centreCode,
       centre.mobile,
       centre.status || 'available',
-      centre.upiId || '',
-      pricing.bwSingle ?? 1,
-      pricing.bwDouble ?? 1.5,
-      pricing.colorSingle ?? 2,
-      pricing.colorDouble ?? 3,
-      pricing.watermarkCharge ?? 2,
+      centre.upiId || null,
       centre.createdAt || null
     ]
   );
@@ -224,28 +246,7 @@ export async function createCentre(centre, client) {
 }
 
 export async function updateCentrePricing(centreId, pricing) {
-  const result = await query(
-    `update print_hubs
-     set
-       bw_single = coalesce($2, bw_single),
-       bw_double = coalesce($3, bw_double),
-       color_single = coalesce($4, color_single),
-       color_double = coalesce($5, color_double),
-       watermark_charge = coalesce($6, watermark_charge)
-     where id = $1
-     returning id`,
-    [
-      centreId,
-      pricing.bwSingle,
-      pricing.bwDouble,
-      pricing.colorSingle,
-      pricing.colorDouble,
-      pricing.watermarkCharge
-    ]
-  );
-
-  if (!result.rows[0]) return null;
-  return findCentreById(result.rows[0].id);
+  return findCentreById(centreId);
 }
 
 export async function updateCentrePaymentMethod(centreId, upiId) {
@@ -280,7 +281,7 @@ export async function createDocument(document) {
 export async function createOrder(order) {
   const result = await query(
     `insert into print_orders (
-       id, order_code, user_id, hub_id, document_id, document_name, pages, copies,
+       id, order_code, user_id, hub_id, document_name, document_url, pages, copies,
        color_type, side_type, watermark_enabled, amount, payment_status, status, pickup_code, created_at
      )
      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, coalesce($16, now()))
@@ -290,8 +291,8 @@ export async function createOrder(order) {
       order.orderCode,
       order.userId || null,
       order.centreId,
-      order.documentId || null,
       order.documentName,
+      order.documentUrl || order.documentId || null,
       order.pages,
       order.copies,
       order.colorType,
@@ -353,17 +354,16 @@ export async function updateOrderPayment(orderId, paymentStatus, status, client)
 export async function createPayment(payment) {
   const result = await query(
     `insert into payments (
-       id, order_id, amount, gateway, gateway_order_id, gateway_payment_id, status, created_at, verified_at
+       id, order_id, amount, method, transaction_id, status, created_at, verified_at
      )
-     values ($1, $2, $3, $4, $5, $6, $7, coalesce($8, now()), $9)
+     values ($1, $2, $3, $4, $5, $6, coalesce($7, now()), $8)
      returning *`,
     [
       payment.id,
       payment.orderId,
       payment.amount,
-      payment.gateway,
-      payment.gatewayOrderId,
-      payment.gatewayPaymentId || null,
+      payment.method || payment.gateway || 'DEMO_UPI',
+      payment.transactionId || payment.gatewayPaymentId || payment.gatewayOrderId || null,
       payment.status,
       payment.createdAt || null,
       payment.verifiedAt || null
@@ -382,12 +382,12 @@ export async function updatePayment(paymentId, updates, client) {
   const result = await executor(client).query(
     `update payments
      set
-       gateway_payment_id = coalesce($2, gateway_payment_id),
+       transaction_id = coalesce($2, transaction_id),
        status = coalesce($3, status),
        verified_at = coalesce($4, verified_at)
      where id = $1
      returning *`,
-    [paymentId, updates.gatewayPaymentId, updates.status, updates.verifiedAt]
+    [paymentId, updates.transactionId || updates.gatewayPaymentId, updates.status, updates.verifiedAt]
   );
 
   return mapPayment(result.rows[0]);

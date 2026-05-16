@@ -9,7 +9,7 @@ import {
   updateUserCentreId,
   withTransaction
 } from '../db/repository.js';
-import { generateId, generateShortCode } from '../utils/generateCode.js';
+import { generateId } from '../utils/generateCode.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 
 function createToken(user) {
@@ -23,6 +23,20 @@ function createToken(user) {
 function publicUser(user) {
   const { passwordHash, ...safeUser } = user;
   return safeUser;
+}
+
+function authUser(user, hub = null) {
+  const safeUser = publicUser(user);
+  const hubId = hub?.id || safeUser.hubId || safeUser.centreId || null;
+
+  return {
+    ...safeUser,
+    role: safeUser.role,
+    centreId: hubId,
+    hubId,
+    centreCode: hub?.centreCode || safeUser.centreCode || null,
+    hubName: hub?.hubName || hub?.name || safeUser.hubName || null
+  };
 }
 
 export const registerUser = asyncHandler(async (req, res) => {
@@ -56,19 +70,31 @@ export const registerUser = asyncHandler(async (req, res) => {
 });
 
 export const registerCentre = asyncHandler(async (req, res) => {
-  const { ownerName, mobile, password, centreName, centreCode, upiId } = req.body;
+  const {
+    name,
+    ownerName,
+    mobile,
+    password,
+    hubName,
+    centreName,
+    centreCode,
+    upiId
+  } = req.body;
+  const finalOwnerName = ownerName || name;
+  const finalHubName = hubName || centreName;
 
-  if (!ownerName || !mobile || !password || !centreName) {
-    return res.status(400).json({ success: false, message: 'Owner name, mobile, password, and centre name are required' });
+  if (!finalOwnerName || !mobile || !password || !finalHubName || !centreCode) {
+    return res.status(400).json({ success: false, message: 'Name, mobile, password, hub name, and centre code are required' });
   }
+
+  console.log('[REGISTER HUB]', { mobile, hubName: finalHubName, centreCode });
 
   const exists = await findUserByMobile(mobile);
   if (exists) {
     return res.status(409).json({ success: false, message: 'Mobile number already registered' });
   }
 
-  const finalCentreCode = centreCode || generateShortCode(4);
-  const codeExists = await findCentreByCode(finalCentreCode);
+  const codeExists = await findCentreByCode(centreCode);
   if (codeExists) {
     return res.status(409).json({ success: false, message: 'Centre code already exists' });
   }
@@ -77,21 +103,22 @@ export const registerCentre = asyncHandler(async (req, res) => {
   const { owner, centre } = await withTransaction(async (client) => {
     const newOwner = await createUser({
       id: generateId('hub-owner'),
-      name: ownerName,
+      name: finalOwnerName,
       mobile,
       passwordHash,
-        role: 'hub',
+      role: 'hub',
       createdAt: new Date().toISOString()
     }, client);
 
     const newCentre = await createCentre({
       id: generateId('centre'),
-      name: centreName,
+      hubName: finalHubName,
+      name: finalHubName,
       ownerId: newOwner.id,
-      centreCode: finalCentreCode,
+      centreCode,
       mobile,
       status: 'available',
-      upiId: upiId || '',
+      upiId: upiId || null,
       pricing: {
         bwSingle: 1,
         bwDouble: 1.5,
@@ -109,9 +136,9 @@ export const registerCentre = asyncHandler(async (req, res) => {
 
   res.status(201).json({
     success: true,
-    message: 'Print centre registered successfully',
+    message: 'Print hub registered successfully',
     token: createToken(owner),
-    user: publicUser(owner),
+    user: authUser(owner, centre),
     centre
   });
 });
@@ -133,15 +160,18 @@ export const login = asyncHandler(async (req, res) => {
     return res.status(401).json({ success: false, message: 'Invalid mobile or password' });
   }
 
+  const centre = await findCentreForUser(user);
+
   res.json({
     success: true,
     message: 'Login successful',
     token: createToken(user),
-    user: publicUser(user),
-    centre: await findCentreForUser(user)
+    user: authUser(user, centre),
+    centre
   });
 });
 
 export const me = asyncHandler(async (req, res) => {
-  res.json({ success: true, user: publicUser(req.user), centre: await findCentreForUser(req.user) });
+  const centre = await findCentreForUser(req.user);
+  res.json({ success: true, user: authUser(req.user, centre), centre });
 });

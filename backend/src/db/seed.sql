@@ -13,7 +13,7 @@ values
     'Sai Owner',
     '9998887776',
     '$2a$10$WuyGh8Q7VdHCSDdcDhZo5uVifiLmIBy2zh5t6ynxmmI1SaqGvgbZO',
-    'centre',
+    'hub',
     now()
   )
 on conflict (id) do update set
@@ -24,62 +24,42 @@ on conflict (id) do update set
 
 insert into print_hubs (
   id,
-  name,
   owner_id,
+  hub_name,
   centre_code,
   mobile,
   status,
   upi_id,
-  bw_single,
-  bw_double,
-  color_single,
-  color_double,
-  watermark_charge,
   created_at
 )
 values
   (
     '33333333-3333-4333-8333-333333333333',
-    'Sai Printing Hub',
     '22222222-2222-4222-8222-222222222222',
+    'Sai Printing Hub',
     '2045',
     '9998887776',
     'available',
     'saiprint@upi',
-    1,
-    1.5,
-    2,
-    3,
-    2,
     now()
   ),
   (
     '44444444-4444-4444-8444-444444444444',
-    'College Xerox Centre',
     null,
+    'College Xerox Centre',
     '7832',
     '8887776665',
     'busy',
     'collegeprint@upi',
-    1,
-    1.5,
-    3,
-    4,
-    2,
     now()
   )
 on conflict (id) do update set
-  name = excluded.name,
   owner_id = excluded.owner_id,
+  hub_name = excluded.hub_name,
   centre_code = excluded.centre_code,
   mobile = excluded.mobile,
   status = excluded.status,
-  upi_id = excluded.upi_id,
-  bw_single = excluded.bw_single,
-  bw_double = excluded.bw_double,
-  color_single = excluded.color_single,
-  color_double = excluded.color_double,
-  watermark_charge = excluded.watermark_charge;
+  upi_id = excluded.upi_id;
 
 insert into printers (
   id,
@@ -120,8 +100,8 @@ insert into print_orders (
   order_code,
   user_id,
   hub_id,
-  document_id,
   document_name,
+  document_url,
   pages,
   copies,
   color_type,
@@ -138,8 +118,8 @@ values (
   'PRN-2045-8932',
   '11111111-1111-4111-8111-111111111111',
   '33333333-3333-4333-8333-333333333333',
-  null,
   'Assignment.pdf',
+  null,
   12,
   1,
   'color',

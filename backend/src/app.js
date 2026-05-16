@@ -72,17 +72,43 @@ app.use((req, res) => {
   });
 });
 
+function getDatabaseErrorMessage(err) {
+  if (err.code === '23505') {
+    if (err.constraint?.includes('users_mobile') || err.detail?.includes('(mobile)')) {
+      return 'Mobile number already registered';
+    }
+
+    if (err.constraint?.includes('centre_code') || err.detail?.includes('(centre_code)')) {
+      return 'Centre code already exists';
+    }
+  }
+
+  if (err.code === '23514' && err.constraint === 'users_role_check') {
+    return 'Invalid role. Allowed roles are user, hub, admin';
+  }
+
+  if (err.code === '42703') {
+    return `Database schema mismatch: ${err.message}`;
+  }
+
+  return null;
+}
+
 app.use((err, req, res, next) => {
   console.error('[SERVER ERROR]', {
     message: err.message,
+    code: err.code,
+    constraint: err.constraint,
     stack: err.stack,
     route: req.originalUrl,
     method: req.method
   });
 
+  const databaseMessage = getDatabaseErrorMessage(err);
+
   res.status(err.status || err.statusCode || 500).json({
     success: false,
-    message: err.message || 'Internal server error',
+    message: databaseMessage || err.message || 'Internal server error',
     route: req.originalUrl
   });
 });

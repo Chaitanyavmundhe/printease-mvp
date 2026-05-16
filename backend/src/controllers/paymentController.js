@@ -21,9 +21,8 @@ export const createPayment = asyncHandler(async (req, res) => {
     id: generateId('payment'),
     orderId: order.id,
     amount: order.amount,
-    gateway: 'DEMO_UPI',
-    gatewayOrderId: `demo_order_${Date.now()}`,
-    gatewayPaymentId: null,
+    method: 'DEMO_UPI',
+    transactionId: `demo_order_${Date.now()}`,
     status: 'created',
     createdAt: new Date().toISOString(),
     verifiedAt: null
@@ -63,7 +62,7 @@ export const verifyPayment = asyncHandler(async (req, res) => {
   const result = await withTransaction(async (client) => {
     const verifiedPayment = await updatePayment(payment.id, {
       status: 'verified',
-      gatewayPaymentId: `demo_payment_${Date.now()}`,
+      transactionId: `demo_payment_${Date.now()}`,
       verifiedAt: new Date().toISOString()
     }, client);
     const verifiedOrder = await updateOrderPayment(order.id, 'verified', 'Payment Verified', client);
