@@ -1,112 +1,19 @@
+create extension if not exists "pgcrypto";
+
 create table if not exists users (
-  id text primary key,
+  id uuid primary key default gen_random_uuid(),
   name text not null,
   mobile text not null unique,
   password_hash text not null,
   role text not null check (role in ('user', 'centre')),
-  centre_id text,
+  hub_id uuid,
   created_at timestamptz not null default now()
 );
 
-do $$
-begin
-  if exists (
-    select 1
-    from information_schema.columns
-    where table_schema = 'public'
-      and table_name = 'users'
-      and column_name = 'id'
-      and data_type = 'uuid'
-  ) then
-    alter table users alter column id drop default;
-    alter table users alter column id type text using id::text;
-  end if;
-
-  if not exists (
-    select 1
-    from information_schema.columns
-    where table_schema = 'public'
-      and table_name = 'users'
-      and column_name = 'password_hash'
-  ) then
-    alter table users add column password_hash text;
-  end if;
-
-  if not exists (
-    select 1
-    from information_schema.columns
-    where table_schema = 'public'
-      and table_name = 'users'
-      and column_name = 'centre_id'
-  ) then
-    alter table users add column centre_id text;
-  end if;
-
-  if exists (
-    select 1
-    from information_schema.columns
-    where table_schema = 'public'
-      and table_name = 'users'
-      and column_name = 'centre_id'
-      and data_type = 'uuid'
-  ) then
-    alter table users alter column centre_id drop default;
-    alter table users alter column centre_id type text using centre_id::text;
-  end if;
-
-  if not exists (
-    select 1
-    from information_schema.columns
-    where table_schema = 'public'
-      and table_name = 'users'
-      and column_name = 'created_at'
-  ) then
-    alter table users add column created_at timestamptz not null default now();
-  end if;
-
-  if exists (
-    select 1
-    from information_schema.columns
-    where table_schema = 'public'
-      and table_name = 'users'
-      and column_name = 'passwordHash'
-  ) then
-    execute 'update users set password_hash = "passwordHash" where password_hash is null';
-  end if;
-
-  if exists (
-    select 1
-    from information_schema.columns
-    where table_schema = 'public'
-      and table_name = 'users'
-      and column_name = 'centreId'
-  ) then
-    execute 'update users set centre_id = "centreId" where centre_id is null';
-  end if;
-
-  if exists (
-    select 1
-    from information_schema.columns
-    where table_schema = 'public'
-      and table_name = 'users'
-      and column_name = 'createdAt'
-  ) then
-    execute 'update users set created_at = "createdAt" where created_at is null';
-  end if;
-
-  if not exists (
-    select 1
-    from users
-    where password_hash is null
-  ) then
-    alter table users alter column password_hash set not null;
-  end if;
-end $$;
-
-create table if not exists centres (
-  id text primary key,
+create table if not exists print_hubs (
+  id uuid primary key default gen_random_uuid(),
   name text not null,
-  owner_id text references users(id) on delete set null,
+  owner_id uuid references users(id) on delete cascade,
   centre_code text not null unique,
   mobile text not null,
   status text not null default 'available',
@@ -124,19 +31,19 @@ begin
   if not exists (
     select 1
     from pg_constraint
-    where conname = 'users_centre_id_fkey'
+    where conname = 'users_hub_id_fkey'
   ) then
     alter table users
-      add constraint users_centre_id_fkey
-      foreign key (centre_id)
-      references centres(id)
+      add constraint users_hub_id_fkey
+      foreign key (hub_id)
+      references print_hubs(id)
       on delete set null;
   end if;
 end $$;
 
 create table if not exists documents (
-  id text primary key,
-  user_id text references users(id) on delete set null,
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references users(id) on delete set null,
   file_name text not null,
   file_type text,
   file_size integer,
@@ -144,12 +51,12 @@ create table if not exists documents (
   created_at timestamptz not null default now()
 );
 
-create table if not exists orders (
-  id text primary key,
+create table if not exists print_orders (
+  id uuid primary key default gen_random_uuid(),
   order_code text not null unique,
-  user_id text references users(id) on delete set null,
-  centre_id text not null references centres(id) on delete cascade,
-  document_id text references documents(id) on delete set null,
+  user_id uuid references users(id) on delete set null,
+  hub_id uuid not null references print_hubs(id) on delete cascade,
+  document_id uuid references documents(id) on delete set null,
   document_name text not null,
   pages integer not null,
   copies integer not null,
@@ -164,8 +71,8 @@ create table if not exists orders (
 );
 
 create table if not exists payments (
-  id text primary key,
-  order_id text not null references orders(id) on delete cascade,
+  id uuid primary key default gen_random_uuid(),
+  order_id uuid not null references print_orders(id) on delete cascade,
   amount numeric(10, 2) not null,
   gateway text not null default 'DEMO_UPI',
   gateway_order_id text,
@@ -176,8 +83,8 @@ create table if not exists payments (
 );
 
 create table if not exists printers (
-  id text primary key,
-  centre_id text not null references centres(id) on delete cascade,
+  id uuid primary key default gen_random_uuid(),
+  hub_id uuid not null references print_hubs(id) on delete cascade,
   printer_name text not null,
   printer_type text not null default 'laser',
   protocol text not null default 'PDF_MANUAL_DOWNLOAD',
@@ -188,7 +95,8 @@ create table if not exists printers (
   created_at timestamptz not null default now()
 );
 
-create index if not exists idx_orders_user_id on orders(user_id);
-create index if not exists idx_orders_centre_id on orders(centre_id);
+create index if not exists idx_users_hub_id on users(hub_id);
+create index if not exists idx_print_orders_user_id on print_orders(user_id);
+create index if not exists idx_print_orders_hub_id on print_orders(hub_id);
 create index if not exists idx_payments_order_id on payments(order_id);
-create index if not exists idx_printers_centre_id on printers(centre_id);
+create index if not exists idx_printers_hub_id on printers(hub_id);

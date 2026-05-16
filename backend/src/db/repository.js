@@ -8,6 +8,10 @@ function number(value) {
   return value === null || value === undefined ? value : Number(value);
 }
 
+function isUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value));
+}
+
 export function mapUser(row) {
   if (!row) return null;
 
@@ -17,7 +21,7 @@ export function mapUser(row) {
     mobile: row.mobile,
     passwordHash: row.password_hash,
     role: row.role,
-    centreId: row.centre_id,
+    centreId: row.centre_id || row.hub_id,
     createdAt: timestamp(row.created_at)
   };
 }
@@ -66,7 +70,7 @@ export function mapOrder(row) {
     id: row.id,
     orderCode: row.order_code,
     userId: row.user_id,
-    centreId: row.centre_id,
+    centreId: row.centre_id || row.hub_id,
     documentId: row.document_id,
     documentName: row.document_name,
     pages: row.pages,
@@ -103,7 +107,7 @@ export function mapPrinter(row) {
 
   return {
     id: row.id,
-    centreId: row.centre_id,
+    centreId: row.centre_id || row.hub_id,
     printerName: row.printer_name,
     printerType: row.printer_type,
     protocol: row.protocol,
@@ -117,7 +121,7 @@ export function mapPrinter(row) {
 
 const centreSelect = `
   select c.*, u.name as owner_name
-  from centres c
+  from print_hubs c
   left join users u on u.id = c.owner_id
 `;
 
@@ -128,20 +132,20 @@ function executor(client) {
 export { withTransaction };
 
 export async function findUserById(id, client) {
-  const result = await executor(client).query('select * from users where id = $1', [id]);
+  const result = await executor(client).query('select *, hub_id as centre_id from users where id = $1', [id]);
   return mapUser(result.rows[0]);
 }
 
 export async function findUserByMobile(mobile, client) {
-  const result = await executor(client).query('select * from users where mobile = $1', [mobile]);
+  const result = await executor(client).query('select *, hub_id as centre_id from users where mobile = $1', [mobile]);
   return mapUser(result.rows[0]);
 }
 
 export async function createUser(user, client) {
   const result = await executor(client).query(
-    `insert into users (id, name, mobile, password_hash, role, centre_id, created_at)
+    `insert into users (id, name, mobile, password_hash, role, hub_id, created_at)
      values ($1, $2, $3, $4, $5, $6, coalesce($7, now()))
-     returning *`,
+     returning *, hub_id as centre_id`,
     [user.id, user.name, user.mobile, user.passwordHash, user.role, user.centreId || null, user.createdAt || null]
   );
 
@@ -150,7 +154,7 @@ export async function createUser(user, client) {
 
 export async function updateUserCentreId(userId, centreId, client) {
   const result = await executor(client).query(
-    'update users set centre_id = $2 where id = $1 returning *',
+    'update users set hub_id = $2 where id = $1 returning *, hub_id as centre_id',
     [userId, centreId]
   );
   return mapUser(result.rows[0]);
@@ -185,7 +189,7 @@ export async function findCentreForUser(user, client) {
 export async function createCentre(centre, client) {
   const pricing = centre.pricing || {};
   const result = await executor(client).query(
-    `insert into centres (
+    `insert into print_hubs (
        id, name, owner_id, centre_code, mobile, status, upi_id,
        bw_single, bw_double, color_single, color_double, watermark_charge, created_at
      )
@@ -213,7 +217,7 @@ export async function createCentre(centre, client) {
 
 export async function updateCentrePricing(centreId, pricing) {
   const result = await query(
-    `update centres
+    `update print_hubs
      set
        bw_single = coalesce($2, bw_single),
        bw_double = coalesce($3, bw_double),
@@ -238,7 +242,7 @@ export async function updateCentrePricing(centreId, pricing) {
 
 export async function updateCentrePaymentMethod(centreId, upiId) {
   const result = await query(
-    'update centres set upi_id = coalesce($2, upi_id) where id = $1 returning id',
+    'update print_hubs set upi_id = coalesce($2, upi_id) where id = $1 returning id',
     [centreId, upiId]
   );
 
@@ -267,12 +271,12 @@ export async function createDocument(document) {
 
 export async function createOrder(order) {
   const result = await query(
-    `insert into orders (
-       id, order_code, user_id, centre_id, document_id, document_name, pages, copies,
+    `insert into print_orders (
+       id, order_code, user_id, hub_id, document_id, document_name, pages, copies,
        color_type, side_type, watermark_enabled, amount, payment_status, status, pickup_code, created_at
      )
      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, coalesce($16, now()))
-     returning *`,
+     returning *, hub_id as centre_id`,
     [
       order.id,
       order.orderCode,
@@ -297,26 +301,34 @@ export async function createOrder(order) {
 }
 
 export async function findOrderByIdOrCode(id, client) {
+  if (!isUuid(id)) {
+    const result = await executor(client).query(
+      'select *, hub_id as centre_id from print_orders where order_code = $1',
+      [id]
+    );
+    return mapOrder(result.rows[0]);
+  }
+
   const result = await executor(client).query(
-    'select * from orders where id = $1 or order_code = $1',
-    [id]
+    'select *, hub_id as centre_id from print_orders where id = $1::uuid or order_code = $2',
+    [id, id]
   );
   return mapOrder(result.rows[0]);
 }
 
 export async function listOrdersByUser(userId) {
-  const result = await query('select * from orders where user_id = $1 order by created_at desc', [userId]);
+  const result = await query('select *, hub_id as centre_id from print_orders where user_id = $1 order by created_at desc', [userId]);
   return result.rows.map(mapOrder);
 }
 
 export async function listOrdersByCentre(centreId) {
-  const result = await query('select * from orders where centre_id = $1 order by created_at desc', [centreId]);
+  const result = await query('select *, hub_id as centre_id from print_orders where hub_id = $1 order by created_at desc', [centreId]);
   return result.rows.map(mapOrder);
 }
 
 export async function updateOrderStatus(orderId, centreId, status) {
   const result = await query(
-    'update orders set status = coalesce($3, status) where id = $1 and centre_id = $2 returning *',
+    'update print_orders set status = coalesce($3, status) where id = $1 and hub_id = $2 returning *, hub_id as centre_id',
     [orderId, centreId, status]
   );
   return mapOrder(result.rows[0]);
@@ -324,7 +336,7 @@ export async function updateOrderStatus(orderId, centreId, status) {
 
 export async function updateOrderPayment(orderId, paymentStatus, status, client) {
   const result = await executor(client).query(
-    'update orders set payment_status = $2, status = $3 where id = $1 returning *',
+    'update print_orders set payment_status = $2, status = $3 where id = $1 returning *, hub_id as centre_id',
     [orderId, paymentStatus, status]
   );
   return mapOrder(result.rows[0]);
@@ -376,10 +388,10 @@ export async function updatePayment(paymentId, updates, client) {
 export async function createPrinter(printer) {
   const result = await query(
     `insert into printers (
-       id, centre_id, printer_name, printer_type, protocol, ip_address, port, status, is_active, created_at
+       id, hub_id, printer_name, printer_type, protocol, ip_address, port, status, is_active, created_at
      )
      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, coalesce($10, now()))
-     returning *`,
+     returning *, hub_id as centre_id`,
     [
       printer.id,
       printer.centreId,
@@ -398,13 +410,13 @@ export async function createPrinter(printer) {
 }
 
 export async function listPrintersByCentre(centreId) {
-  const result = await query('select * from printers where centre_id = $1 order by created_at desc', [centreId]);
+  const result = await query('select *, hub_id as centre_id from printers where hub_id = $1 order by created_at desc', [centreId]);
   return result.rows.map(mapPrinter);
 }
 
 export async function findPrinterByIdAndCentre(printerId, centreId) {
   const result = await query(
-    'select * from printers where id = $1 and centre_id = $2',
+    'select *, hub_id as centre_id from printers where id = $1 and hub_id = $2',
     [printerId, centreId]
   );
   return mapPrinter(result.rows[0]);
@@ -412,7 +424,7 @@ export async function findPrinterByIdAndCentre(printerId, centreId) {
 
 export async function updatePrinterStatus(printerId, centreId, status) {
   const result = await query(
-    'update printers set status = coalesce($3, status) where id = $1 and centre_id = $2 returning *',
+    'update printers set status = coalesce($3, status) where id = $1 and hub_id = $2 returning *, hub_id as centre_id',
     [printerId, centreId, status]
   );
   return mapPrinter(result.rows[0]);
@@ -425,8 +437,8 @@ export async function updatePrinterProtocol(printerId, centreId, updates) {
        protocol = coalesce($3, protocol),
        ip_address = coalesce($4, ip_address),
        port = coalesce($5, port)
-     where id = $1 and centre_id = $2
-     returning *`,
+     where id = $1 and hub_id = $2
+     returning *, hub_id as centre_id`,
     [printerId, centreId, updates.protocol, updates.ipAddress, updates.port]
   );
 

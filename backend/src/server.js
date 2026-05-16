@@ -22,15 +22,7 @@ if (!hasDatabaseUrl) {
 }
 
 if (hasDatabaseUrl) {
-  try {
-    await applySchema();
-    console.log('[DB CHECK] Schema ready');
-  } catch (error) {
-    console.error('[DB CHECK FAILED]', {
-      message: error.message
-    });
-    throw error;
-  }
+  await applySchema();
 }
 
 const server = app.listen(PORT, () => {

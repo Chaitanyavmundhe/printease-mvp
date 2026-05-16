@@ -1,7 +1,7 @@
 import { randomUUID } from 'crypto';
 
-export function generateId(prefix = 'id') {
-  return `${prefix}-${randomUUID()}`;
+export function generateId() {
+  return randomUUID();
 }
 
 export function generateShortCode(length = 4) {

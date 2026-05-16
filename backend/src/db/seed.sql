@@ -1,7 +1,7 @@
-insert into users (id, name, mobile, password_hash, role, centre_id, created_at)
+insert into users (id, name, mobile, password_hash, role, hub_id, created_at)
 values
   (
-    'user-1',
+    '11111111-1111-4111-8111-111111111111',
     'Demo User',
     '9876543210',
     '$2a$10$WuyGh8Q7VdHCSDdcDhZo5uVifiLmIBy2zh5t6ynxmmI1SaqGvgbZO',
@@ -10,7 +10,7 @@ values
     now()
   ),
   (
-    'hub-owner-1',
+    '22222222-2222-4222-8222-222222222222',
     'Sai Owner',
     '9998887776',
     '$2a$10$WuyGh8Q7VdHCSDdcDhZo5uVifiLmIBy2zh5t6ynxmmI1SaqGvgbZO',
@@ -24,7 +24,7 @@ on conflict (id) do update set
   password_hash = excluded.password_hash,
   role = excluded.role;
 
-insert into centres (
+insert into print_hubs (
   id,
   name,
   owner_id,
@@ -41,9 +41,9 @@ insert into centres (
 )
 values
   (
-    'centre-1',
+    '33333333-3333-4333-8333-333333333333',
     'Sai Printing Hub',
-    'hub-owner-1',
+    '22222222-2222-4222-8222-222222222222',
     '2045',
     '9998887776',
     'available',
@@ -56,7 +56,7 @@ values
     now()
   ),
   (
-    'centre-2',
+    '44444444-4444-4444-8444-444444444444',
     'College Xerox Centre',
     null,
     '7832',
@@ -84,12 +84,12 @@ on conflict (id) do update set
   watermark_charge = excluded.watermark_charge;
 
 update users
-set centre_id = 'centre-1'
-where id = 'hub-owner-1';
+set hub_id = '33333333-3333-4333-8333-333333333333'
+where id = '22222222-2222-4222-8222-222222222222';
 
 insert into printers (
   id,
-  centre_id,
+  hub_id,
   printer_name,
   printer_type,
   protocol,
@@ -100,8 +100,8 @@ insert into printers (
   created_at
 )
 values (
-  'printer-1',
-  'centre-1',
+  '55555555-5555-4555-8555-555555555555',
+  '33333333-3333-4333-8333-333333333333',
   'Main HP Laser Printer',
   'laser',
   'PDF_MANUAL_DOWNLOAD',
@@ -112,7 +112,7 @@ values (
   now()
 )
 on conflict (id) do update set
-  centre_id = excluded.centre_id,
+  hub_id = excluded.hub_id,
   printer_name = excluded.printer_name,
   printer_type = excluded.printer_type,
   protocol = excluded.protocol,
@@ -121,11 +121,11 @@ on conflict (id) do update set
   status = excluded.status,
   is_active = excluded.is_active;
 
-insert into orders (
+insert into print_orders (
   id,
   order_code,
   user_id,
-  centre_id,
+  hub_id,
   document_id,
   document_name,
   pages,
@@ -140,10 +140,10 @@ insert into orders (
   created_at
 )
 values (
-  'order-1',
+  '66666666-6666-4666-8666-666666666666',
   'PRN-2045-8932',
-  'user-1',
-  'centre-1',
+  '11111111-1111-4111-8111-111111111111',
+  '33333333-3333-4333-8333-333333333333',
   null,
   'Assignment.pdf',
   12,
@@ -160,7 +160,7 @@ values (
 on conflict (id) do update set
   order_code = excluded.order_code,
   user_id = excluded.user_id,
-  centre_id = excluded.centre_id,
+  hub_id = excluded.hub_id,
   document_name = excluded.document_name,
   pages = excluded.pages,
   copies = excluded.copies,
