@@ -52,7 +52,7 @@ export default function AuthPage({
           <Input label="Mobile Number" icon={<Phone size={18} />} value={mobile} setValue={setMobile} placeholder="10 digit mobile" inputMode="numeric" autoComplete="tel" disabled={authLoading} />
           <Input label="Password" icon={<Lock size={18} />} value={password} setValue={setPassword} placeholder="Enter password" type="password" autoComplete={isRegister ? "new-password" : "current-password"} disabled={authLoading} />
           {isHub && isRegister && <Input label="Print Hub Name" icon={<Store size={18} />} value={hubName} setValue={setHubName} placeholder="Example: Sai Printing Hub" disabled={authLoading} />}
-          {isHub && isRegister && <Input label="Custom Centre Code Optional" icon={<QrCode size={18} />} value={hubCode} setValue={setHubCode} placeholder="Example: 2045" disabled={authLoading} />}
+          {isHub && isRegister && <Input label="Centre Code" icon={<QrCode size={18} />} value={hubCode} setValue={setHubCode} placeholder="Example: 2045" disabled={authLoading} />}
         </div>
 
         <div className="mt-6 rounded-2xl bg-slate-50 p-4">

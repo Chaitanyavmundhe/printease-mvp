@@ -3,6 +3,7 @@ import {
   findOrderByIdOrCode,
   findPrinterByIdAndCentre,
   listPrintersByCentre,
+  updateOrderStatus as saveOrderStatus,
   updatePrinterProtocol as savePrinterProtocol,
   updatePrinterStatus as savePrinterStatus
 } from '../db/repository.js';

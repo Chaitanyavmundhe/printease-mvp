@@ -4,12 +4,23 @@ import Metric from "../components/Metric";
 import StatusBadge from "../components/StatusBadge";
 import { hubStatusOptions } from "../data/demoData";
 
+function normalizeStatus(status) {
+  return String(status || "").toLowerCase().replace(/\s+/g, "_");
+}
+
+function isPaymentVerified(order) {
+  const value = String(order?.paymentStatus || order?.payment_status || "").toLowerCase();
+  return value === "verified" || value === "paid" || value.includes("verif");
+}
+
+const CLOSED_STATUSES = new Set(["collected", "refund_requested", "printing_failed", "cancelled"]);
+
 export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus, navigate }) {
   if (!currentHub) return <Card>Please login as print hub.</Card>;
 
   const totalPages = hubOrders.reduce((sum, item) => sum + item.pages * item.copies, 0);
-  const totalRevenue = hubOrders.reduce((sum, item) => sum + item.amount, 0);
-  const pendingOrders = hubOrders.filter((item) => item.status !== "Collected").length;
+  const totalRevenue = hubOrders.filter(isPaymentVerified).reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const pendingOrders = hubOrders.filter((item) => !CLOSED_STATUSES.has(normalizeStatus(item.status))).length;
 
   return (
     <div className="space-y-6">

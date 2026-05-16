@@ -52,7 +52,7 @@ function upsertCentre(centreList, centre) {
 }
 
 function toFrontendRole(role) {
-  return role === "centre" ? "hub" : role;
+  return role;
 }
 
 function findCentreForUser(user, centreList, responseCentre) {
@@ -204,29 +204,56 @@ export default function App() {
 
         if (!data || !data.user) throw new Error("Invalid session response");
 
-        const signedInRole = toFrontendRole(data.user.role);
-        let signedInCentre = findCentreForUser(data.user, centres, data.centre);
+        const restoredUser = data.user;
 
-        if (signedInRole === "hub" && !signedInCentre) {
-          const freshCentres = await refreshCentres();
-          signedInCentre = findCentreForUser(data.user, freshCentres);
+        // Always attempt to fetch fresh centres to avoid stale closures
+        let freshCentres = [];
+        try {
+          freshCentres = await refreshCentres();
+        } catch (centreError) {
+          console.error("Could not refresh centres during session restore:", centreError?.message || centreError);
         }
 
-        if (signedInRole === "hub" && !signedInCentre) {
+        let signedInCentre = null;
+
+        if (restoredUser?.role === "hub") {
+          // Prefer centre info returned from the backend, otherwise search fresh centres
+          signedInCentre = findCentreForUser(restoredUser, freshCentres, data.centre);
+          if (!signedInCentre && data.centre) {
+            signedInCentre = normalizeCentre(data.centre);
+          }
+        }
+
+        if (restoredUser?.role === "hub" && !signedInCentre) {
+          // If a hub user isn't linked to a centre, invalidate session
           localStorage.removeItem("printease_token");
           localStorage.removeItem("printease_user");
           setCurrentUser(null);
           return;
         }
 
-        const nextUser = toCurrentUser(data.user, signedInCentre);
-        const nextCentres = signedInCentre ? upsertCentre(centres, signedInCentre) : centres;
+        const finalUser = {
+          ...restoredUser,
+          ...(signedInCentre
+            ? {
+                centreId: signedInCentre.id,
+                hubId: signedInCentre.id,
+                centreCode: signedInCentre.code,
+                hubName: signedInCentre.name,
+              }
+            : {}),
+        };
 
-        if (signedInCentre) setCentres((prev) => upsertCentre(prev, signedInCentre));
+        localStorage.setItem("printease_user", JSON.stringify(finalUser));
+        setCurrentUser(finalUser);
 
-        localStorage.setItem("printease_user", JSON.stringify(nextUser));
-        setCurrentUser(nextUser);
-        await loadOrdersForSession(nextUser, nextCentres);
+        if (signedInCentre) {
+          setCentres((prev) => upsertCentre(prev, signedInCentre));
+          setSelectedCentre(signedInCentre);
+        }
+
+        const centresForOrders = freshCentres && freshCentres.length ? freshCentres : centres;
+        await loadOrdersForSession(finalUser, centresForOrders);
       } catch (error) {
         console.error("Session restore failed:", error?.message || error);
 
