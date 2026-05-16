@@ -1,8 +1,8 @@
+import './config/env.js';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
-import dotenv from 'dotenv';
 
 import authRoutes from './routes/authRoutes.js';
 import centreRoutes from './routes/centreRoutes.js';
@@ -10,42 +10,29 @@ import printerRoutes from './routes/printerRoutes.js';
 import orderRoutes from './routes/orderRoutes.js';
 import paymentRoutes from './routes/paymentRoutes.js';
 import uploadRoutes from './routes/uploadRoutes.js';
-import { errorMiddleware, notFound } from './middleware/errorMiddleware.js';
-
-dotenv.config();
 
 const app = express();
 
-const configuredOrigins = (process.env.FRONTEND_URL || '')
-  .split(',')
-  .map((origin) => origin.trim())
-  .filter(Boolean);
-
-function isAllowedOrigin(origin) {
-  if (!origin) return true;
-  if (configuredOrigins.includes('*') || configuredOrigins.includes(origin)) return true;
-
-  if (process.env.NODE_ENV !== 'production') {
-    try {
-      const url = new URL(origin);
-      return ['localhost', '127.0.0.1'].includes(url.hostname);
-    } catch (error) {
-      return false;
-    }
-  }
-
-  return false;
-}
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+  'https://printhubdesi.vercel.app'
+].filter(Boolean);
 
 app.use(helmet());
 app.use(cors({
   origin(origin, callback) {
-    if (isAllowedOrigin(origin)) {
-      callback(null, true);
-      return;
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
     }
 
-    callback(new Error(`CORS blocked origin: ${origin}`));
+    console.error('[CORS BLOCKED]', {
+      origin,
+      allowedOrigins
+    });
+
+    return callback(new Error(`CORS blocked for origin: ${origin}`));
   },
   credentials: true
 }));
@@ -65,6 +52,8 @@ app.get('/api/health', (req, res) => {
   res.json({
     success: true,
     message: 'Backend healthy',
+    environment: process.env.NODE_ENV,
+    frontendUrl: process.env.FRONTEND_URL || null,
     timestamp: new Date().toISOString()
   });
 });
@@ -76,7 +65,26 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/uploads', uploadRoutes);
 
-app.use(notFound);
-app.use(errorMiddleware);
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    message: `Route not found: ${req.method} ${req.originalUrl}`
+  });
+});
+
+app.use((err, req, res, next) => {
+  console.error('[SERVER ERROR]', {
+    message: err.message,
+    stack: err.stack,
+    route: req.originalUrl,
+    method: req.method
+  });
+
+  res.status(err.status || err.statusCode || 500).json({
+    success: false,
+    message: err.message || 'Internal server error',
+    route: req.originalUrl
+  });
+});
 
 export default app;

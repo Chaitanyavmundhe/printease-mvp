@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import Navbar from "./components/Navbar";
+import BackendStatus from "./components/BackendStatus";
 import HomePage from "./pages/HomePage";
 import AuthPage from "./pages/AuthPage";
 import UserDashboard from "./pages/UserDashboard";
@@ -165,7 +166,7 @@ export default function App() {
         }
       })
       .catch(() => {
-        // Keep demo centres visible when the backend is not running locally.
+        // Keep demo centres visible if the production API is temporarily unavailable.
       });
 
     return () => {
@@ -488,6 +489,8 @@ export default function App() {
       />
 
       <main className="mx-auto max-w-6xl px-4 py-8">
+        <BackendStatus />
+
         {page === "home" && (
           <HomePage
             navigate={navigate}

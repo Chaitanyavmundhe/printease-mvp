@@ -11,7 +11,7 @@ export async function authMiddleware(req, res, next) {
 
   try {
     const token = header.split(' ')[1];
-    decoded = jwt.verify(token, process.env.JWT_SECRET || 'dev_secret');
+    decoded = jwt.verify(token, process.env.JWT_SECRET);
   } catch (error) {
     return res.status(401).json({ success: false, message: 'Invalid or expired token' });
   }
@@ -41,7 +41,7 @@ export async function optionalAuthMiddleware(req, res, next) {
 
   try {
     const token = header.split(' ')[1];
-    decoded = jwt.verify(token, process.env.JWT_SECRET || 'dev_secret');
+    decoded = jwt.verify(token, process.env.JWT_SECRET);
   } catch (error) {
     return res.status(401).json({ success: false, message: 'Invalid or expired token' });
   }

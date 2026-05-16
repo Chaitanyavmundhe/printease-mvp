@@ -44,12 +44,6 @@ Password@123
 npm run dev
 ```
 
-Backend starts on:
-
-```text
-http://localhost:5000
-```
-
 Health check:
 
 ```text
