@@ -1,4 +1,5 @@
 import app from './app.js';
+import { applySchema } from './db/schemaRunner.js';
 
 const PORT = process.env.PORT || 5000;
 
@@ -14,8 +15,22 @@ if (!process.env.JWT_SECRET) {
   throw new Error('JWT_SECRET is missing. Add it in Render Environment Variables.');
 }
 
-if (!process.env.DATABASE_URL) {
+const hasDatabaseUrl = Boolean(process.env.DATABASE_URL);
+
+if (!hasDatabaseUrl) {
   console.warn('[ENV WARNING] DATABASE_URL is missing. Add the Supabase PostgreSQL URL in Render when database routes are enabled.');
+}
+
+if (hasDatabaseUrl) {
+  try {
+    await applySchema();
+    console.log('[DB CHECK] Schema ready');
+  } catch (error) {
+    console.error('[DB CHECK FAILED]', {
+      message: error.message
+    });
+    throw error;
+  }
 }
 
 const server = app.listen(PORT, () => {

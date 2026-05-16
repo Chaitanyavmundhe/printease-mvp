@@ -2,6 +2,7 @@ import { readFile } from 'fs/promises';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { pool, query } from '../config/db.js';
+import { applySchema } from './schemaRunner.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -15,7 +16,8 @@ async function main() {
   const args = new Set(process.argv.slice(2));
 
   if (!args.has('--seed-only')) {
-    await runSqlFile('schema.sql');
+    await applySchema();
+    console.log('Applied schema.sql');
   }
    
   if (!args.has('--schema-only')) {

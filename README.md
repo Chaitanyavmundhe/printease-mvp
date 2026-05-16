@@ -24,6 +24,7 @@ PORT=5000
 FRONTEND_URL=https://printhubdesi.vercel.app
 JWT_SECRET=<strong-secret>
 DATABASE_URL=<supabase-postgres-url>
+PGSSLMODE=require
 ```
 
 Never commit real `.env` files. Keep only `.env.example` files in git.
@@ -103,6 +104,7 @@ Cause:
 Fix:
 
 - Encode `@` as `%40`.
+- Set `PGSSLMODE=require` on Render, or use a Supabase connection string that includes `sslmode=require`.
 - Rotate the database password if it was exposed.
 
 ## Commit And Redeploy

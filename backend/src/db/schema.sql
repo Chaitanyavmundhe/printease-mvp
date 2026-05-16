@@ -8,6 +8,77 @@ create table if not exists users (
   created_at timestamptz not null default now()
 );
 
+do $$
+begin
+  if not exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'users'
+      and column_name = 'password_hash'
+  ) then
+    alter table users add column password_hash text;
+  end if;
+
+  if not exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'users'
+      and column_name = 'centre_id'
+  ) then
+    alter table users add column centre_id text;
+  end if;
+
+  if not exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'users'
+      and column_name = 'created_at'
+  ) then
+    alter table users add column created_at timestamptz not null default now();
+  end if;
+
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'users'
+      and column_name = 'passwordHash'
+  ) then
+    execute 'update users set password_hash = "passwordHash" where password_hash is null';
+  end if;
+
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'users'
+      and column_name = 'centreId'
+  ) then
+    execute 'update users set centre_id = "centreId" where centre_id is null';
+  end if;
+
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'users'
+      and column_name = 'createdAt'
+  ) then
+    execute 'update users set created_at = "createdAt" where created_at is null';
+  end if;
+
+  if not exists (
+    select 1
+    from users
+    where password_hash is null
+  ) then
+    alter table users alter column password_hash set not null;
+  end if;
+end $$;
+
 create table if not exists centres (
   id text primary key,
   name text not null,
