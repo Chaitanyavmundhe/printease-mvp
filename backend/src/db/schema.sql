@@ -6,7 +6,6 @@ create table if not exists users (
   mobile text not null unique,
   password_hash text not null,
   role text not null check (role in ('user', 'centre')),
-  hub_id uuid,
   created_at timestamptz not null default now()
 );
 
@@ -25,21 +24,6 @@ create table if not exists print_hubs (
   watermark_charge numeric(10, 2) not null default 2,
   created_at timestamptz not null default now()
 );
-
-do $$
-begin
-  if not exists (
-    select 1
-    from pg_constraint
-    where conname = 'users_hub_id_fkey'
-  ) then
-    alter table users
-      add constraint users_hub_id_fkey
-      foreign key (hub_id)
-      references print_hubs(id)
-      on delete set null;
-  end if;
-end $$;
 
 create table if not exists documents (
   id uuid primary key default gen_random_uuid(),
@@ -95,7 +79,6 @@ create table if not exists printers (
   created_at timestamptz not null default now()
 );
 
-create index if not exists idx_users_hub_id on users(hub_id);
 create index if not exists idx_print_orders_user_id on print_orders(user_id);
 create index if not exists idx_print_orders_hub_id on print_orders(hub_id);
 create index if not exists idx_payments_order_id on payments(order_id);

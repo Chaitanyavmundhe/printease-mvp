@@ -21,7 +21,7 @@ export function mapUser(row) {
     mobile: row.mobile,
     passwordHash: row.password_hash,
     role: row.role,
-    centreId: row.centre_id || row.hub_id,
+    centreId: row.centre_id,
     createdAt: timestamp(row.created_at)
   };
 }
@@ -132,32 +132,40 @@ function executor(client) {
 export { withTransaction };
 
 export async function findUserById(id, client) {
-  const result = await executor(client).query('select *, hub_id as centre_id from users where id = $1', [id]);
+  const result = await executor(client).query(
+    `select u.*, h.id as centre_id
+     from users u
+     left join print_hubs h on h.owner_id = u.id
+     where u.id = $1`,
+    [id]
+  );
   return mapUser(result.rows[0]);
 }
 
 export async function findUserByMobile(mobile, client) {
-  const result = await executor(client).query('select *, hub_id as centre_id from users where mobile = $1', [mobile]);
+  const result = await executor(client).query(
+    `select u.*, h.id as centre_id
+     from users u
+     left join print_hubs h on h.owner_id = u.id
+     where u.mobile = $1`,
+    [mobile]
+  );
   return mapUser(result.rows[0]);
 }
 
 export async function createUser(user, client) {
   const result = await executor(client).query(
-    `insert into users (id, name, mobile, password_hash, role, hub_id, created_at)
-     values ($1, $2, $3, $4, $5, $6, coalesce($7, now()))
-     returning *, hub_id as centre_id`,
-    [user.id, user.name, user.mobile, user.passwordHash, user.role, user.centreId || null, user.createdAt || null]
+    `insert into users (id, name, mobile, password_hash, role, created_at)
+     values ($1, $2, $3, $4, $5, coalesce($6, now()))
+     returning *, null::uuid as centre_id`,
+    [user.id, user.name, user.mobile, user.passwordHash, user.role, user.createdAt || null]
   );
 
   return mapUser(result.rows[0]);
 }
 
 export async function updateUserCentreId(userId, centreId, client) {
-  const result = await executor(client).query(
-    'update users set hub_id = $2 where id = $1 returning *, hub_id as centre_id',
-    [userId, centreId]
-  );
-  return mapUser(result.rows[0]);
+  return findUserById(userId, client);
 }
 
 export async function listCentres() {

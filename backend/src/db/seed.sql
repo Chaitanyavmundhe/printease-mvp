@@ -1,4 +1,4 @@
-insert into users (id, name, mobile, password_hash, role, hub_id, created_at)
+insert into users (id, name, mobile, password_hash, role, created_at)
 values
   (
     '11111111-1111-4111-8111-111111111111',
@@ -6,7 +6,6 @@ values
     '9876543210',
     '$2a$10$WuyGh8Q7VdHCSDdcDhZo5uVifiLmIBy2zh5t6ynxmmI1SaqGvgbZO',
     'user',
-    null,
     now()
   ),
   (
@@ -15,7 +14,6 @@ values
     '9998887776',
     '$2a$10$WuyGh8Q7VdHCSDdcDhZo5uVifiLmIBy2zh5t6ynxmmI1SaqGvgbZO',
     'centre',
-    null,
     now()
   )
 on conflict (id) do update set
@@ -82,10 +80,6 @@ on conflict (id) do update set
   color_single = excluded.color_single,
   color_double = excluded.color_double,
   watermark_charge = excluded.watermark_charge;
-
-update users
-set hub_id = '33333333-3333-4333-8333-333333333333'
-where id = '22222222-2222-4222-8222-222222222222';
 
 insert into printers (
   id,
