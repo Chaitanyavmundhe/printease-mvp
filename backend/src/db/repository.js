@@ -646,6 +646,27 @@ export async function upsertAgentForPairing(session, hubId, client) {
   return mapAgent(result.rows[0]);
 }
 
+export async function upsertAgentForDesktopDevice(device, hubId, client) {
+  const result = await executor(client).query(
+    `insert into agents (
+       hub_id, agent_name, device_id, platform, version, status, paused, paired_at, revoked_at, created_at
+     )
+     values ($1, $2, $3, $4, $5, 'offline', false, now(), null, now())
+     on conflict (device_id)
+     do update set
+       hub_id = excluded.hub_id,
+       agent_name = excluded.agent_name,
+       platform = excluded.platform,
+       version = excluded.version,
+       revoked_at = null,
+       paired_at = coalesce(agents.paired_at, now())
+     returning *`,
+    [hubId, device.deviceName, device.deviceId, device.platform || null, device.version || null]
+  );
+
+  return mapAgent(result.rows[0]);
+}
+
 export async function claimPairingSession(sessionId, hubId, agentId, client) {
   const result = await executor(client).query(
     `update agent_pairing_sessions
@@ -654,6 +675,8 @@ export async function claimPairingSession(sessionId, hubId, agentId, client) {
          agent_id = $3,
          claimed_at = now()
      where id = $1
+       and status = 'pending'
+       and expires_at > now()
      returning *`,
     [sessionId, hubId, agentId]
   );
@@ -666,6 +689,7 @@ export async function markPairingSessionConfirmed(sessionId, client) {
     `update agent_pairing_sessions
      set status = 'confirmed'
      where id = $1
+       and status = 'claimed'
      returning *`,
     [sessionId]
   );
@@ -682,6 +706,13 @@ export async function createAgentToken(token, client) {
   );
 
   return result.rows[0];
+}
+
+export async function revokeActiveAgentTokens(agentId, client) {
+  await executor(client).query(
+    'update agent_tokens set revoked_at = now() where agent_id = $1 and revoked_at is null',
+    [agentId]
+  );
 }
 
 export async function findActiveAgentByTokenHash(tokenHash, client) {
@@ -809,6 +840,18 @@ export async function listAgentPrintersByHub(hubId, client) {
      where hub_id = $1
      order by is_default desc, last_checked_at desc nulls last, created_at desc`,
     [hubId]
+  );
+
+  return result.rows.map(mapAgentPrinter);
+}
+
+export async function listAgentPrintersByAgent(agentId, hubId, client) {
+  const result = await executor(client).query(
+    `select *
+     from agent_printers
+     where agent_id = $1 and hub_id = $2
+     order by is_default desc, last_checked_at desc nulls last, created_at desc`,
+    [agentId, hubId]
   );
 
   return result.rows.map(mapAgentPrinter);

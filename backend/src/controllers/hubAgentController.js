@@ -75,6 +75,7 @@ export const pairAgentToHub = asyncHandler(async (req, res) => {
 
     const agent = await upsertAgentForPairing(session, hubId, client);
     const claimedSession = await claimPairingSession(session.id, hubId, agent.id, client);
+    if (!claimedSession) return null;
 
     return { agent, pairingSession: claimedSession };
   });

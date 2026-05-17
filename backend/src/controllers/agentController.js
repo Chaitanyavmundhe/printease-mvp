@@ -13,7 +13,7 @@ import {
 } from '../db/repository.js';
 import {
   AGENT_AUTO_PRINT,
-  AGENT_PAIRING_TTL_MINUTES,
+  AGENT_PAIRING_TTL_SECONDS,
   AGENT_POLL_INTERVAL_MS,
   OFFICIAL_BACKEND_URL
 } from '../config/agent.js';
@@ -31,7 +31,7 @@ const JOB_STATUS_TO_ORDER_STATUS = {
 };
 
 function getPairingExpiry() {
-  return new Date(Date.now() + AGENT_PAIRING_TTL_MINUTES * 60 * 1000).toISOString();
+  return new Date(Date.now() + AGENT_PAIRING_TTL_SECONDS * 1000).toISOString();
 }
 
 function parsePrivateStorageReference(fileUrl) {
@@ -122,7 +122,8 @@ export const startPairing = asyncHandler(async (req, res) => {
     success: true,
     pairingCode,
     pairingSessionId: session.id,
-    expiresAt: session.expiresAt
+    expiresAt: session.expiresAt,
+    expiresInSeconds: AGENT_PAIRING_TTL_SECONDS
   });
 });
 
@@ -151,6 +152,14 @@ export const confirmPairing = asyncHandler(async (req, res) => {
     });
   }
 
+  if (session.status !== 'claimed') {
+    return res.status(409).json({
+      success: false,
+      paired: false,
+      message: 'Pairing session has already been used or is no longer claimable'
+    });
+  }
+
   if (!session.agentId || !session.hubId) {
     return res.status(409).json({ success: false, message: 'Pairing session is incomplete' });
   }
@@ -158,13 +167,25 @@ export const confirmPairing = asyncHandler(async (req, res) => {
   const accessToken = createRawAgentToken();
   const refreshToken = createRawAgentToken();
 
-  await withTransaction(async (client) => {
+  const confirmedSession = await withTransaction(async (client) => {
+    const markedSession = await markPairingSessionConfirmed(session.id, client);
+    if (!markedSession) return null;
+
     await createAgentToken({
       agentId: session.agentId,
       tokenHash: hashAgentSecret(accessToken)
     }, client);
-    await markPairingSessionConfirmed(session.id, client);
+
+    return markedSession;
   });
+
+  if (!confirmedSession) {
+    return res.status(409).json({
+      success: false,
+      paired: false,
+      message: 'Pairing session has already been used or is no longer claimable'
+    });
+  }
 
   res.json({
     success: true,

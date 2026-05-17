@@ -12,6 +12,7 @@ import paymentRoutes from './routes/paymentRoutes.js';
 import uploadRoutes from './routes/uploadRoutes.js';
 import agentRoutes from './routes/agentRoutes.js';
 import hubAgentRoutes from './routes/hubAgentRoutes.js';
+import desktopRoutes from './routes/desktopRoutes.js';
 
 const app = express();
 
@@ -68,6 +69,7 @@ app.use('/api/payments', paymentRoutes);
 app.use('/api/uploads', uploadRoutes);
 app.use('/api/agent', agentRoutes);
 app.use('/api/hub-agents', hubAgentRoutes);
+app.use('/api/desktop', desktopRoutes);
 
 app.use((req, res) => {
   res.status(404).json({
