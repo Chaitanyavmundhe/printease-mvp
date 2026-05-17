@@ -915,6 +915,66 @@ export async function listPrintJobsByHub(hubId, client) {
   return result.rows.map(mapPrintJob);
 }
 
+export async function listDesktopOrdersForAgent(hubId, since = null, client) {
+  const result = await executor(client).query(
+    `select
+       po.*,
+       po.hub_id as centre_id,
+       d.id as document_id,
+       d.file_name as document_file_name,
+       d.file_type as document_file_type,
+       d.file_size as document_file_size,
+       d.file_sha256 as document_file_sha256,
+       d.storage_path as document_storage_path
+     from print_orders po
+     left join documents d on d.id::text = po.document_url
+     where po.hub_id = $1
+       and ($2::timestamptz is null or po.created_at >= $2::timestamptz)
+     order by po.created_at desc`,
+    [hubId, since || null]
+  );
+
+  return result.rows.map((row) => ({
+    ...mapOrder(row),
+    document: {
+      id: row.document_id || row.document_url || null,
+      fileName: row.document_file_name || row.document_name || null,
+      fileType: row.document_file_type || null,
+      fileSize: row.document_file_size || null,
+      fileSha256: row.document_file_sha256 || null,
+      storagePath: row.document_storage_path || null
+    }
+  }));
+}
+
+export async function listDesktopPrintJobsForAgent(agentId, hubId, since = null, client) {
+  const result = await executor(client).query(
+    `select *
+     from print_jobs
+     where hub_id = $2
+       and (agent_id = $1 or agent_id is null)
+       and ($3::timestamptz is null or created_at >= $3::timestamptz)
+     order by created_at desc`,
+    [agentId, hubId, since || null]
+  );
+
+  return result.rows.map(mapPrintJob);
+}
+
+export async function findPrintJobForAgent(jobId, agentId, hubId, client) {
+  const result = await executor(client).query(
+    `select *
+     from print_jobs
+     where id = $1
+       and hub_id = $2
+       and (agent_id = $3 or agent_id is null)
+     limit 1`,
+    [jobId, hubId, agentId]
+  );
+
+  return mapPrintJob(result.rows[0]);
+}
+
 export async function findNextPrintJobForAgent(agentId, hubId, client) {
   const result = await executor(client).query(
     `select *
