@@ -1,9 +1,11 @@
 import {
   claimPairingSession,
   createPrintJob,
+  findAgentByIdAndHub,
   findOrderWithDocumentForHub,
   findPendingPairingSessionByCodeHash,
   insertPrintJobEvent,
+  listAgentPrintersByAgent,
   listAgentPrintersByHub,
   listAgentsByHub,
   listPrintJobsByHub,
@@ -123,6 +125,7 @@ export const revokeHubAgent = asyncHandler(async (req, res) => {
 
 export const sendOrderToAgent = asyncHandler(async (req, res) => {
   const hubId = getHubId(req);
+  const { agentId, printerName } = req.body;
   const order = await findOrderWithDocumentForHub(req.params.orderId, hubId);
 
   if (!order) {
@@ -155,15 +158,39 @@ export const sendOrderToAgent = asyncHandler(async (req, res) => {
     });
   }
 
-  const activeAgents = await listAgentsByHub(hubId);
-  const preferredAgent = activeAgents.find((agent) => !agent.paused && agent.status !== 'revoked') || null;
+  if (!agentId || !printerName) {
+    return res.status(400).json({
+      success: false,
+      message: 'Select a desktop device and printer before sending to agent'
+    });
+  }
+
+  const selectedAgent = await findAgentByIdAndHub(agentId, hubId);
+  if (!selectedAgent) {
+    return res.status(404).json({ success: false, message: 'Selected desktop device was not found' });
+  }
+
+  if (selectedAgent.paused) {
+    return res.status(400).json({ success: false, message: 'Selected desktop device is paused' });
+  }
+
+  const agentPrinters = await listAgentPrintersByAgent(selectedAgent.id, hubId);
+  const selectedPrinter = agentPrinters.find((printer) => printer.printerName === printerName);
+
+  if (!selectedPrinter) {
+    return res.status(400).json({
+      success: false,
+      message: 'Selected printer does not belong to this desktop device'
+    });
+  }
 
   const printJob = await withTransaction(async (client) => {
     const job = await createPrintJob({
       id: generateId(),
       orderId: order.id,
       hubId,
-      agentId: preferredAgent?.id || null,
+      agentId: selectedAgent.id,
+      printerName: selectedPrinter.printerName,
       fileUrl: `private://${getSupabaseBucketName()}/${storagePath}`,
       fileSha256,
       fileType,
@@ -175,11 +202,15 @@ export const sendOrderToAgent = asyncHandler(async (req, res) => {
 
     await insertPrintJobEvent({
       printJobId: job.id,
-      agentId: preferredAgent?.id || null,
+      agentId: selectedAgent.id,
       eventType: 'queued',
       newStatus: 'queued',
       message: 'Hub queued order for PrintEase agent',
-      rawStatus: { orderId: order.id }
+      rawStatus: {
+        orderId: order.id,
+        agentId: selectedAgent.id,
+        printerName: selectedPrinter.printerName
+      }
     }, client);
 
     await updateOrderStatus(order.id, hubId, 'Queued for Printing', client);
@@ -189,7 +220,7 @@ export const sendOrderToAgent = asyncHandler(async (req, res) => {
 
   res.status(201).json({
     success: true,
-    message: 'Order queued for PrintEase agent',
+    message: 'Order queued for selected desktop printer',
     printJob
   });
 });

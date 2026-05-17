@@ -161,8 +161,12 @@ export function resumeHubAgent(agentId) {
   });
 }
 
-export function sendOrderToAgent(orderId) {
+export function sendOrderToAgent(orderId, target = {}) {
   return apiRequest(`/api/hub-agents/orders/${orderId}/send-to-agent`, {
     method: "POST",
+    body: JSON.stringify({
+      agentId: target.agentId,
+      printerName: target.printerName,
+    }),
   });
 }

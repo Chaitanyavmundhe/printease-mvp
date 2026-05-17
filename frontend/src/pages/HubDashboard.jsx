@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { BarChart3, FileText, IndianRupee, Link2, Printer, RefreshCw, Send, Wifi } from "lucide-react";
+import { BarChart3, FileText, IndianRupee, Link2, Printer, RefreshCw, Send, Wifi, X } from "lucide-react";
 import Card from "../components/Card";
 import Metric from "../components/Metric";
 import StatusBadge from "../components/StatusBadge";
@@ -45,6 +45,9 @@ export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus,
   const [pairingCode, setPairingCode] = useState("");
   const [pairingMessage, setPairingMessage] = useState("");
   const [sendingOrderId, setSendingOrderId] = useState("");
+  const [sendModalOrder, setSendModalOrder] = useState(null);
+  const [selectedAgentId, setSelectedAgentId] = useState("");
+  const [selectedPrinterName, setSelectedPrinterName] = useState("");
   const ordersForHub = hubOrders || [];
 
   const totalPages = ordersForHub.reduce((sum, item) => sum + item.pages * item.copies, 0);
@@ -53,6 +56,22 @@ export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus,
   const primaryAgent = agents[0] || null;
   const defaultPrinter = agentPrinters.find((printer) => printer.isDefault) || agentPrinters[0] || null;
   const agentStatus = primaryAgent ? (primaryAgent.paused ? "Paused" : primaryAgent.status || "Offline") : "Offline";
+  const routeableAgents = useMemo(() => {
+    return agents.filter((agent) => {
+      const status = normalizeStatus(agent.status);
+      return !agent.paused && status !== "revoked" && status !== "offline";
+    });
+  }, [agents]);
+  const printersByAgent = useMemo(() => {
+    const grouped = new Map();
+    for (const printer of agentPrinters) {
+      const list = grouped.get(printer.agentId) || [];
+      list.push(printer);
+      grouped.set(printer.agentId, list);
+    }
+    return grouped;
+  }, [agentPrinters]);
+  const selectedAgentPrinters = printersByAgent.get(selectedAgentId) || [];
   const jobByOrderId = useMemo(() => {
     return new Map(printJobs.map((job) => [job.orderId, job]));
   }, [printJobs]);
@@ -105,13 +124,50 @@ export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus,
     }
   }
 
-  async function sendToAgent(order) {
+  function openSendModal(order) {
+    const firstAgent = routeableAgents.find((agent) => (printersByAgent.get(agent.id) || []).length > 0) || routeableAgents[0] || null;
+    const firstPrinter = firstAgent ? (printersByAgent.get(firstAgent.id) || [])[0] : null;
+
+    setSendModalOrder(order);
+    setSelectedAgentId(firstAgent?.id || "");
+    setSelectedPrinterName(firstPrinter?.printerName || "");
+    setAgentError("");
+  }
+
+  function closeSendModal() {
+    setSendModalOrder(null);
+    setSelectedAgentId("");
+    setSelectedPrinterName("");
+  }
+
+  function changeSelectedAgent(agentId) {
+    const printers = printersByAgent.get(agentId) || [];
+    const defaultForAgent = printers.find((printer) => printer.isDefault) || printers[0] || null;
+
+    setSelectedAgentId(agentId);
+    setSelectedPrinterName(defaultForAgent?.printerName || "");
+  }
+
+  async function sendToAgent() {
+    const order = sendModalOrder;
+    if (!order) return;
+
     const orderId = order.backendId || order.id;
+
+    if (!selectedAgentId || !selectedPrinterName) {
+      setAgentError("Select a desktop device and printer first.");
+      return;
+    }
+
     setSendingOrderId(orderId);
     setAgentError("");
 
     try {
-      await sendOrderToAgent(orderId);
+      await sendOrderToAgent(orderId, {
+        agentId: selectedAgentId,
+        printerName: selectedPrinterName,
+      });
+      closeSendModal();
       await Promise.all([refreshAgentStatus(), refreshOrders?.()]);
     } catch (error) {
       setAgentError(error.message || "Could not send order to agent.");
@@ -241,11 +297,11 @@ export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus,
                         {job && <StatusBadge>{job.status}</StatusBadge>}
                         {sendEnabled && (
                           <button
-                            onClick={() => sendToAgent(item)}
+                            onClick={() => openSendModal(item)}
                             disabled={sendingOrderId === orderId}
                             className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-700 px-3 py-2 font-semibold text-white disabled:bg-slate-300"
                           >
-                            <Send size={15} /> {sendingOrderId === orderId ? "Sending" : "Send to Agent"}
+                            <Send size={15} /> {sendingOrderId === orderId ? "Sending" : "Send to Printer"}
                           </button>
                         )}
                       </div>
@@ -257,6 +313,90 @@ export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus,
           </table>
         </div>
       </Card>
+
+      {sendModalOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+          <div className="w-full max-w-xl rounded-3xl bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-xl font-bold">Send to Printer</h3>
+                <p className="mt-1 text-sm text-slate-600">
+                  Choose the desktop device and local printer for order {sendModalOrder.id}.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeSendModal}
+                className="rounded-full border p-2"
+                aria-label="Close send to printer modal"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="mt-5 grid gap-4">
+              <label className="grid gap-2 text-sm font-semibold text-slate-700">
+                Select Device
+                <select
+                  value={selectedAgentId}
+                  onChange={(event) => changeSelectedAgent(event.target.value)}
+                  className="rounded-xl border px-3 py-3 font-normal"
+                >
+                  <option value="">Choose desktop device</option>
+                  {routeableAgents.map((agent) => (
+                    <option key={agent.id} value={agent.id}>
+                      {agent.agentName || agent.deviceName || agent.id} · {agent.status || "unknown"}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="grid gap-2 text-sm font-semibold text-slate-700">
+                Select Printer
+                <select
+                  value={selectedPrinterName}
+                  onChange={(event) => setSelectedPrinterName(event.target.value)}
+                  className="rounded-xl border px-3 py-3 font-normal"
+                  disabled={!selectedAgentId}
+                >
+                  <option value="">Choose printer</option>
+                  {selectedAgentPrinters.map((printer) => (
+                    <option key={printer.id || printer.printerName} value={printer.printerName}>
+                      {printer.printerName}{printer.isDefault ? " · Default" : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              {routeableAgents.length === 0 && (
+                <p className="rounded-2xl bg-amber-50 p-3 text-sm font-semibold text-amber-800">
+                  No online desktop devices are available. Open PrintEase Hub Desktop on a shop PC and refresh status.
+                </p>
+              )}
+
+              {selectedAgentId && selectedAgentPrinters.length === 0 && (
+                <p className="rounded-2xl bg-amber-50 p-3 text-sm font-semibold text-amber-800">
+                  This device has not synced any printers yet.
+                </p>
+              )}
+
+              <div className="flex flex-wrap justify-end gap-3">
+                <button type="button" onClick={closeSendModal} className="rounded-xl border px-4 py-2 font-semibold">
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={sendToAgent}
+                  disabled={!selectedAgentId || !selectedPrinterName || Boolean(sendingOrderId)}
+                  className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-4 py-2 font-semibold text-white disabled:bg-slate-300"
+                >
+                  <Send size={16} /> {sendingOrderId ? "Queueing" : "Queue Print Job"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
