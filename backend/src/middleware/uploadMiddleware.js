@@ -8,9 +8,9 @@ export const upload = multer({
     fileSize: 10 * 1024 * 1024
   },
   fileFilter: (req, file, cb) => {
-    const allowedTypes = ['application/pdf', 'image/png', 'image/jpeg'];
+    const allowedTypes = ['application/pdf'];
     if (!allowedTypes.includes(file.mimetype)) {
-      const error = new Error('Only PDF, PNG, and JPG files are allowed');
+      const error = new Error('Only PDF files are supported for agent printing MVP');
       error.statusCode = 400;
       return cb(error);
     }

@@ -64,8 +64,8 @@ export function mapDocument(row) {
     fileType: row.file_type,
     fileSize: row.file_size,
     fileUrl: row.file_url,
-    fileSha256: row.file_sha256,
-    storagePath: row.storage_path,
+    storagePath: row.storage_path || null,
+    fileSha256: row.file_sha256 || null,
     createdAt: timestamp(row.created_at)
   };
 }
@@ -376,7 +376,15 @@ export async function updateCentrePaymentMethod(centreId, upiId) {
 export async function createDocument(document) {
   const result = await query(
     `insert into documents (
-       id, user_id, file_name, file_type, file_size, file_url, file_sha256, storage_path, created_at
+       id,
+       user_id,
+       file_name,
+       file_type,
+       file_size,
+       file_url,
+       storage_path,
+       file_sha256,
+       created_at
      )
      values ($1, $2, $3, $4, $5, $6, $7, $8, coalesce($9, now()))
      returning *`,
@@ -386,9 +394,9 @@ export async function createDocument(document) {
       document.fileName,
       document.fileType || null,
       document.fileSize || null,
-      document.fileUrl,
-      document.fileSha256 || null,
+      document.fileUrl || null,
       document.storagePath || null,
+      document.fileSha256 || null,
       document.createdAt || null
     ]
   );

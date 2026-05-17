@@ -17,6 +17,7 @@ import {
   AGENT_POLL_INTERVAL_MS,
   OFFICIAL_BACKEND_URL
 } from '../config/agent.js';
+import { getSupabaseAdminClient } from '../config/supabase.js';
 import { createAgentToken as createRawAgentToken, createPairingCode, hashAgentSecret } from '../utils/agentCrypto.js';
 import { generateId } from '../utils/generateCode.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
@@ -33,8 +34,49 @@ function getPairingExpiry() {
   return new Date(Date.now() + AGENT_PAIRING_TTL_MINUTES * 60 * 1000).toISOString();
 }
 
-function toAgentJobPayload(job) {
+function parsePrivateStorageReference(fileUrl) {
+  if (!String(fileUrl || '').startsWith('private://')) {
+    return null;
+  }
+
+  const withoutProtocol = String(fileUrl).slice('private://'.length);
+  const separatorIndex = withoutProtocol.indexOf('/');
+
+  if (separatorIndex === -1) {
+    return null;
+  }
+
+  return {
+    bucket: withoutProtocol.slice(0, separatorIndex),
+    storagePath: withoutProtocol.slice(separatorIndex + 1)
+  };
+}
+
+async function resolveDownloadUrl(fileUrl) {
+  const privateReference = parsePrivateStorageReference(fileUrl);
+
+  if (!privateReference) {
+    return fileUrl;
+  }
+
+  const supabase = getSupabaseAdminClient();
+  const { data, error } = await supabase.storage
+    .from(privateReference.bucket)
+    .createSignedUrl(privateReference.storagePath, 10 * 60);
+
+  if (error || !data?.signedUrl) {
+    const signedUrlError = new Error(error?.message || 'Could not create signed document URL');
+    signedUrlError.statusCode = 502;
+    throw signedUrlError;
+  }
+
+  return data.signedUrl;
+}
+
+async function toAgentJobPayload(job) {
   if (!job) return null;
+
+  const signedFileUrl = await resolveDownloadUrl(job.fileUrl);
 
   return {
     jobId: job.id,
@@ -42,7 +84,7 @@ function toAgentJobPayload(job) {
     hubId: job.hubId,
     agentId: job.agentId,
     sourceBackendUrl: OFFICIAL_BACKEND_URL,
-    fileUrl: job.fileUrl,
+    fileUrl: signedFileUrl,
     fileSha256: job.fileSha256,
     fileHash: job.fileSha256,
     fileType: job.fileType,
@@ -206,7 +248,7 @@ export const getNextJob = asyncHandler(async (req, res) => {
 
   res.json({
     success: true,
-    job: toAgentJobPayload(job)
+    job: await toAgentJobPayload(job)
   });
 });
 

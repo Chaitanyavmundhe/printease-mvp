@@ -1,7 +1,6 @@
 import {
   claimPairingSession,
   createPrintJob,
-  findAgentByIdAndHub,
   findOrderWithDocumentForHub,
   findPendingPairingSessionByCodeHash,
   insertPrintJobEvent,
@@ -15,20 +14,13 @@ import {
   withTransaction
 } from '../db/repository.js';
 import { OFFICIAL_BACKEND_URL } from '../config/agent.js';
+import { getSupabaseBucketName } from '../config/supabase.js';
 import { hashAgentSecret } from '../utils/agentCrypto.js';
 import { generateId } from '../utils/generateCode.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 
 function getHubId(req) {
   return req.user?.centreId || req.user?.hubId;
-}
-
-function isHttpsUrl(value) {
-  try {
-    return new URL(value).protocol === 'https:';
-  } catch {
-    return false;
-  }
 }
 
 function isPaymentVerified(order) {
@@ -144,13 +136,14 @@ export const sendOrderToAgent = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: 'Order is not in a printable state' });
   }
 
-  const fileUrl = order.document_file_url || order.document_url;
+  const storagePath = order.document_storage_path;
+  const fileSha256 = order.document_file_sha256;
   const fileType = order.document_file_type || 'application/pdf';
 
-  if (!isHttpsUrl(fileUrl)) {
+  if (!storagePath || !fileSha256) {
     return res.status(400).json({
       success: false,
-      message: 'Order document does not have a downloadable HTTPS URL'
+      message: 'Order document is not stored in secure private storage'
     });
   }
 
@@ -170,8 +163,8 @@ export const sendOrderToAgent = asyncHandler(async (req, res) => {
       orderId: order.id,
       hubId,
       agentId: preferredAgent?.id || null,
-      fileUrl,
-      fileSha256: order.document_file_sha256 || null,
+      fileUrl: `private://${getSupabaseBucketName()}/${storagePath}`,
+      fileSha256,
       fileType,
       copies: order.copies,
       paperSize: 'A4',
