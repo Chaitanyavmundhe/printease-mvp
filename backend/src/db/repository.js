@@ -64,6 +64,8 @@ export function mapDocument(row) {
     fileType: row.file_type,
     fileSize: row.file_size,
     fileUrl: row.file_url,
+    fileSha256: row.file_sha256,
+    storagePath: row.storage_path,
     createdAt: timestamp(row.created_at)
   };
 }
@@ -124,6 +126,89 @@ export function mapPrinter(row) {
     status: row.status,
     isActive: row.is_active,
     createdAt: timestamp(row.created_at)
+  };
+}
+
+export function mapAgent(row) {
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    hubId: row.hub_id,
+    agentName: row.agent_name,
+    deviceId: row.device_id,
+    platform: row.platform,
+    version: row.version,
+    status: row.status,
+    paused: row.paused,
+    lastSeenAt: timestamp(row.last_seen_at),
+    pairedAt: timestamp(row.paired_at),
+    revokedAt: timestamp(row.revoked_at),
+    createdAt: timestamp(row.created_at)
+  };
+}
+
+export function mapPairingSession(row) {
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    pairingCodeHash: row.pairing_code_hash,
+    deviceId: row.device_id,
+    agentName: row.agent_name,
+    platform: row.platform,
+    version: row.version,
+    status: row.status,
+    hubId: row.hub_id,
+    agentId: row.agent_id,
+    expiresAt: timestamp(row.expires_at),
+    createdAt: timestamp(row.created_at),
+    claimedAt: timestamp(row.claimed_at)
+  };
+}
+
+export function mapAgentPrinter(row) {
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    agentId: row.agent_id,
+    hubId: row.hub_id,
+    printerName: row.printer_name,
+    systemPrinterId: row.system_printer_id,
+    status: row.status,
+    isDefault: row.is_default,
+    lastCheckedAt: timestamp(row.last_checked_at),
+    createdAt: timestamp(row.created_at)
+  };
+}
+
+export function mapPrintJob(row) {
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    jobId: row.id,
+    orderId: row.order_id,
+    hubId: row.hub_id,
+    agentId: row.agent_id,
+    printerName: row.printer_name,
+    status: row.status,
+    fileUrl: row.file_url,
+    fileSha256: row.file_sha256,
+    fileHash: row.file_sha256,
+    fileType: row.file_type,
+    copies: row.copies,
+    paperSize: row.paper_size,
+    colorMode: row.color_mode,
+    sourceBackendUrl: row.source_backend_url,
+    failureReasonCode: row.failure_reason_code,
+    failureReasonText: row.failure_reason_text,
+    createdAt: timestamp(row.created_at),
+    acceptedAt: timestamp(row.accepted_at),
+    printingStartedAt: timestamp(row.printing_started_at),
+    completedAt: timestamp(row.completed_at),
+    failedAt: timestamp(row.failed_at)
   };
 }
 
@@ -290,8 +375,10 @@ export async function updateCentrePaymentMethod(centreId, upiId) {
 
 export async function createDocument(document) {
   const result = await query(
-    `insert into documents (id, user_id, file_name, file_type, file_size, file_url, created_at)
-     values ($1, $2, $3, $4, $5, $6, coalesce($7, now()))
+    `insert into documents (
+       id, user_id, file_name, file_type, file_size, file_url, file_sha256, storage_path, created_at
+     )
+     values ($1, $2, $3, $4, $5, $6, $7, $8, coalesce($9, now()))
      returning *`,
     [
       document.id,
@@ -300,6 +387,8 @@ export async function createDocument(document) {
       document.fileType || null,
       document.fileSize || null,
       document.fileUrl,
+      document.fileSha256 || null,
+      document.storagePath || null,
       document.createdAt || null
     ]
   );
@@ -364,8 +453,8 @@ export async function listOrdersByCentre(centreId) {
   return result.rows.map(mapOrder);
 }
 
-export async function updateOrderStatus(orderId, centreId, status) {
-  const result = await query(
+export async function updateOrderStatus(orderId, centreId, status, client) {
+  const result = await executor(client).query(
     'update print_orders set status = coalesce($3, status) where id = $1 and hub_id = $2 returning *, hub_id as centre_id',
     [orderId, centreId, status]
   );
@@ -480,4 +569,378 @@ export async function updatePrinterProtocol(printerId, centreId, updates) {
   );
 
   return mapPrinter(result.rows[0]);
+}
+
+export async function createAgentPairingSession(session, client) {
+  const result = await executor(client).query(
+    `insert into agent_pairing_sessions (
+       id, pairing_code_hash, device_id, agent_name, platform, version, status, expires_at, created_at
+     )
+     values ($1, $2, $3, $4, $5, $6, 'pending', $7, coalesce($8, now()))
+     returning *`,
+    [
+      session.id,
+      session.pairingCodeHash,
+      session.deviceId,
+      session.agentName,
+      session.platform || null,
+      session.version || null,
+      session.expiresAt,
+      session.createdAt || null
+    ]
+  );
+
+  return mapPairingSession(result.rows[0]);
+}
+
+export async function findPendingPairingSessionByCodeHash(pairingCodeHash, client) {
+  const result = await executor(client).query(
+    `select *
+     from agent_pairing_sessions
+     where pairing_code_hash = $1
+       and status = 'pending'
+       and expires_at > now()
+     order by created_at desc
+     limit 1`,
+    [pairingCodeHash]
+  );
+
+  return mapPairingSession(result.rows[0]);
+}
+
+export async function findPairingSessionByIdAndDevice(sessionId, deviceId, client) {
+  const result = await executor(client).query(
+    'select * from agent_pairing_sessions where id = $1 and device_id = $2',
+    [sessionId, deviceId]
+  );
+
+  return mapPairingSession(result.rows[0]);
+}
+
+export async function upsertAgentForPairing(session, hubId, client) {
+  const result = await executor(client).query(
+    `insert into agents (
+       hub_id, agent_name, device_id, platform, version, status, paused, paired_at, revoked_at, created_at
+     )
+     values ($1, $2, $3, $4, $5, 'offline', false, now(), null, now())
+     on conflict (device_id)
+     do update set
+       hub_id = excluded.hub_id,
+       agent_name = excluded.agent_name,
+       platform = excluded.platform,
+       version = excluded.version,
+       revoked_at = null,
+       paired_at = now()
+     returning *`,
+    [hubId, session.agentName, session.deviceId, session.platform || null, session.version || null]
+  );
+
+  return mapAgent(result.rows[0]);
+}
+
+export async function claimPairingSession(sessionId, hubId, agentId, client) {
+  const result = await executor(client).query(
+    `update agent_pairing_sessions
+     set status = 'claimed',
+         hub_id = $2,
+         agent_id = $3,
+         claimed_at = now()
+     where id = $1
+     returning *`,
+    [sessionId, hubId, agentId]
+  );
+
+  return mapPairingSession(result.rows[0]);
+}
+
+export async function markPairingSessionConfirmed(sessionId, client) {
+  const result = await executor(client).query(
+    `update agent_pairing_sessions
+     set status = 'confirmed'
+     where id = $1
+     returning *`,
+    [sessionId]
+  );
+
+  return mapPairingSession(result.rows[0]);
+}
+
+export async function createAgentToken(token, client) {
+  const result = await executor(client).query(
+    `insert into agent_tokens (agent_id, token_hash, expires_at)
+     values ($1, $2, $3)
+     returning *`,
+    [token.agentId, token.tokenHash, token.expiresAt || null]
+  );
+
+  return result.rows[0];
+}
+
+export async function findActiveAgentByTokenHash(tokenHash, client) {
+  const result = await executor(client).query(
+    `select
+       a.*,
+       t.id as token_id,
+       t.revoked_at as token_revoked_at,
+       t.expires_at as token_expires_at
+     from agent_tokens t
+     join agents a on a.id = t.agent_id
+     where t.token_hash = $1
+       and t.revoked_at is null
+       and a.revoked_at is null
+       and (t.expires_at is null or t.expires_at > now())
+     limit 1`,
+    [tokenHash]
+  );
+
+  return mapAgent(result.rows[0]);
+}
+
+export async function updateAgentHeartbeat(agentId, updates, client) {
+  const result = await executor(client).query(
+    `update agents
+     set status = coalesce($2, status),
+         paused = coalesce($3, paused),
+         platform = coalesce($4, platform),
+         version = coalesce($5, version),
+         last_seen_at = now()
+     where id = $1 and revoked_at is null
+     returning *`,
+    [agentId, updates.status, updates.paused, updates.platform, updates.version]
+  );
+
+  return mapAgent(result.rows[0]);
+}
+
+export async function listAgentsByHub(hubId, client) {
+  const result = await executor(client).query(
+    `select *
+     from agents
+     where hub_id = $1 and revoked_at is null
+     order by coalesce(last_seen_at, created_at) desc`,
+    [hubId]
+  );
+
+  return result.rows.map(mapAgent);
+}
+
+export async function findAgentByIdAndHub(agentId, hubId, client) {
+  const result = await executor(client).query(
+    'select * from agents where id = $1 and hub_id = $2 and revoked_at is null',
+    [agentId, hubId]
+  );
+
+  return mapAgent(result.rows[0]);
+}
+
+export async function setAgentPaused(agentId, hubId, paused, client) {
+  const result = await executor(client).query(
+    `update agents
+     set paused = $3,
+         status = case when $3 then 'paused' else 'offline' end
+     where id = $1 and hub_id = $2 and revoked_at is null
+     returning *`,
+    [agentId, hubId, paused]
+  );
+
+  return mapAgent(result.rows[0]);
+}
+
+export async function revokeAgent(agentId, hubId, client) {
+  const result = await executor(client).query(
+    `update agents
+     set revoked_at = now(),
+         status = 'revoked'
+     where id = $1 and hub_id = $2 and revoked_at is null
+     returning *`,
+    [agentId, hubId]
+  );
+
+  if (!result.rows[0]) return null;
+
+  await executor(client).query(
+    'update agent_tokens set revoked_at = now() where agent_id = $1 and revoked_at is null',
+    [agentId]
+  );
+
+  return mapAgent(result.rows[0]);
+}
+
+export async function replaceAgentPrinters(agentId, hubId, printers = [], client) {
+  await executor(client).query('delete from agent_printers where agent_id = $1 and hub_id = $2', [agentId, hubId]);
+
+  const savedPrinters = [];
+
+  for (const printer of printers) {
+    const result = await executor(client).query(
+      `insert into agent_printers (
+         agent_id, hub_id, printer_name, system_printer_id, status, is_default, last_checked_at
+       )
+       values ($1, $2, $3, $4, $5, $6, now())
+       returning *`,
+      [
+        agentId,
+        hubId,
+        printer.printerName,
+        printer.systemPrinterId || null,
+        printer.status || 'unknown',
+        Boolean(printer.isDefault)
+      ]
+    );
+
+    savedPrinters.push(mapAgentPrinter(result.rows[0]));
+  }
+
+  return savedPrinters;
+}
+
+export async function listAgentPrintersByHub(hubId, client) {
+  const result = await executor(client).query(
+    `select *
+     from agent_printers
+     where hub_id = $1
+     order by is_default desc, last_checked_at desc nulls last, created_at desc`,
+    [hubId]
+  );
+
+  return result.rows.map(mapAgentPrinter);
+}
+
+export async function findOrderWithDocumentForHub(orderId, hubId, client) {
+  const result = await executor(client).query(
+    `select
+       po.*,
+       po.hub_id as centre_id,
+       d.id as document_id,
+       d.file_url as document_file_url,
+       d.file_sha256 as document_file_sha256,
+       d.file_type as document_file_type,
+       d.storage_path as document_storage_path
+     from print_orders po
+     left join documents d on d.id::text = po.document_url
+     where po.id = $1 and po.hub_id = $2`,
+    [orderId, hubId]
+  );
+
+  return result.rows[0] || null;
+}
+
+export async function createPrintJob(job, client) {
+  const result = await executor(client).query(
+    `insert into print_jobs (
+       id, order_id, hub_id, agent_id, printer_name, status, file_url, file_sha256,
+       file_type, copies, paper_size, color_mode, source_backend_url, created_at
+     )
+     values ($1, $2, $3, $4, $5, 'queued', $6, $7, $8, $9, $10, $11, $12, now())
+     returning *`,
+    [
+      job.id,
+      job.orderId,
+      job.hubId,
+      job.agentId || null,
+      job.printerName || null,
+      job.fileUrl,
+      job.fileSha256 || null,
+      job.fileType || 'application/pdf',
+      job.copies || 1,
+      job.paperSize || 'A4',
+      job.colorMode || 'bw',
+      job.sourceBackendUrl
+    ]
+  );
+
+  return mapPrintJob(result.rows[0]);
+}
+
+export async function listPrintJobsByHub(hubId, client) {
+  const result = await executor(client).query(
+    `select *
+     from print_jobs
+     where hub_id = $1
+     order by created_at desc`,
+    [hubId]
+  );
+
+  return result.rows.map(mapPrintJob);
+}
+
+export async function findNextPrintJobForAgent(agentId, hubId, client) {
+  const result = await executor(client).query(
+    `select *
+     from print_jobs
+     where hub_id = $2
+       and (agent_id = $1 or agent_id is null)
+       and status in ('queued', 'assigned')
+     order by created_at asc
+     limit 1
+     for update skip locked`,
+    [agentId, hubId]
+  );
+
+  const job = result.rows[0];
+  if (!job) return null;
+
+  if (!job.agent_id || job.status === 'queued') {
+    const assigned = await executor(client).query(
+      `update print_jobs
+       set agent_id = $1,
+           status = 'assigned'
+       where id = $2
+       returning *`,
+      [agentId, job.id]
+    );
+
+    return mapPrintJob(assigned.rows[0]);
+  }
+
+  return mapPrintJob(job);
+}
+
+export async function insertPrintJobEvent(event, client) {
+  const result = await executor(client).query(
+    `insert into print_job_events (
+       print_job_id, agent_id, event_type, old_status, new_status, message, raw_status
+     )
+     values ($1, $2, $3, $4, $5, $6, $7::jsonb)
+     returning *`,
+    [
+      event.printJobId,
+      event.agentId || null,
+      event.eventType,
+      event.oldStatus || null,
+      event.newStatus || null,
+      event.message || null,
+      event.rawStatus ? JSON.stringify(event.rawStatus) : null
+    ]
+  );
+
+  return result.rows[0];
+}
+
+export async function updatePrintJobStatus(jobId, hubId, updates, client) {
+  const result = await executor(client).query(
+    `update print_jobs
+     set status = coalesce($3, status),
+         agent_id = coalesce(agent_id, $6),
+         failure_reason_code = coalesce($4, failure_reason_code),
+         failure_reason_text = coalesce($5, failure_reason_text),
+         accepted_at = case when $3 = 'accepted' then now() else accepted_at end,
+         printing_started_at = case when $3 = 'printing' then now() else printing_started_at end,
+         completed_at = case when $3 = 'completed' then now() else completed_at end,
+         failed_at = case when $3 = 'failed' then now() else failed_at end
+     where id = $1
+       and hub_id = $2
+       and ($6::uuid is null or agent_id = $6 or agent_id is null)
+     returning *`,
+    [
+      jobId,
+      hubId,
+      updates.status,
+      updates.failureReasonCode || null,
+      updates.failureReasonText || null,
+      updates.agentId || null
+    ]
+  );
+
+  return mapPrintJob(result.rows[0]);
 }

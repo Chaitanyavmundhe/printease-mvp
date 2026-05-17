@@ -1,0 +1,32 @@
+import express from 'express';
+import {
+  acceptJob,
+  confirmPairing,
+  getNextJob,
+  getAgentConfig,
+  heartbeat,
+  markCompleted,
+  markDownloading,
+  markFailed,
+  markPrinting,
+  startPairing,
+  syncPrinters
+} from '../controllers/agentController.js';
+import { agentAuthMiddleware } from '../middleware/agentAuthMiddleware.js';
+
+const router = express.Router();
+
+router.post('/pair/start', startPairing);
+router.post('/pair/confirm', confirmPairing);
+
+router.post('/heartbeat', agentAuthMiddleware, heartbeat);
+router.get('/config', agentAuthMiddleware, getAgentConfig);
+router.post('/printers', agentAuthMiddleware, syncPrinters);
+router.get('/jobs/next', agentAuthMiddleware, getNextJob);
+router.post('/jobs/:jobId/accepted', agentAuthMiddleware, acceptJob);
+router.post('/jobs/:jobId/downloading', agentAuthMiddleware, markDownloading);
+router.post('/jobs/:jobId/printing', agentAuthMiddleware, markPrinting);
+router.post('/jobs/:jobId/completed', agentAuthMiddleware, markCompleted);
+router.post('/jobs/:jobId/failed', agentAuthMiddleware, markFailed);
+
+export default router;

@@ -67,6 +67,8 @@ export const orderStatuses = [
 export const hubStatusOptions = [
   "Payment Verified",
   "Accepted by Centre",
+  "Queued for Printing",
+  "Sent to Agent",
   "Printing",
   "Ready for Pickup",
   "Collected",

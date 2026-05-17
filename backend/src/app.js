@@ -10,6 +10,8 @@ import printerRoutes from './routes/printerRoutes.js';
 import orderRoutes from './routes/orderRoutes.js';
 import paymentRoutes from './routes/paymentRoutes.js';
 import uploadRoutes from './routes/uploadRoutes.js';
+import agentRoutes from './routes/agentRoutes.js';
+import hubAgentRoutes from './routes/hubAgentRoutes.js';
 
 const app = express();
 
@@ -64,6 +66,8 @@ app.use('/api/printers', printerRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/uploads', uploadRoutes);
+app.use('/api/agent', agentRoutes);
+app.use('/api/hub-agents', hubAgentRoutes);
 
 app.use((req, res) => {
   res.status(404).json({

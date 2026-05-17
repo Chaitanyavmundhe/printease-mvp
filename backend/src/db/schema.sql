@@ -57,8 +57,13 @@ create table if not exists documents (
   file_type text,
   file_size integer,
   file_url text not null,
+  file_sha256 text,
+  storage_path text,
   created_at timestamptz not null default now()
 );
+
+alter table documents add column if not exists file_sha256 text;
+alter table documents add column if not exists storage_path text;
 
 create table if not exists print_orders (
   id uuid primary key default gen_random_uuid(),
@@ -103,7 +108,100 @@ create table if not exists printers (
   created_at timestamptz not null default now()
 );
 
+create table if not exists agents (
+  id uuid primary key default gen_random_uuid(),
+  hub_id uuid not null references print_hubs(id) on delete cascade,
+  agent_name text not null,
+  device_id text not null,
+  platform text,
+  version text,
+  status text not null default 'offline',
+  paused boolean not null default false,
+  last_seen_at timestamptz,
+  paired_at timestamptz default now(),
+  revoked_at timestamptz,
+  created_at timestamptz not null default now(),
+  unique(device_id)
+);
+
+create table if not exists agent_tokens (
+  id uuid primary key default gen_random_uuid(),
+  agent_id uuid not null references agents(id) on delete cascade,
+  token_hash text not null unique,
+  created_at timestamptz not null default now(),
+  expires_at timestamptz,
+  revoked_at timestamptz
+);
+
+create table if not exists agent_pairing_sessions (
+  id uuid primary key default gen_random_uuid(),
+  pairing_code_hash text not null,
+  device_id text not null,
+  agent_name text not null,
+  platform text,
+  version text,
+  status text not null default 'pending',
+  hub_id uuid references print_hubs(id) on delete cascade,
+  agent_id uuid references agents(id) on delete set null,
+  expires_at timestamptz not null,
+  created_at timestamptz not null default now(),
+  claimed_at timestamptz
+);
+
+create table if not exists agent_printers (
+  id uuid primary key default gen_random_uuid(),
+  agent_id uuid not null references agents(id) on delete cascade,
+  hub_id uuid not null references print_hubs(id) on delete cascade,
+  printer_name text not null,
+  system_printer_id text,
+  status text not null default 'unknown',
+  is_default boolean not null default false,
+  last_checked_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists print_jobs (
+  id uuid primary key default gen_random_uuid(),
+  order_id uuid not null references print_orders(id) on delete cascade,
+  hub_id uuid not null references print_hubs(id) on delete cascade,
+  agent_id uuid references agents(id) on delete set null,
+  printer_name text,
+  status text not null default 'queued',
+  file_url text not null,
+  file_sha256 text,
+  file_type text not null default 'application/pdf',
+  copies integer not null default 1,
+  paper_size text not null default 'A4',
+  color_mode text not null default 'bw',
+  source_backend_url text not null default 'https://printease-backend-byex.onrender.com',
+  failure_reason_code text,
+  failure_reason_text text,
+  created_at timestamptz not null default now(),
+  accepted_at timestamptz,
+  printing_started_at timestamptz,
+  completed_at timestamptz,
+  failed_at timestamptz
+);
+
+create table if not exists print_job_events (
+  id uuid primary key default gen_random_uuid(),
+  print_job_id uuid not null references print_jobs(id) on delete cascade,
+  agent_id uuid references agents(id) on delete set null,
+  event_type text not null,
+  old_status text,
+  new_status text,
+  message text,
+  raw_status jsonb,
+  created_at timestamptz not null default now()
+);
+
 create index if not exists idx_print_orders_user_id on print_orders(user_id);
 create index if not exists idx_print_orders_hub_id on print_orders(hub_id);
 create index if not exists idx_payments_order_id on payments(order_id);
 create index if not exists idx_printers_hub_id on printers(hub_id);
+create index if not exists idx_agents_hub_id on agents(hub_id);
+create index if not exists idx_agent_tokens_agent_id on agent_tokens(agent_id);
+create index if not exists idx_pairing_sessions_device_id on agent_pairing_sessions(device_id);
+create index if not exists idx_print_jobs_hub_id on print_jobs(hub_id);
+create index if not exists idx_print_jobs_agent_id on print_jobs(agent_id);
+create index if not exists idx_print_jobs_order_id on print_jobs(order_id);

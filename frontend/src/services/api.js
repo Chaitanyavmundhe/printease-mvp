@@ -137,3 +137,32 @@ export async function apiRequest(endpoint, options = {}) {
 export async function checkBackendHealth() {
   return apiRequest("/api/health");
 }
+
+export function getHubAgents() {
+  return apiRequest("/api/hub-agents");
+}
+
+export function pairAgent(pairingCode) {
+  return apiRequest("/api/hub-agents/pair", {
+    method: "POST",
+    body: JSON.stringify({ pairingCode }),
+  });
+}
+
+export function pauseHubAgent(agentId) {
+  return apiRequest(`/api/hub-agents/${agentId}/pause`, {
+    method: "POST",
+  });
+}
+
+export function resumeHubAgent(agentId) {
+  return apiRequest(`/api/hub-agents/${agentId}/resume`, {
+    method: "POST",
+  });
+}
+
+export function sendOrderToAgent(orderId) {
+  return apiRequest(`/api/hub-agents/orders/${orderId}/send-to-agent`, {
+    method: "POST",
+  });
+}
