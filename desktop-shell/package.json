@@ -1,0 +1,21 @@
+{
+  "name": "printease-desktop-shell",
+  "version": "0.1.0",
+  "private": true,
+  "main": "main.js",
+  "files": [
+    "main.js",
+    "preload.js",
+    "agent/",
+    "printer/",
+    "local/",
+    "package.json"
+  ],
+  "scripts": {
+    "dev": "electron .",
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^33.0.0"
+  }
+}
