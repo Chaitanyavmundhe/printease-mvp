@@ -14,7 +14,7 @@ Vercel frontend:
 VITE_API_URL=https://printease-backend-byex.onrender.com
 ```
 
-Do not include `/api` at the end of `VITE_API_URL`.
+Recommended: do not include `/api` at the end of `VITE_API_URL`. The frontend URL joiner also handles a base URL that already ends in `/api`.
 
 Render backend:
 
@@ -28,6 +28,18 @@ PGSSLMODE=require
 ```
 
 Never commit real `.env` files. Keep only `.env.example` files in git.
+
+## CORS Origins
+
+The backend keeps `credentials: true` and does not use a wildcard origin. It allows:
+
+- `FRONTEND_URL` from Render, normally `https://printhubdesi.vercel.app`
+- `https://printhubdesi.vercel.app`
+- `http://localhost:5173`
+- `http://127.0.0.1:5173`
+- HTTPS Vercel preview origins ending in `.vercel.app` whose hostname includes `printease`, `printhubdesi`, or `printease-mvp`
+
+This lets production, Vercel previews, local Vite, and the Electron dev shell call the same Render backend without allowing random websites.
 
 ## Health Checks
 
@@ -72,16 +84,37 @@ Fix:
 - Check the browser Network tab.
 - Check Render logs for `[CORS BLOCKED]`.
 - Set `FRONTEND_URL=https://printhubdesi.vercel.app` on Render.
+- Vercel previews and local Vite at `http://localhost:5173` are allowed by backend code; no backend URL should point to localhost.
+
+### CORS verification commands
+
+```bash
+curl -i https://printease-backend-byex.onrender.com/api/health
+
+curl -i \
+  -H "Origin: https://printhubdesi.vercel.app" \
+  https://printease-backend-byex.onrender.com/api/health
+
+curl -i \
+  -H "Origin: http://localhost:5173" \
+  https://printease-backend-byex.onrender.com/api/health
+
+curl -i \
+  -H "Origin: https://YOUR-VERCEL-PREVIEW-URL.vercel.app" \
+  https://printease-backend-byex.onrender.com/api/health
+```
+
+Allowed origin checks should return `Access-Control-Allow-Origin` matching the request origin.
 
 ### `/api/api/health` issue
 
 Cause:
 
-- `VITE_API_URL` includes `/api` and frontend endpoints also start with `/api`.
+- Older frontend code may double-prefix endpoints if `VITE_API_URL` includes `/api` and endpoint paths also start with `/api`.
 
 Fix:
 
-- Set `VITE_API_URL=https://printease-backend-byex.onrender.com`.
+- Keep the current `joinApiUrl` helper in `frontend/src/services/api.js`, or set `VITE_API_URL=https://printease-backend-byex.onrender.com`.
 
 ### JWT secret issue
 

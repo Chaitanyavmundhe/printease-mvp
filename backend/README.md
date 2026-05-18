@@ -58,6 +58,14 @@ Build Command: npm install
 Start Command: npm start
 ```
 
+Required Render environment:
+
+```text
+FRONTEND_URL=https://printhubdesi.vercel.app
+```
+
+The backend CORS allowlist also permits local Vite development at `http://localhost:5173` / `http://127.0.0.1:5173` and PrintEase-related HTTPS Vercel preview URLs ending in `.vercel.app`. It does not use `*` with credentials.
+
 ## Database Files
 
 - `src/db/schema.sql` creates the tables.

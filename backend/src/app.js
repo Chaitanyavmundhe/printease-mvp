@@ -16,23 +16,55 @@ import desktopRoutes from './routes/desktopRoutes.js';
 
 const app = express();
 
-const allowedOrigins = [
+function normalizeOrigin(origin) {
+  if (!origin) return null;
+
+  try {
+    return new URL(origin).origin;
+  } catch {
+    return String(origin).replace(/\/+$/, '');
+  }
+}
+
+const allowedOrigins = new Set([
   process.env.FRONTEND_URL,
-  'https://printhubdesi.vercel.app'
-].filter(Boolean);
+  'https://printhubdesi.vercel.app',
+  'http://localhost:5173',
+  'http://127.0.0.1:5173'
+].map(normalizeOrigin).filter(Boolean));
+
+function isAllowedVercelPreviewOrigin(origin) {
+  try {
+    const url = new URL(origin);
+
+    if (url.protocol !== 'https:') return false;
+    if (!url.hostname.endsWith('.vercel.app')) return false;
+
+    return (
+      url.hostname.includes('printease') ||
+      url.hostname.includes('printhubdesi') ||
+      url.hostname.includes('printease-mvp')
+    );
+  } catch {
+    return false;
+  }
+}
 
 app.use(helmet());
 app.use(cors({
   origin(origin, callback) {
     if (!origin) return callback(null, true);
 
-    if (allowedOrigins.includes(origin)) {
+    const requestOrigin = normalizeOrigin(origin);
+
+    if (allowedOrigins.has(requestOrigin) || isAllowedVercelPreviewOrigin(requestOrigin)) {
       return callback(null, true);
     }
 
     console.error('[CORS BLOCKED]', {
       origin,
-      allowedOrigins
+      allowedOrigins: [...allowedOrigins],
+      note: 'Allowed origins include production Vercel, local Vite dev, and PrintEase Vercel preview URLs over HTTPS.'
     });
 
     return callback(new Error(`CORS blocked for origin: ${origin}`));
