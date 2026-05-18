@@ -66,6 +66,7 @@ export function mapDocument(row) {
     fileUrl: row.file_url,
     storagePath: row.storage_path || null,
     fileSha256: row.file_sha256 || null,
+    pageCount: row.page_count === null || row.page_count === undefined ? null : Number(row.page_count),
     createdAt: timestamp(row.created_at)
   };
 }
@@ -81,6 +82,9 @@ export function mapOrder(row) {
     documentId: row.document_url || row.document_id || null,
     documentName: row.document_name,
     documentUrl: row.document_url || null,
+    documentPageCount: row.document_page_count === null || row.document_page_count === undefined
+      ? null
+      : Number(row.document_page_count),
     pages: row.pages,
     copies: row.copies,
     colorType: row.color_type,
@@ -384,9 +388,10 @@ export async function createDocument(document) {
        file_url,
        storage_path,
        file_sha256,
+       page_count,
        created_at
      )
-     values ($1, $2, $3, $4, $5, $6, $7, $8, coalesce($9, now()))
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, coalesce($10, now()))
      returning *`,
     [
       document.id,
@@ -397,10 +402,18 @@ export async function createDocument(document) {
       document.fileUrl || null,
       document.storagePath || null,
       document.fileSha256 || null,
+      document.pageCount || null,
       document.createdAt || null
     ]
   );
 
+  return mapDocument(result.rows[0]);
+}
+
+export async function findDocumentById(documentId, client) {
+  if (!isUuid(documentId)) return null;
+
+  const result = await executor(client).query('select * from documents where id = $1', [documentId]);
   return mapDocument(result.rows[0]);
 }
 
@@ -763,6 +776,18 @@ export async function listAgentsByHub(hubId, client) {
   return result.rows.map(mapAgent);
 }
 
+export async function listAllAgentsByHub(hubId, client) {
+  const result = await executor(client).query(
+    `select *
+     from agents
+     where hub_id = $1
+     order by coalesce(last_seen_at, created_at) desc`,
+    [hubId]
+  );
+
+  return result.rows.map(mapAgent);
+}
+
 export async function findAgentByIdAndHub(agentId, hubId, client) {
   const result = await executor(client).query(
     'select * from agents where id = $1 and hub_id = $2 and revoked_at is null',
@@ -866,7 +891,8 @@ export async function findOrderWithDocumentForHub(orderId, hubId, client) {
        d.file_url as document_file_url,
        d.file_sha256 as document_file_sha256,
        d.file_type as document_file_type,
-       d.storage_path as document_storage_path
+       d.storage_path as document_storage_path,
+       d.page_count as document_page_count
      from print_orders po
      left join documents d on d.id::text = po.document_url
      where po.id = $1 and po.hub_id = $2`,
@@ -903,6 +929,99 @@ export async function createPrintJob(job, client) {
   return mapPrintJob(result.rows[0]);
 }
 
+export async function findActivePrintJobByOrder(orderId, hubId, client) {
+  const result = await executor(client).query(
+    `select *
+     from print_jobs
+     where order_id = $1
+       and hub_id = $2
+       and status in ('queued', 'assigned', 'accepted', 'downloading', 'printing', 'completed')
+     order by created_at desc
+     limit 1`,
+    [orderId, hubId]
+  );
+
+  return mapPrintJob(result.rows[0]);
+}
+
+export async function findBestAvailableAgentPrinterForHub(hubId, client) {
+  const result = await executor(client).query(
+    `select
+       a.id as agent_id,
+       a.hub_id as agent_hub_id,
+       a.agent_name,
+       a.device_id,
+       a.platform,
+       a.version,
+       a.status as agent_status,
+       a.paused,
+       a.last_seen_at,
+       a.paired_at,
+       a.revoked_at,
+       a.created_at as agent_created_at,
+       p.id as printer_id,
+       p.hub_id as printer_hub_id,
+       p.printer_name,
+       p.system_printer_id,
+       p.status as printer_status,
+       p.is_default,
+       p.last_checked_at,
+       p.created_at as printer_created_at
+     from agents a
+     join agent_printers p on p.agent_id = a.id and p.hub_id = a.hub_id
+     where a.hub_id = $1
+       and a.revoked_at is null
+       and a.paused = false
+       and a.last_seen_at >= now() - interval '45 seconds'
+       and lower(coalesce(p.status, 'unknown')) not in (
+         'paused', 'disabled', 'stopped', 'offline', 'unable', 'disconnected'
+       )
+     order by
+       p.is_default desc,
+       case
+         when lower(coalesce(p.status, '')) in ('idle', 'available', 'enabled') then 0
+         when lower(coalesce(p.status, '')) = 'printing' then 1
+         when lower(coalesce(p.status, '')) = 'unknown' then 2
+         else 3
+       end asc,
+       a.last_seen_at desc,
+       p.last_checked_at desc nulls last
+     limit 1`,
+    [hubId]
+  );
+
+  const row = result.rows[0];
+  if (!row) return null;
+
+  return {
+    agent: mapAgent({
+      id: row.agent_id,
+      hub_id: row.agent_hub_id,
+      agent_name: row.agent_name,
+      device_id: row.device_id,
+      platform: row.platform,
+      version: row.version,
+      status: row.agent_status,
+      paused: row.paused,
+      last_seen_at: row.last_seen_at,
+      paired_at: row.paired_at,
+      revoked_at: row.revoked_at,
+      created_at: row.agent_created_at
+    }),
+    printer: mapAgentPrinter({
+      id: row.printer_id,
+      agent_id: row.agent_id,
+      hub_id: row.printer_hub_id,
+      printer_name: row.printer_name,
+      system_printer_id: row.system_printer_id,
+      status: row.printer_status,
+      is_default: row.is_default,
+      last_checked_at: row.last_checked_at,
+      created_at: row.printer_created_at
+    })
+  };
+}
+
 export async function listPrintJobsByHub(hubId, client) {
   const result = await executor(client).query(
     `select *
@@ -925,7 +1044,8 @@ export async function listDesktopOrdersForAgent(hubId, since = null, client) {
        d.file_type as document_file_type,
        d.file_size as document_file_size,
        d.file_sha256 as document_file_sha256,
-       d.storage_path as document_storage_path
+       d.storage_path as document_storage_path,
+       d.page_count as document_page_count
      from print_orders po
      left join documents d on d.id::text = po.document_url
      where po.hub_id = $1
@@ -942,7 +1062,10 @@ export async function listDesktopOrdersForAgent(hubId, since = null, client) {
       fileType: row.document_file_type || null,
       fileSize: row.document_file_size || null,
       fileSha256: row.document_file_sha256 || null,
-      storagePath: row.document_storage_path || null
+      storagePath: row.document_storage_path || null,
+      pageCount: row.document_page_count === null || row.document_page_count === undefined
+        ? null
+        : Number(row.document_page_count)
     }
   }));
 }

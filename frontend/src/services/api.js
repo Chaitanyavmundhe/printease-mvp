@@ -143,6 +143,10 @@ export function getHubAgents() {
   return apiRequest("/api/hub-agents");
 }
 
+export function getHubAgentSummary() {
+  return apiRequest("/api/hub-agents/summary");
+}
+
 export function pairAgent(pairingCode) {
   return apiRequest("/api/hub-agents/pair", {
     method: "POST",
@@ -160,6 +164,16 @@ export function resumeHubAgent(agentId) {
   return apiRequest(`/api/hub-agents/${agentId}/resume`, {
     method: "POST",
   });
+}
+
+export function revokeHubAgent(agentId) {
+  return apiRequest(`/api/hub-agents/${agentId}/revoke`, {
+    method: "POST",
+  });
+}
+
+export function listHubPrintJobs() {
+  return apiRequest("/api/hub-agents/print-jobs");
 }
 
 export function sendOrderToAgent(orderId, target = {}) {

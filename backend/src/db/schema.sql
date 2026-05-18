@@ -59,11 +59,13 @@ create table if not exists documents (
   file_url text not null,
   file_sha256 text,
   storage_path text,
+  page_count integer,
   created_at timestamptz not null default now()
 );
 
 alter table documents add column if not exists file_sha256 text;
 alter table documents add column if not exists storage_path text;
+alter table documents add column if not exists page_count integer;
 
 create table if not exists print_orders (
   id uuid primary key default gen_random_uuid(),

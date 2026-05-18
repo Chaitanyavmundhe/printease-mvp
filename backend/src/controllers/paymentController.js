@@ -1,11 +1,19 @@
 import {
+  createPrintJob,
   createPayment as savePayment,
+  findActivePrintJobByOrder,
+  findBestAvailableAgentPrinterForHub,
   findOrderByIdOrCode,
+  findOrderWithDocumentForHub,
   findPaymentById,
+  insertPrintJobEvent,
   updateOrderPayment,
+  updateOrderStatus,
   updatePayment,
   withTransaction
 } from '../db/repository.js';
+import { OFFICIAL_BACKEND_URL } from '../config/agent.js';
+import { getSupabaseBucketName } from '../config/supabase.js';
 import { generateId } from '../utils/generateCode.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 
@@ -15,6 +23,89 @@ function canAccessOrder(user, order) {
   if (user.role === 'user') return order.userId === user.id;
   if (user.role === 'hub') return Boolean(user.centreId && order.centreId === user.centreId);
   return false;
+}
+
+function isPrintableOrderStatus(status) {
+  const normalized = String(status || '').toLowerCase();
+  return !['printing', 'ready for pickup', 'collected', 'printing failed'].includes(normalized);
+}
+
+async function autoQueuePrintJobAfterPayment(order, client) {
+  const hubId = order.centreId;
+  const orderWithDocument = await findOrderWithDocumentForHub(order.id, hubId, client);
+
+  if (!orderWithDocument) {
+    return {
+      queued: false,
+      message: 'Payment verified. Hub can print manually.'
+    };
+  }
+
+  const activeJob = await findActivePrintJobByOrder(order.id, hubId, client);
+  if (activeJob) {
+    return {
+      queued: false,
+      existingPrintJob: activeJob,
+      message: 'Payment verified. Existing print job found; no duplicate was created.'
+    };
+  }
+
+  const storagePath = orderWithDocument.document_storage_path;
+  const fileSha256 = orderWithDocument.document_file_sha256;
+  const fileType = orderWithDocument.document_file_type || 'application/pdf';
+
+  if (!storagePath || !fileSha256 || fileType !== 'application/pdf' || !isPrintableOrderStatus(orderWithDocument.status)) {
+    return {
+      queued: false,
+      message: 'Payment verified. Order is not ready for desktop PDF printing; hub can print manually.'
+    };
+  }
+
+  const target = await findBestAvailableAgentPrinterForHub(hubId, client);
+  if (!target?.agent || !target?.printer) {
+    return {
+      queued: false,
+      message: 'Payment verified. No online desktop printer available; hub can print manually.'
+    };
+  }
+
+  const printJob = await createPrintJob({
+    id: generateId(),
+    orderId: order.id,
+    hubId,
+    agentId: target.agent.id,
+    printerName: target.printer.printerName,
+    fileUrl: `private://${getSupabaseBucketName()}/${storagePath}`,
+    fileSha256,
+    fileType,
+    copies: orderWithDocument.copies,
+    paperSize: 'A4',
+    colorMode: orderWithDocument.color_type || 'bw',
+    sourceBackendUrl: OFFICIAL_BACKEND_URL
+  }, client);
+
+  await insertPrintJobEvent({
+    printJobId: printJob.id,
+    agentId: target.agent.id,
+    eventType: 'auto_queued_after_payment',
+    newStatus: 'queued',
+    message: 'Payment verified and job auto-queued for desktop agent',
+    rawStatus: {
+      orderId: order.id,
+      hubId,
+      agentId: target.agent.id,
+      printerName: target.printer.printerName
+    }
+  }, client);
+
+  const queuedOrder = await updateOrderStatus(order.id, hubId, 'Queued for Printing', client);
+
+  return {
+    queued: true,
+    printJob,
+    order: queuedOrder,
+    message: 'Payment verified. Print job queued for online desktop printer.'
+  };
 }
 
 export const createPayment = asyncHandler(async (req, res) => {
@@ -92,12 +183,18 @@ export const verifyPayment = asyncHandler(async (req, res) => {
       verifiedAt: new Date().toISOString()
     }, client);
     const verifiedOrder = await updateOrderPayment(order.id, 'verified', 'Payment Verified', client);
-    return { payment: verifiedPayment, order: verifiedOrder };
+    const autoQueue = await autoQueuePrintJobAfterPayment(verifiedOrder, client);
+    return {
+      payment: verifiedPayment,
+      order: autoQueue.order || verifiedOrder,
+      autoQueue,
+      printJob: autoQueue.printJob || autoQueue.existingPrintJob || null
+    };
   });
 
   res.json({
     success: true,
-    message: 'Payment verified in demo mode',
+    message: result.autoQueue?.message || 'Payment verified in demo mode',
     ...result,
     securityNote: 'Real project must verify Razorpay signature/webhook on backend.'
   });

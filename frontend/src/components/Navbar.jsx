@@ -58,7 +58,10 @@ export default function Navbar({
             <NavButton active={page === "userDashboard"} icon={<User size={16} />} onClick={() => navigate("userDashboard")}>User Dashboard</NavButton>
           )}
           {currentUser?.role === "hub" && (
-            <NavButton active={page === "hubDashboard"} icon={<Building2 size={16} />} onClick={() => navigate("hubDashboard")}>Hub Dashboard</NavButton>
+            <>
+              <NavButton active={page === "hubDashboard"} icon={<Building2 size={16} />} onClick={() => navigate("hubDashboard")}>Hub Dashboard</NavButton>
+              <NavButton active={page === "hubPrinters"} icon={<Printer size={16} />} onClick={() => navigate("hubPrinters")}>Printers & Agents</NavButton>
+            </>
           )}
           {desktopAvailable && (
             <NavButton active={page === "desktopAgent"} icon={<Printer size={16} />} onClick={() => navigate("desktopAgent")}>Desktop Agent</NavButton>
@@ -93,6 +96,7 @@ export default function Navbar({
                   {currentUser.role === "hub" && (
                     <>
                       <MenuItem icon={<Building2 size={16} />} onClick={() => navigate("hubDashboard")}>Hub Dashboard</MenuItem>
+                      <MenuItem icon={<Printer size={16} />} onClick={() => navigate("hubPrinters")}>Printers & Agents</MenuItem>
                       <MenuItem icon={<Settings size={16} />} onClick={() => navigate("hubPricing")}>Pricing & Payment</MenuItem>
                     </>
                   )}

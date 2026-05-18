@@ -7,6 +7,7 @@ import {
   insertPrintJobEvent,
   listAgentPrintersByAgent,
   listAgentPrintersByHub,
+  listAllAgentsByHub,
   listAgentsByHub,
   listPrintJobsByHub,
   revokeAgent,
@@ -18,6 +19,7 @@ import {
 import { OFFICIAL_BACKEND_URL } from '../config/agent.js';
 import { getSupabaseBucketName } from '../config/supabase.js';
 import { hashAgentSecret } from '../utils/agentCrypto.js';
+import { buildHubAgentAnalytics, decorateAgent, decoratePrinter } from '../utils/hubAgentAnalytics.js';
 import { generateId } from '../utils/generateCode.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 
@@ -34,18 +36,6 @@ function isPrintableOrderStatus(status) {
   return !['printing', 'ready for pickup', 'collected', 'printing failed'].includes(normalized);
 }
 
-function withLiveAgentStatus(agent) {
-  if (!agent?.lastSeenAt || agent.paused || agent.status === 'revoked') {
-    return agent;
-  }
-
-  const lastSeenMs = new Date(agent.lastSeenAt).getTime();
-  if (Number.isNaN(lastSeenMs)) return agent;
-
-  const isStale = Date.now() - lastSeenMs > 45 * 1000;
-  return isStale ? { ...agent, status: 'offline' } : agent;
-}
-
 export const listHubAgents = asyncHandler(async (req, res) => {
   const hubId = getHubId(req);
   const [agents, printers, printJobs] = await Promise.all([
@@ -56,9 +46,27 @@ export const listHubAgents = asyncHandler(async (req, res) => {
 
   res.json({
     success: true,
-    agents: agents.map(withLiveAgentStatus),
-    printers,
-    printJobs
+    agents: agents.map(decorateAgent),
+    printers: printers.map(decoratePrinter),
+    printJobs,
+    analytics: buildHubAgentAnalytics(agents, printers, printJobs)
+  });
+});
+
+export const getHubAgentSummary = asyncHandler(async (req, res) => {
+  const hubId = getHubId(req);
+  const [agents, printers, printJobs] = await Promise.all([
+    listAllAgentsByHub(hubId),
+    listAgentPrintersByHub(hubId),
+    listPrintJobsByHub(hubId)
+  ]);
+
+  res.json({
+    success: true,
+    agents: agents.map(decorateAgent),
+    printers: printers.map(decoratePrinter),
+    printJobs,
+    analytics: buildHubAgentAnalytics(agents, printers, printJobs)
   });
 });
 

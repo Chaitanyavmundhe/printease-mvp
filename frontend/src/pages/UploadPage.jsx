@@ -48,9 +48,9 @@ export default function UploadPage({
 
         <div className="mt-6 grid gap-4 md:grid-cols-2">
           <label className="cursor-pointer rounded-2xl border border-dashed bg-slate-50 p-6 text-center hover:bg-slate-100 md:col-span-2">
-            <input type="file" accept="application/pdf,image/png,image/jpeg" onChange={handleFileChange} className="hidden" />
+            <input type="file" accept="application/pdf" onChange={handleFileChange} className="hidden" />
             {documentFile ? <FileText className="mx-auto mb-3" size={36} /> : <Upload className="mx-auto mb-3" size={36} />}
-            <p className="font-semibold">{documentFile ? documentFile.name : "Choose PDF, PNG, or JPG"}</p>
+            <p className="font-semibold">{documentFile ? documentFile.name : "Choose PDF"}</p>
             <p className="text-sm text-slate-500">{documentFile ? `${Math.ceil(documentFile.size / 1024)} KB selected` : "Maximum file size 10 MB"}</p>
           </label>
 

@@ -4,7 +4,7 @@ import Card from "../components/Card";
 import Metric from "../components/Metric";
 import StatusBadge from "../components/StatusBadge";
 import { hubStatusOptions } from "../data/demoData";
-import { getHubAgents, pairAgent, sendOrderToAgent } from "../services/api";
+import { getHubAgentSummary, pairAgent, sendOrderToAgent } from "../services/api";
 
 function normalizeStatus(status) {
   return String(status || "").toLowerCase().replace(/\s+/g, "_");
@@ -17,6 +17,12 @@ function isPaymentVerified(order) {
 
 const CLOSED_STATUSES = new Set(["collected", "refund_requested", "printing_failed", "cancelled"]);
 const AGENT_LOCKED_STATUSES = new Set(["sent_to_agent", "queued_for_printing", "printing", "ready_for_pickup", "collected", "printing_failed"]);
+const EMPTY_ANALYTICS = {
+  onlineAgents: 0,
+  availablePrinters: 0,
+  queuedJobs: 0,
+  failedJobsToday: 0,
+};
 
 function formatDateTime(value) {
   if (!value) return "Not seen yet";
@@ -40,6 +46,7 @@ export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus,
   const [agents, setAgents] = useState([]);
   const [agentPrinters, setAgentPrinters] = useState([]);
   const [printJobs, setPrintJobs] = useState([]);
+  const [agentAnalytics, setAgentAnalytics] = useState(EMPTY_ANALYTICS);
   const [agentLoading, setAgentLoading] = useState(false);
   const [agentError, setAgentError] = useState("");
   const [pairingCode, setPairingCode] = useState("");
@@ -58,8 +65,8 @@ export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus,
   const agentStatus = primaryAgent ? (primaryAgent.paused ? "Paused" : primaryAgent.status || "Offline") : "Offline";
   const routeableAgents = useMemo(() => {
     return agents.filter((agent) => {
-      const status = normalizeStatus(agent.status);
-      return !agent.paused && status !== "revoked" && status !== "offline";
+      const status = normalizeStatus(agent.liveStatus || agent.status);
+      return !agent.paused && status === "online";
     });
   }, [agents]);
   const printersByAgent = useMemo(() => {
@@ -72,6 +79,7 @@ export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus,
     return grouped;
   }, [agentPrinters]);
   const selectedAgentPrinters = printersByAgent.get(selectedAgentId) || [];
+  const hasOnlinePrinter = routeableAgents.some((agent) => (printersByAgent.get(agent.id) || []).length > 0);
   const jobByOrderId = useMemo(() => {
     return new Map(printJobs.map((job) => [job.orderId, job]));
   }, [printJobs]);
@@ -81,10 +89,11 @@ export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus,
     setAgentError("");
 
     try {
-      const data = await getHubAgents();
+      const data = await getHubAgentSummary();
       setAgents(Array.isArray(data.agents) ? data.agents : []);
       setAgentPrinters(Array.isArray(data.printers) ? data.printers : []);
       setPrintJobs(Array.isArray(data.printJobs) ? data.printJobs : []);
+      setAgentAnalytics(data.analytics || EMPTY_ANALYTICS);
     } catch (error) {
       setAgentError(error.message || "Could not load agent status.");
     } finally {
@@ -200,26 +209,43 @@ export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus,
           <div>
             <div className="flex items-center gap-2">
               <Wifi size={20} />
-              <h3 className="text-xl font-bold">PrintEase Agent</h3>
+              <h3 className="text-xl font-bold">Printer Agent</h3>
             </div>
             <div className="mt-4 grid gap-3 text-sm text-slate-600 sm:grid-cols-2 lg:grid-cols-4">
               <div>
-                <p className="font-semibold text-slate-900">Agent status</p>
-                <StatusBadge>{agentStatus}</StatusBadge>
+                <p className="font-semibold text-slate-900">Online devices</p>
+                <p>{agentAnalytics.onlineAgents}</p>
               </div>
               <div>
-                <p className="font-semibold text-slate-900">Connected printer</p>
-                <p>{defaultPrinter?.printerName || "Not selected"}</p>
+                <p className="font-semibold text-slate-900">Available printers</p>
+                <p>{agentAnalytics.availablePrinters}</p>
               </div>
               <div>
-                <p className="font-semibold text-slate-900">Last seen</p>
-                <p>{formatDateTime(primaryAgent?.lastSeenAt)}</p>
+                <p className="font-semibold text-slate-900">Queued jobs</p>
+                <p>{agentAnalytics.queuedJobs}</p>
               </div>
               <div>
-                <p className="font-semibold text-slate-900">Agent ID</p>
-                <p className="break-all">{primaryAgent?.id || "Not paired"}</p>
+                <p className="font-semibold text-slate-900">Failed today</p>
+                <p>{agentAnalytics.failedJobsToday}</p>
               </div>
             </div>
+            <div className="mt-4 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
+              <p>
+                Primary device: <b>{primaryAgent?.agentName || primaryAgent?.deviceId || "Not paired"}</b>{" "}
+                <StatusBadge>{agentStatus}</StatusBadge>
+              </p>
+              <p className="mt-2">Default printer: <b>{defaultPrinter?.printerName || "Not selected"}</b></p>
+              <p className="mt-2">Last seen: {formatDateTime(primaryAgent?.lastSeenAt)}</p>
+            </div>
+            {routeableAgents.length > 0 && (
+              <div className="mt-4 flex flex-wrap gap-2 text-xs text-slate-600">
+                {routeableAgents.slice(0, 3).map((agent) => (
+                  <span key={agent.id} className="rounded-full border bg-white px-3 py-1">
+                    {agent.agentName || agent.deviceId || agent.id} · {(printersByAgent.get(agent.id) || []).length} printers
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="flex flex-col gap-3 sm:min-w-[320px]">
@@ -244,6 +270,12 @@ export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus,
               className="inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2 font-semibold"
             >
               <RefreshCw size={16} /> Refresh Agent Status
+            </button>
+            <button
+              onClick={() => navigate("hubPrinters")}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 py-2 font-semibold text-white"
+            >
+              <Printer size={16} /> Open Printer Agent Page
             </button>
             {(pairingMessage || agentError) && (
               <p className={agentError ? "text-sm font-semibold text-rose-600" : "text-sm font-semibold text-emerald-700"}>
@@ -295,13 +327,22 @@ export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus,
                     <td>
                       <div className="flex flex-col gap-2">
                         {job && <StatusBadge>{job.status}</StatusBadge>}
-                        {sendEnabled && (
+                        {job && normalizeStatus(job.status) !== "failed" && <p className="text-xs text-slate-500">Queued for Printing</p>}
+                        {sendEnabled && hasOnlinePrinter && (
                           <button
                             onClick={() => openSendModal(item)}
                             disabled={sendingOrderId === orderId}
                             className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-700 px-3 py-2 font-semibold text-white disabled:bg-slate-300"
                           >
                             <Send size={15} /> {sendingOrderId === orderId ? "Sending" : "Send to Printer"}
+                          </button>
+                        )}
+                        {sendEnabled && !hasOnlinePrinter && (
+                          <button
+                            onClick={() => navigate("hubPrinters")}
+                            className="rounded-xl border border-amber-200 px-3 py-2 text-left text-xs font-semibold text-amber-800"
+                          >
+                            No online desktop printer. Open Printer Agent.
                           </button>
                         )}
                       </div>

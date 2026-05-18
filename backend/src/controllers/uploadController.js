@@ -4,6 +4,7 @@ import { createDocument } from '../db/repository.js';
 import { generateId } from '../utils/generateCode.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { getSupabaseAdminClient, getSupabaseBucketName } from '../config/supabase.js';
+import { getPdfPageCount } from '../utils/pdfPageCount.js';
 
 function safeFileName(name) {
   const ext = path.extname(name || '').toLowerCase();
@@ -30,6 +31,16 @@ export const uploadDocument = asyncHandler(async (req, res) => {
 
   const supabase = getSupabaseAdminClient();
   const bucket = getSupabaseBucketName();
+  let pageCount;
+
+  try {
+    pageCount = await getPdfPageCount(req.file.buffer);
+  } catch {
+    return res.status(400).json({
+      success: false,
+      message: 'Could not read PDF page count. Please upload a valid PDF.'
+    });
+  }
 
   const documentId = generateId();
   const originalName = req.file.originalname || 'document.pdf';
@@ -67,6 +78,7 @@ export const uploadDocument = asyncHandler(async (req, res) => {
     fileUrl: `private://${bucket}/${storagePath}`,
     storagePath,
     fileSha256,
+    pageCount,
     createdAt: new Date().toISOString()
   });
 

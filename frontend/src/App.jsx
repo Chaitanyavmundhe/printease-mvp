@@ -7,6 +7,7 @@ import AuthPage from "./pages/AuthPage";
 import UserDashboard from "./pages/UserDashboard";
 import HubDashboard from "./pages/HubDashboard";
 import HubPricingPage from "./pages/HubPricingPage";
+import HubPrinterAgentPage from "./pages/HubPrinterAgentPage";
 import DesktopAgentPage from "./pages/DesktopAgentPage";
 import CentreCodePage from "./pages/CentreCodePage";
 import UploadPage from "./pages/UploadPage";
@@ -24,6 +25,7 @@ const ROUTES = {
   userDashboard: "/user/dashboard",
   hubDashboard: "/hub/dashboard",
   hubPricing: "/hub/pricing",
+  hubPrinters: "/hub/printers",
   desktopAgent: "/desktop-agent",
   centre: "/centre",
   upload: "/upload",
@@ -579,7 +581,7 @@ export default function App() {
     }
 
     if (!documentFile) {
-      setPaymentError("Please upload a PDF, PNG, or JPG document first.");
+      setPaymentError("Please upload a PDF document first.");
       navigate("upload");
       return;
     }
@@ -603,13 +605,18 @@ export default function App() {
         body: formData,
       });
 
+      const trustedPageCount = Number(uploadData.document?.pageCount) || pages;
+      if (trustedPageCount !== pages) {
+        setPages(trustedPageCount);
+      }
+
       const orderData = await apiRequest("/api/orders", {
         method: "POST",
         body: JSON.stringify({
           centreCode: selectedCentre.code,
           documentId: uploadData.document?.id,
           documentName: uploadData.document?.fileName || documentName || documentFile.name,
-          pages,
+          pages: trustedPageCount,
           copies,
           colorType,
           sideType,
@@ -782,6 +789,16 @@ export default function App() {
                 <HubPricingPage currentHub={currentHub} updateCentrePrice={updateCentrePrice} updateCentrePayment={updateCentrePayment} />
               ) : (
                 <RouteNotice title="Print Hub Login Required" message="Please login as a print hub to manage pricing and payment details." actionLabel="Login as Print Hub" onAction={() => startLogin("hub")} />
+              )
+            }
+          />
+          <Route
+            path={ROUTES.hubPrinters}
+            element={
+              currentUser?.role === "hub" ? (
+                <HubPrinterAgentPage navigate={navigate} />
+              ) : (
+                <RouteNotice title="Print Hub Login Required" message="Please login as a print hub to manage printer agents." actionLabel="Login as Print Hub" onAction={() => startLogin("hub")} />
               )
             }
           />

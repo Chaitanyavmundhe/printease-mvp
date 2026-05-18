@@ -2,6 +2,7 @@ import {
   createOrder as saveOrder,
   findCentreByCode,
   findCentreById,
+  findDocumentById,
   findOrderByIdOrCode,
   listOrdersByCentre,
   listOrdersByUser,
@@ -25,7 +26,7 @@ export const createOrder = asyncHandler(async (req, res) => {
   } = req.body;
 
   const trimmedCentreCode = typeof centreCode === 'string' ? centreCode.trim() : '';
-  const pageCount = Number(pages);
+  const submittedPageCount = Number(pages);
   const copyCount = Number(copies);
   const allowedColorTypes = ['bw', 'color'];
   const allowedSideTypes = ['single', 'double'];
@@ -34,11 +35,31 @@ export const createOrder = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: 'Centre code or hub ID is required' });
   }
 
-  if (!documentName || !pages || !copies) {
-    return res.status(400).json({ success: false, message: 'Document name, pages, and copies are required' });
+  if ((!documentName && !documentId) || !copies) {
+    return res.status(400).json({ success: false, message: 'Document name or document ID, and copies are required' });
   }
 
-  if (!Number.isFinite(pageCount) || pageCount <= 0 || !Number.isFinite(copyCount) || copyCount <= 0) {
+  let document = null;
+  if (documentId) {
+    document = await findDocumentById(documentId);
+
+    if (!document) {
+      return res.status(404).json({ success: false, message: 'Uploaded document not found' });
+    }
+
+    if (
+      document.userId &&
+      req.user?.role !== 'hub' &&
+      req.user?.role !== 'admin' &&
+      document.userId !== req.user?.id
+    ) {
+      return res.status(403).json({ success: false, message: 'You are not allowed to use this uploaded document' });
+    }
+  }
+
+  const trustedPageCount = document?.pageCount || submittedPageCount;
+
+  if (!Number.isFinite(trustedPageCount) || trustedPageCount <= 0 || !Number.isFinite(copyCount) || copyCount <= 0) {
     return res.status(400).json({ success: false, message: 'Pages and copies must be positive numbers' });
   }
 
@@ -51,7 +72,7 @@ export const createOrder = asyncHandler(async (req, res) => {
     return res.status(404).json({ success: false, message: 'Centre not found' });
   }
 
-  const price = calculatePrice({ centre, pages: pageCount, copies: copyCount, colorType, sideType, watermarkEnabled });
+  const price = calculatePrice({ centre, pages: trustedPageCount, copies: copyCount, colorType, sideType, watermarkEnabled });
   const orderCode = generateOrderCode(centre.centreCode);
 
   const order = await saveOrder({
@@ -60,8 +81,8 @@ export const createOrder = asyncHandler(async (req, res) => {
     userId: req.user?.id || null,
     centreId: centre.id,
     documentId: documentId || null,
-    documentName,
-    pages: pageCount,
+    documentName: documentName || document?.fileName || 'Uploaded Document',
+    pages: trustedPageCount,
     copies: copyCount,
     colorType,
     sideType,
