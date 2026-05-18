@@ -71,3 +71,17 @@ export async function getDesktopStatus() {
     };
   }
 }
+
+export async function checkBackendHealth() {
+  const bridge = getBridge();
+  if (!bridge?.checkBackendHealth) return desktopFallback();
+
+  try {
+    return await bridge.checkBackendHealth();
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message || "Could not check Render backend health.",
+    };
+  }
+}

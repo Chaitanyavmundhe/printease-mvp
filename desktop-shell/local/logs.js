@@ -10,7 +10,7 @@ function sanitize(value) {
 
   return JSON.parse(
     JSON.stringify(value, (key, nestedValue) => {
-      if (/token|secret|password|signed/i.test(key)) return "[redacted]";
+      if (/token|secret|password|authorization|signed/i.test(key)) return "[redacted]";
       if (typeof nestedValue === "string" && nestedValue.includes("?") && /url/i.test(key)) {
         return nestedValue.split("?")[0];
       }
@@ -19,20 +19,14 @@ function sanitize(value) {
   );
 }
 
-function logInfo(message, details = {}) {
+export function logInfo(message, details = {}) {
   console.info(`[PrintEase Desktop] ${message}`, sanitize(details));
 }
 
-function logWarn(message, details = {}) {
+export function logWarn(message, details = {}) {
   console.warn(`[PrintEase Desktop] ${message}`, sanitize(details));
 }
 
-function logError(message, error = {}) {
+export function logError(message, error = {}) {
   console.error(`[PrintEase Desktop] ${message}`, sanitize(error));
 }
-
-module.exports = {
-  logInfo,
-  logWarn,
-  logError,
-};

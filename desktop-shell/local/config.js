@@ -1,27 +1,19 @@
 let config = {};
 
-function removeSensitiveFields(value) {
-  const nextConfig = { ...value };
-
-  for (const key of Object.keys(nextConfig)) {
-    if (/token|secret|password|signed/i.test(key)) {
-      delete nextConfig[key];
-    }
-  }
-
-  return nextConfig;
-}
-
-function loadConfig() {
+export function loadConfig() {
   return { ...config };
 }
 
-function saveConfig(nextConfig = {}) {
-  config = removeSensitiveFields(nextConfig);
+export function saveConfig(nextConfig = {}) {
+  // Do not store secrets here. Future tokens must go to the OS keychain, not plain files.
+  const safeConfig = { ...nextConfig };
+
+  for (const key of Object.keys(safeConfig)) {
+    if (/token|secret|password|authorization|signed/i.test(key)) {
+      delete safeConfig[key];
+    }
+  }
+
+  config = safeConfig;
   return loadConfig();
 }
-
-module.exports = {
-  loadConfig,
-  saveConfig,
-};

@@ -1,9 +1,15 @@
-const { app, BrowserWindow, ipcMain } = require("electron");
-const path = require("node:path");
-const { listPrinters, stopPrinting, testPrint } = require("./printer/printExecutor.js");
+import { app, BrowserWindow, ipcMain } from "electron";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { listPrinters, stopPrinting, testPrint } from "./printer/printExecutor.js";
 
 const BACKEND_URL = "https://printease-backend-byex.onrender.com";
-const DEV_FRONTEND_URL = process.env.PRINTEASE_FRONTEND_URL || "http://localhost:5173";
+const API_BASE_URL = `${BACKEND_URL}/api`;
+const DEV_FRONTEND_URL = "http://localhost:5173";
+const VERSION = "0.1.0";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 let mainWindow = null;
 let ipcHandlersRegistered = false;
@@ -32,7 +38,7 @@ function getDevServerErrorHtml() {
         width: min(640px, calc(100vw - 48px));
         border: 1px solid #e2e8f0;
         border-radius: 18px;
-        background: #ffffff;
+        background: #fff;
         padding: 32px;
         box-shadow: 0 20px 45px rgba(15, 23, 42, 0.08);
       }
@@ -77,24 +83,55 @@ async function loadFrontend(window) {
   }
 }
 
+async function checkBackendHealth() {
+  try {
+    const response = await fetch(`${API_BASE_URL}/health`, {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+      },
+    });
+    const data = await response.json().catch(() => null);
+
+    return {
+      success: response.ok,
+      status: response.status,
+      backendUrl: BACKEND_URL,
+      apiBaseUrl: API_BASE_URL,
+      data,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      backendUrl: BACKEND_URL,
+      apiBaseUrl: API_BASE_URL,
+      error: error.message || "Could not reach Render backend health endpoint.",
+    };
+  }
+}
+
 function registerIpcHandlers() {
   if (ipcHandlersRegistered) return;
   ipcHandlersRegistered = true;
 
   ipcMain.handle("desktop:status", () => ({
+    success: true,
     isDesktop: true,
-    backendUrl: BACKEND_URL,
     platform: process.platform,
+    backendUrl: BACKEND_URL,
+    apiBaseUrl: API_BASE_URL,
+    version: VERSION,
   }));
 
-  ipcMain.handle("printers:list", async () => listPrinters());
+  ipcMain.handle("backend:health", () => checkBackendHealth());
+  ipcMain.handle("printers:list", () => listPrinters());
 
-  ipcMain.handle("printers:test-print", async (_event, payload = {}) => {
+  ipcMain.handle("printers:test-print", (_event, payload = {}) => {
     const printerName = typeof payload === "string" ? payload : payload?.printerName;
     return testPrint(printerName);
   });
 
-  ipcMain.handle("printing:stop", async () => stopPrinting());
+  ipcMain.handle("printing:stop", () => stopPrinting());
 }
 
 function isAllowedNavigation(url) {
@@ -119,12 +156,10 @@ function createMainWindow() {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true,
     },
   });
 
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-
   mainWindow.webContents.on("will-navigate", (event, url) => {
     if (!isAllowedNavigation(url)) {
       event.preventDefault();
@@ -135,10 +170,6 @@ function createMainWindow() {
     if (!isMainFrame || app.isPackaged || !validatedURL.startsWith(DEV_FRONTEND_URL)) return;
     await mainWindow?.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(getDevServerErrorHtml())}`);
   });
-
-  if (!app.isPackaged && process.env.PRINTEASE_OPEN_DEVTOOLS === "1") {
-    mainWindow.webContents.openDevTools({ mode: "detach" });
-  }
 
   loadFrontend(mainWindow);
 }

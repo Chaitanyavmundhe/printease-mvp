@@ -1,13 +1,10 @@
-const { contextBridge, ipcRenderer } = require("electron");
+import { contextBridge, ipcRenderer } from "electron";
 
-const desktopApi = Object.freeze({
+contextBridge.exposeInMainWorld("printeaseDesktop", {
   isDesktop: true,
-  platform: process.platform,
-  version: "0.1.0",
-  listPrinters: async () => ipcRenderer.invoke("printers:list"),
-  testPrint: async (payload) => ipcRenderer.invoke("printers:test-print", payload),
-  stopPrinting: async () => ipcRenderer.invoke("printing:stop"),
-  getDesktopStatus: async () => ipcRenderer.invoke("desktop:status"),
+  getDesktopStatus: () => ipcRenderer.invoke("desktop:status"),
+  checkBackendHealth: () => ipcRenderer.invoke("backend:health"),
+  listPrinters: () => ipcRenderer.invoke("printers:list"),
+  testPrint: (payload) => ipcRenderer.invoke("printers:test-print", payload),
+  stopPrinting: () => ipcRenderer.invoke("printing:stop"),
 });
-
-contextBridge.exposeInMainWorld("printeaseDesktop", desktopApi);

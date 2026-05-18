@@ -1,0 +1,24 @@
+# Desktop Shell Implementation Checklist
+
+- [x] Verify `frontend/package.json`, `frontend/src`, `backend/package.json`, and `backend/src`.
+- [x] Create `desktop-shell/package.json` with Electron dependency and dev/start scripts.
+- [x] Create Electron `main.js` with secure BrowserWindow settings.
+- [x] Load `http://localhost:5173` in development.
+- [x] Prepare production load path for `../frontend/dist/index.html`.
+- [x] Register `desktop:status`, `backend:health`, `printers:list`, `printers:test-print`, and `printing:stop`.
+- [x] Create secure preload bridge without exposing `ipcRenderer`.
+- [x] Route printer calls through `printExecutor.js`.
+- [x] Implement Linux CUPS printer listing with `lpstat`.
+- [x] Implement Linux CUPS test print with `lp`.
+- [x] Validate printer name against detected printers before printing.
+- [x] Keep Windows printer support as a safe placeholder.
+- [x] Add passive agent placeholder files.
+- [x] Add local config/log helpers without storing or logging secrets.
+- [x] Verify existing frontend desktop bridge and Desktop Agent page.
+- [x] Keep frontend API pointed at Render backend.
+- [x] Add desktop architecture and next-step docs.
+- [x] Keep root `dev:frontend` and `dev:desktop` scripts.
+- [x] Run all syntax checks.
+- [x] Run frontend build.
+- [x] Run frontend and Electron manual smoke test.
+- [x] Verify `desktop-shell` package dry run excludes `backend/`.
