@@ -1,6 +1,7 @@
 const DEFAULT_API_BASE_URL = "https://printease-backend-byex.onrender.com";
 const configuredApiUrl = import.meta.env.VITE_API_URL?.trim();
-const API_BASE_URL = (configuredApiUrl || DEFAULT_API_BASE_URL).replace(/\/+$/, "");
+const isDesktopRuntime = typeof window !== "undefined" && Boolean(window.printeaseDesktop?.isDesktop);
+const API_BASE_URL = (isDesktopRuntime ? DEFAULT_API_BASE_URL : configuredApiUrl || DEFAULT_API_BASE_URL).replace(/\/+$/, "");
 
 export default API_BASE_URL;
 

@@ -32,6 +32,7 @@ export default function Navbar({
   profileOpen,
   setProfileOpen,
   currentUser,
+  desktopAvailable = false,
   startLogin,
   startRegister,
   logout,
@@ -58,6 +59,9 @@ export default function Navbar({
           )}
           {currentUser?.role === "hub" && (
             <NavButton active={page === "hubDashboard"} icon={<Building2 size={16} />} onClick={() => navigate("hubDashboard")}>Hub Dashboard</NavButton>
+          )}
+          {desktopAvailable && (
+            <NavButton active={page === "desktopAgent"} icon={<Printer size={16} />} onClick={() => navigate("desktopAgent")}>Desktop Agent</NavButton>
           )}
         </nav>
 
@@ -92,6 +96,7 @@ export default function Navbar({
                       <MenuItem icon={<Settings size={16} />} onClick={() => navigate("hubPricing")}>Pricing & Payment</MenuItem>
                     </>
                   )}
+                  {desktopAvailable && <MenuItem icon={<Printer size={16} />} onClick={() => navigate("desktopAgent")}>Desktop Agent</MenuItem>}
                   <MenuItem icon={<History size={16} />} onClick={() => navigate("history")}>Usage History</MenuItem>
                   <MenuItem icon={<LogOut size={16} />} onClick={logout}>Logout</MenuItem>
                 </>

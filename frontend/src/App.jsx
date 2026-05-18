@@ -7,6 +7,7 @@ import AuthPage from "./pages/AuthPage";
 import UserDashboard from "./pages/UserDashboard";
 import HubDashboard from "./pages/HubDashboard";
 import HubPricingPage from "./pages/HubPricingPage";
+import DesktopAgentPage from "./pages/DesktopAgentPage";
 import CentreCodePage from "./pages/CentreCodePage";
 import UploadPage from "./pages/UploadPage";
 import PaymentPage from "./pages/PaymentPage";
@@ -14,6 +15,7 @@ import TrackPage from "./pages/TrackPage";
 import HistoryPage from "./pages/HistoryPage";
 import { initialCentres, initialOrders } from "./data/demoData";
 import { calculateTotalAmount, getPricePerPage } from "./utils/price";
+import { isDesktop } from "./utils/desktopBridge";
 import { apiRequest } from "./services/api";
 
 const ROUTES = {
@@ -22,6 +24,7 @@ const ROUTES = {
   userDashboard: "/user/dashboard",
   hubDashboard: "/hub/dashboard",
   hubPricing: "/hub/pricing",
+  desktopAgent: "/desktop-agent",
   centre: "/centre",
   upload: "/upload",
   payment: "/payment",
@@ -169,6 +172,7 @@ export default function App() {
   const location = useLocation();
   const page = getPageFromPath(location.pathname);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [desktopAvailable, setDesktopAvailable] = useState(() => isDesktop());
   const [authRole, setAuthRole] = useState("user");
   const [authMode, setAuthMode] = useState("login");
   const [currentUser, setCurrentUser] = useState(() => {
@@ -210,6 +214,10 @@ export default function App() {
 
   const [centres, setCentres] = useState(initialCentres);
   const [orders, setOrders] = useState(initialOrders);
+
+  useEffect(() => {
+    setDesktopAvailable(isDesktop());
+  }, []);
 
   useEffect(() => {
     let ignore = false;
@@ -692,6 +700,7 @@ export default function App() {
         profileOpen={profileOpen}
         setProfileOpen={setProfileOpen}
         currentUser={currentUser}
+        desktopAvailable={desktopAvailable}
         startLogin={startLogin}
         startRegister={startRegister}
         logout={logout}
@@ -776,6 +785,7 @@ export default function App() {
               )
             }
           />
+          <Route path={ROUTES.desktopAgent} element={<DesktopAgentPage />} />
           <Route path={ROUTES.centre} element={<CentreCodePage centreCode={centreCode} setCentreCode={setCentreCode} handleCentreCode={handleCentreCode} centres={centres} selectCentreAndUpload={selectCentreAndUpload} lookupLoading={centreLookupLoading} lookupError={centreLookupError} />} />
           <Route path={ROUTES.upload} element={<UploadPage selectedCentre={selectedCentre} documentFile={documentFile} setDocumentFile={setDocumentFile} documentName={documentName} setDocumentName={setDocumentName} pages={pages} setPages={setPages} copies={copies} setCopies={setCopies} colorType={colorType} setColorType={setColorType} sideType={sideType} setSideType={setSideType} watermark={watermark} setWatermark={setWatermark} totalAmount={totalAmount} paymentError={paymentError} navigate={navigate} />} />
           <Route
