@@ -85,3 +85,49 @@ export async function checkBackendHealth() {
     };
   }
 }
+
+async function callDesktop(method, fallbackMessage, payload) {
+  const bridge = getBridge();
+  if (!bridge?.[method]) return desktopFallback();
+
+  try {
+    return await bridge[method](payload);
+  } catch (error) {
+    return {
+      success: false,
+      message: error.message || fallbackMessage,
+    };
+  }
+}
+
+export function getAgentStatus() {
+  return callDesktop("getAgentStatus", "Could not load agent status.");
+}
+
+export function startPairing(payload = {}) {
+  return callDesktop("startPairing", "Could not start desktop pairing.", payload);
+}
+
+export function confirmPairing() {
+  return callDesktop("confirmPairing", "Could not confirm desktop pairing.");
+}
+
+export function sendHeartbeat() {
+  return callDesktop("sendHeartbeat", "Could not send heartbeat.");
+}
+
+export function syncPrinters() {
+  return callDesktop("syncPrinters", "Could not sync printers.");
+}
+
+export function pollPrintJobs(payload = {}) {
+  return callDesktop("pollPrintJobs", "Could not poll print jobs.", payload);
+}
+
+export function startJobPolling(payload = {}) {
+  return callDesktop("startJobPolling", "Could not start print job polling.", payload);
+}
+
+export function stopJobPolling() {
+  return callDesktop("stopJobPolling", "Could not stop print job polling.");
+}

@@ -1,7 +1,13 @@
 import { app, BrowserWindow, ipcMain } from "electron";
+import { randomUUID } from "node:crypto";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { listPrinters, stopPrinting, testPrint } from "./printer/printExecutor.js";
+import { confirmPairing, sendHeartbeat, startPairing } from "./agent/heartbeat.js";
+import { createJobPoller, processNextJob } from "./agent/jobPoller.js";
+import { syncPrinters } from "./agent/statusReporter.js";
+import { loadConfig, saveConfig, setConfigDirectory } from "./local/config.js";
 
 const BACKEND_URL = "https://printease-backend-byex.onrender.com";
 const API_BASE_URL = `${BACKEND_URL}/api`;
@@ -13,6 +19,19 @@ const __dirname = path.dirname(__filename);
 
 let mainWindow = null;
 let ipcHandlersRegistered = false;
+let agentSession = {
+  deviceId: "",
+  deviceName: "",
+  pairingCode: "",
+  pairingSessionId: "",
+  expiresAt: "",
+  agentId: "",
+  hubId: "",
+  accessToken: "",
+  pairedAt: "",
+  lastHeartbeatAt: "",
+};
+let jobPoller = null;
 
 function getProductionIndexPath() {
   return path.join(__dirname, "..", "frontend", "dist", "index.html");
@@ -110,6 +129,193 @@ async function checkBackendHealth() {
   }
 }
 
+function sanitizeAgentSession() {
+  return {
+    success: true,
+    deviceId: agentSession.deviceId,
+    deviceName: agentSession.deviceName,
+    pairingCode: agentSession.pairingCode,
+    pairingSessionId: agentSession.pairingSessionId,
+    expiresAt: agentSession.expiresAt,
+    agentId: agentSession.agentId,
+    hubId: agentSession.hubId,
+    paired: Boolean(agentSession.accessToken),
+    pairedAt: agentSession.pairedAt,
+    lastHeartbeatAt: agentSession.lastHeartbeatAt,
+    polling: Boolean(jobPoller?.isRunning),
+  };
+}
+
+async function ensureDeviceIdentity(deviceName) {
+  if (agentSession.deviceId && agentSession.deviceName) return;
+
+  const savedConfig = await loadConfig();
+  agentSession.deviceId = savedConfig.deviceId || randomUUID();
+  agentSession.deviceName = deviceName || savedConfig.deviceName || os.hostname() || "PrintEase Desktop";
+
+  await saveConfig({
+    deviceId: agentSession.deviceId,
+    deviceName: agentSession.deviceName,
+    agentId: agentSession.agentId,
+    hubId: agentSession.hubId,
+  });
+}
+
+function requirePairedAgent() {
+  if (!agentSession.accessToken) {
+    return {
+      success: false,
+      message: "Pair this desktop with a print hub before using agent actions.",
+      session: sanitizeAgentSession(),
+    };
+  }
+
+  return null;
+}
+
+async function startAgentPairing(_event, payload = {}) {
+  await ensureDeviceIdentity(payload.deviceName);
+
+  const result = await startPairing({
+    deviceId: agentSession.deviceId,
+    agentName: agentSession.deviceName,
+  });
+
+  if (result.success) {
+    agentSession.pairingCode = result.pairingCode || "";
+    agentSession.pairingSessionId = result.pairingSessionId || "";
+    agentSession.expiresAt = result.expiresAt || "";
+  }
+
+  return {
+    ...result,
+    session: sanitizeAgentSession(),
+  };
+}
+
+async function confirmAgentPairing() {
+  await ensureDeviceIdentity();
+
+  if (!agentSession.pairingSessionId) {
+    return {
+      success: false,
+      paired: false,
+      message: "Start pairing before confirming.",
+      session: sanitizeAgentSession(),
+    };
+  }
+
+  const result = await confirmPairing({
+    pairingSessionId: agentSession.pairingSessionId,
+    deviceId: agentSession.deviceId,
+  });
+
+  if (result.success && result.paired && result.accessToken) {
+    agentSession.accessToken = result.accessToken;
+    agentSession.agentId = result.agentId || "";
+    agentSession.hubId = result.hubId || result.shopId || "";
+    agentSession.pairedAt = new Date().toISOString();
+    agentSession.pairingCode = "";
+
+    await saveConfig({
+      deviceId: agentSession.deviceId,
+      deviceName: agentSession.deviceName,
+      agentId: agentSession.agentId,
+      hubId: agentSession.hubId,
+    });
+  }
+
+  return {
+    ...result,
+    accessToken: undefined,
+    refreshToken: undefined,
+    session: sanitizeAgentSession(),
+  };
+}
+
+async function sendAgentHeartbeat() {
+  const pairingError = requirePairedAgent();
+  if (pairingError) return pairingError;
+
+  const result = await sendHeartbeat({
+    agentToken: agentSession.accessToken,
+  });
+
+  if (result.success) {
+    agentSession.lastHeartbeatAt = new Date().toISOString();
+  }
+
+  return {
+    ...result,
+    session: sanitizeAgentSession(),
+  };
+}
+
+async function syncAgentPrinters() {
+  const pairingError = requirePairedAgent();
+  if (pairingError) return pairingError;
+
+  const printerResult = await listPrinters();
+  if (!printerResult.success) return printerResult;
+
+  const syncResult = await syncPrinters({
+    agentToken: agentSession.accessToken,
+    printers: printerResult.printers,
+  });
+
+  return {
+    ...syncResult,
+    localPrinters: printerResult.printers,
+    session: sanitizeAgentSession(),
+  };
+}
+
+async function pollAgentOnce(_event, payload = {}) {
+  const pairingError = requirePairedAgent();
+  if (pairingError) return pairingError;
+
+  return processNextJob({
+    agentToken: agentSession.accessToken,
+    printerName: payload.printerName,
+  });
+}
+
+function startAgentPolling(_event, payload = {}) {
+  const pairingError = requirePairedAgent();
+  if (pairingError) return pairingError;
+
+  if (!jobPoller) {
+    jobPoller = createJobPoller({
+      agentToken: agentSession.accessToken,
+      printerName: payload.printerName,
+      intervalMs: payload.intervalMs,
+    });
+  }
+
+  const result = jobPoller.start({
+    agentToken: agentSession.accessToken,
+    printerName: payload.printerName,
+    intervalMs: payload.intervalMs,
+  });
+
+  return {
+    ...result,
+    session: sanitizeAgentSession(),
+  };
+}
+
+function stopAgentPolling() {
+  const result = jobPoller?.stop() || {
+    success: true,
+    message: "Job polling is not running.",
+  };
+
+  return {
+    ...result,
+    session: sanitizeAgentSession(),
+  };
+}
+
 function registerIpcHandlers() {
   if (ipcHandlersRegistered) return;
   ipcHandlersRegistered = true;
@@ -132,6 +338,14 @@ function registerIpcHandlers() {
   });
 
   ipcMain.handle("printing:stop", () => stopPrinting());
+  ipcMain.handle("agent:status", () => sanitizeAgentSession());
+  ipcMain.handle("agent:start-pairing", startAgentPairing);
+  ipcMain.handle("agent:confirm-pairing", confirmAgentPairing);
+  ipcMain.handle("agent:heartbeat", sendAgentHeartbeat);
+  ipcMain.handle("agent:sync-printers", syncAgentPrinters);
+  ipcMain.handle("agent:poll-once", pollAgentOnce);
+  ipcMain.handle("agent:start-polling", startAgentPolling);
+  ipcMain.handle("agent:stop-polling", stopAgentPolling);
 }
 
 function isAllowedNavigation(url) {
@@ -174,7 +388,9 @@ function createMainWindow() {
   loadFrontend(mainWindow);
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  setConfigDirectory(app.getPath("userData"));
+  await ensureDeviceIdentity();
   registerIpcHandlers();
   createMainWindow();
 

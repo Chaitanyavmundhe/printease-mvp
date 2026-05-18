@@ -151,15 +151,18 @@ export async function testPrint(printerName) {
       "utf8"
     );
 
-    const { stdout, stderr } = await runCommand("lp", ["-d", validation.printer.printerName, tempFile]);
-
-    return {
-      success: true,
-      message: "Test print job sent to CUPS.",
+    const result = await printFile({
       printerName: validation.printer.printerName,
-      stdout: stdout?.trim() || "",
-      stderr: stderr?.trim() || "",
-    };
+      filePath: tempFile,
+      copies: 1,
+    });
+
+    return result.success
+      ? {
+          ...result,
+          message: "Test print job sent to CUPS.",
+        }
+      : result;
   } catch (error) {
     return cupsFailure(error, "Could not send test print job.");
   } finally {
@@ -169,5 +172,39 @@ export async function testPrint(printerName) {
     if (tempDir) {
       await rm(tempDir, { recursive: true, force: true }).catch(() => {});
     }
+  }
+}
+
+export async function printFile({ printerName, filePath, copies = 1 } = {}) {
+  const validation = await validatePrinter(printerName);
+  if (!validation.success) return validation;
+
+  if (!filePath || typeof filePath !== "string") {
+    return {
+      success: false,
+      error: "A file path is required before printing.",
+    };
+  }
+
+  const safeCopies = Math.max(1, Math.min(Number(copies) || 1, 99));
+
+  try {
+    const { stdout, stderr } = await runCommand("lp", [
+      "-d",
+      validation.printer.printerName,
+      "-n",
+      String(safeCopies),
+      filePath,
+    ]);
+
+    return {
+      success: true,
+      message: "Print job sent to CUPS.",
+      printerName: validation.printer.printerName,
+      stdout: stdout?.trim() || "",
+      stderr: stderr?.trim() || "",
+    };
+  } catch (error) {
+    return cupsFailure(error, "Could not send print job.");
   }
 }

@@ -1,7 +1,22 @@
 import { useEffect, useMemo, useState } from "react";
-import { Printer, RefreshCw, Send, Wifi, X } from "lucide-react";
+import { Link2, Printer, RefreshCw, Send, Wifi, X } from "lucide-react";
 import Card from "../components/Card";
-import { getDesktopStatus, isDesktop, listPrinters, stopPrinting, testPrint } from "../utils/desktopBridge";
+import {
+  checkBackendHealth,
+  confirmPairing,
+  getAgentStatus,
+  getDesktopStatus,
+  isDesktop,
+  listPrinters,
+  pollPrintJobs,
+  sendHeartbeat,
+  startJobPolling,
+  startPairing,
+  stopJobPolling,
+  stopPrinting,
+  syncPrinters as syncDesktopPrinters,
+  testPrint,
+} from "../utils/desktopBridge";
 
 function normalizePrinterResult(result) {
   if (Array.isArray(result)) {
@@ -40,6 +55,10 @@ export default function DesktopAgentPage() {
   const [error, setError] = useState("");
   const [errorDetail, setErrorDetail] = useState("");
   const [helpCommands, setHelpCommands] = useState([]);
+  const [agentSession, setAgentSession] = useState(null);
+  const [agentBusy, setAgentBusy] = useState(false);
+  const [agentMessage, setAgentMessage] = useState("");
+  const [backendHealth, setBackendHealth] = useState(null);
 
   const defaultPrinter = useMemo(() => printers.find((printer) => printer.isDefault) || printers[0] || null, [printers]);
 
@@ -57,6 +76,10 @@ export default function DesktopAgentPage() {
       }
 
       setStatus(nextStatus);
+    });
+
+    getAgentStatus().then((nextSession) => {
+      if (nextSession?.success) setAgentSession(nextSession);
     });
   }, [desktopAvailable]);
 
@@ -121,6 +144,39 @@ export default function DesktopAgentPage() {
     setMessage(result?.message || "Printing stopped locally.");
   }
 
+  async function runAgentAction(action) {
+    setAgentBusy(true);
+    setAgentMessage("");
+    setError("");
+    setErrorDetail("");
+    setHelpCommands([]);
+
+    const result = await action();
+
+    if (result?.session) setAgentSession(result.session);
+
+    if (result?.success === false) {
+      setError(result.error || result.message || "Desktop agent action failed.");
+    } else {
+      setAgentMessage(result?.message || (result?.paired === false ? "Pairing is still pending." : "Desktop agent action completed."));
+    }
+
+    setAgentBusy(false);
+    return result;
+  }
+
+  async function checkHealth() {
+    const result = await checkBackendHealth();
+    setBackendHealth(result);
+
+    if (result?.success === false) {
+      setError(result.error || result.message || "Render backend health check failed.");
+      return;
+    }
+
+    setMessage("Render backend health check passed.");
+  }
+
   if (!desktopAvailable) {
     return (
       <Card>
@@ -146,18 +202,121 @@ export default function DesktopAgentPage() {
               <p className="mt-1 font-semibold text-emerald-700">Desktop mode detected</p>
               <p className="mt-2 text-sm text-slate-600">Platform: {status?.platform || window.printeaseDesktop?.platform || "unknown"}</p>
               <p className="text-sm text-slate-600">Backend: {status?.backendUrl || "https://printease-backend-byex.onrender.com"}</p>
+              {backendHealth && (
+                <p className={`mt-1 text-sm font-semibold ${backendHealth.success ? "text-emerald-700" : "text-rose-700"}`}>
+                  Backend health: {backendHealth.success ? "online" : "unreachable"}
+                </p>
+              )}
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={refreshPrinters}
-            disabled={loadingPrinters}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-3 font-semibold text-white disabled:opacity-60"
-          >
-            <RefreshCw size={16} /> {loadingPrinters ? "Refreshing" : "Refresh Printers"}
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={checkHealth}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-3 font-semibold"
+            >
+              <Wifi size={16} /> Check Backend
+            </button>
+            <button
+              type="button"
+              onClick={refreshPrinters}
+              disabled={loadingPrinters}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-3 font-semibold text-white disabled:opacity-60"
+            >
+              <RefreshCw size={16} /> {loadingPrinters ? "Refreshing" : "Refresh Printers"}
+            </button>
+          </div>
         </div>
+      </Card>
+
+      <Card>
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <Link2 size={20} />
+              <h3 className="text-xl font-bold">Backend Agent</h3>
+            </div>
+            <div className="mt-3 grid gap-2 text-sm text-slate-600">
+              <p>Device: {agentSession?.deviceName || "PrintEase Desktop"}</p>
+              <p>Paired: {agentSession?.paired ? "Yes" : "No"}</p>
+              {agentSession?.agentId && <p className="break-all">Agent ID: {agentSession.agentId}</p>}
+              {agentSession?.pairingCode && (
+                <p className="text-lg font-bold text-slate-900">Pairing code: {agentSession.pairingCode}</p>
+              )}
+              {agentSession?.expiresAt && <p>Expires: {new Date(agentSession.expiresAt).toLocaleString()}</p>}
+              <p>Polling: {agentSession?.polling ? "Running" : "Stopped"}</p>
+              {agentSession?.lastHeartbeatAt && <p>Last heartbeat: {new Date(agentSession.lastHeartbeatAt).toLocaleString()}</p>}
+            </div>
+          </div>
+
+          <div className="grid gap-2 sm:min-w-[300px]">
+            <button
+              type="button"
+              disabled={agentBusy}
+              onClick={() => runAgentAction(() => startPairing({ deviceName: agentSession?.deviceName || "PrintEase Desktop" }))}
+              className="rounded-xl border px-4 py-2 font-semibold"
+            >
+              Start Pairing
+            </button>
+            <button
+              type="button"
+              disabled={agentBusy || !agentSession?.pairingSessionId}
+              onClick={() => runAgentAction(confirmPairing)}
+              className="rounded-xl border px-4 py-2 font-semibold disabled:opacity-50"
+            >
+              Confirm Pairing
+            </button>
+            <button
+              type="button"
+              disabled={agentBusy || !agentSession?.paired}
+              onClick={() => runAgentAction(sendHeartbeat)}
+              className="rounded-xl border px-4 py-2 font-semibold disabled:opacity-50"
+            >
+              Send Heartbeat
+            </button>
+            <button
+              type="button"
+              disabled={agentBusy || !agentSession?.paired}
+              onClick={() => runAgentAction(syncDesktopPrinters)}
+              className="rounded-xl border px-4 py-2 font-semibold disabled:opacity-50"
+            >
+              Sync Printers
+            </button>
+            <button
+              type="button"
+              disabled={agentBusy || !agentSession?.paired || !selectedPrinterName}
+              onClick={() => runAgentAction(() => pollPrintJobs({ printerName: selectedPrinterName }))}
+              className="rounded-xl border px-4 py-2 font-semibold disabled:opacity-50"
+            >
+              Poll Once
+            </button>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={agentBusy || !agentSession?.paired || !selectedPrinterName}
+                onClick={() => runAgentAction(() => startJobPolling({ printerName: selectedPrinterName }))}
+                className="flex-1 rounded-xl bg-emerald-700 px-4 py-2 font-semibold text-white disabled:bg-slate-300"
+              >
+                Start Polling
+              </button>
+              <button
+                type="button"
+                disabled={agentBusy}
+                onClick={() => runAgentAction(stopJobPolling)}
+                className="flex-1 rounded-xl border px-4 py-2 font-semibold"
+              >
+                Stop
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {agentMessage && (
+          <p className="mt-5 rounded-2xl bg-emerald-50 p-4 text-sm font-semibold text-emerald-700">
+            {agentMessage}
+          </p>
+        )}
       </Card>
 
       <Card>

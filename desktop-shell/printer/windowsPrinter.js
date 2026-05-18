@@ -12,3 +12,10 @@ export async function testPrint() {
     message: "Windows print execution will be implemented later.",
   };
 }
+
+export async function printFile() {
+  return {
+    success: false,
+    message: "Windows print execution will be implemented later.",
+  };
+}

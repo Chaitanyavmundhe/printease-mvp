@@ -77,6 +77,19 @@ Printer names are validated against detected local printers before test printing
 
 Windows printer support is intentionally a safe placeholder in this phase. It does not fake success.
 
-## Agent Placeholders
+## Agent Runtime
 
-`desktop-shell/agent/` contains passive placeholder functions for future phases. They do not start background loops and do not process real order print jobs in this phase.
+`desktop-shell/agent/` talks only to the deployed Render API:
+
+- `/api/agent/pair/start`
+- `/api/agent/pair/confirm`
+- `/api/agent/heartbeat`
+- `/api/agent/printers`
+- `/api/agent/jobs/next`
+- `/api/agent/jobs/:jobId/*`
+
+Pairing stores the agent token in main-process memory only. It is not exposed to the renderer and is not written to disk.
+
+Print job processing downloads backend-signed files into a temporary directory, verifies SHA-256 when the backend provides a hash, sends the file to the selected local printer, reports job status back to Render, then removes the temporary file.
+
+Job polling starts only when the hub user clicks the desktop control. It does not start automatically when the Electron shell opens.

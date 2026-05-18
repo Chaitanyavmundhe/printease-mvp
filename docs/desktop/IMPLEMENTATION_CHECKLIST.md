@@ -22,3 +22,15 @@
 - [x] Run frontend build.
 - [x] Run frontend and Electron manual smoke test.
 - [x] Verify `desktop-shell` package dry run excludes `backend/`.
+- [x] Add desktop pairing against Render `/api/agent/pair/start`.
+- [x] Add pairing confirmation against Render `/api/agent/pair/confirm`.
+- [x] Keep agent token in main-process memory only.
+- [x] Add heartbeat to Render `/api/agent/heartbeat`.
+- [x] Add printer sync to Render `/api/agent/printers`.
+- [x] Add one-shot print job polling.
+- [x] Add optional background polling started only by user action.
+- [x] Download signed print files to temp storage.
+- [x] Verify SHA-256 when backend provides a hash.
+- [x] Print actual job file through selected local printer.
+- [x] Report accepted/downloading/printing/completed/failed status to Render.
+- [x] Run verification after agent runtime changes.
