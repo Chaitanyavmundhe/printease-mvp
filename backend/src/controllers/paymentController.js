@@ -87,16 +87,16 @@ export const verifyPayment = asyncHandler(async (req, res) => {
   }
 
   const result = await withTransaction(async (client) => {
-    const verifiedPayment = await updatePayment(payment.id, {
-      status: 'verified',
+    const collectedPayment = await updatePayment(payment.id, {
+      status: 'collected',
       transactionId: `demo_payment_${Date.now()}`,
       verifiedAt: new Date().toISOString()
     }, client);
-    const verifiedOrder = await updateOrderPayment(order.id, 'verified', 'Payment Verified', client);
-    const autoQueue = await queuePrintJobIfPaymentReady(verifiedOrder.id, verifiedOrder.centreId, client);
+    const collectedOrder = await updateOrderPayment(order.id, 'collected', 'Payment Collected', client);
+    const autoQueue = await queuePrintJobIfPaymentReady(collectedOrder.id, collectedOrder.centreId, client);
     return {
-      payment: verifiedPayment,
-      order: autoQueue.order || verifiedOrder,
+      payment: collectedPayment,
+      order: autoQueue.order || collectedOrder,
       autoQueue,
       printJob: autoQueue.printJob || autoQueue.existingPrintJob || null
     };
@@ -104,7 +104,7 @@ export const verifyPayment = asyncHandler(async (req, res) => {
 
   res.json({
     success: true,
-    message: result.autoQueue?.message || 'Payment verified in demo mode',
+    message: result.autoQueue?.message || 'Payment collected in demo mode',
     ...result,
     securityNote: 'Real project must verify Razorpay signature/webhook on backend.'
   });

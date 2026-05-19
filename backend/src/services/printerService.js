@@ -1,7 +1,7 @@
 export function sendOrderToPrinter({ printer, order }) {
-  if (order.paymentStatus !== 'verified') {
+  if (order.paymentStatus !== 'collected') {
     return {
-      message: 'Order cannot be printed because payment is not verified',
+      message: 'Order cannot be printed because payment is not collected',
       printable: false,
       order
     };

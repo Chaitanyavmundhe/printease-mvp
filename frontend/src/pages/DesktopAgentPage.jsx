@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link2, Printer, RefreshCw, Send, Wifi, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link2, Printer, RefreshCw, Send, Wifi, X, ShieldCheck, Loader2 } from "lucide-react";
 import Card from "../components/Card";
 import {
   checkBackendHealth,
@@ -9,6 +9,7 @@ import {
   getDesktopStatus,
   isDesktop,
   listPrinters,
+  openApprovalUrl,
   selectPrinter as selectDesktopPrinter,
   onAgentUpdated,
   onPrintersUpdated,
@@ -69,6 +70,9 @@ export default function DesktopAgentPage() {
   const [backendHealth, setBackendHealth] = useState(null);
   const [printerDiagnostics, setPrinterDiagnostics] = useState(null);
   const [autoPollingStarted, setAutoPollingStarted] = useState(false);
+  const [approvalPolling, setApprovalPolling] = useState(false);
+  const [approvalMessage, setApprovalMessage] = useState("");
+  const approvalTimerRef = useRef(null);
 
   const defaultPrinter = useMemo(() => printers.find((printer) => printer.isDefault) || printers[0] || null, [printers]);
   const localPrinterNames = printers.map((printer) => printer.displayName || printer.printerName).filter(Boolean).join(", ");
@@ -107,6 +111,15 @@ export default function DesktopAgentPage() {
     return () => {
       unsubscribePrinters();
       unsubscribeAgent();
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (approvalTimerRef.current) {
+        clearInterval(approvalTimerRef.current);
+        approvalTimerRef.current = null;
+      }
     };
   }, []);
 
@@ -291,6 +304,79 @@ export default function DesktopAgentPage() {
 
     setAgentBusy(false);
     return result;
+  }
+
+  function stopApprovalPolling() {
+    if (approvalTimerRef.current) {
+      clearInterval(approvalTimerRef.current);
+      approvalTimerRef.current = null;
+    }
+    setApprovalPolling(false);
+  }
+
+  async function pollApprovalStatus() {
+    try {
+      const result = await confirmPairing();
+
+      if (result?.session) {
+        setAgentSession(result.session);
+      }
+
+      if (result?.paired) {
+        stopApprovalPolling();
+        setAgentMessage(result.message || "Device paired successfully.");
+        setApprovalMessage("");
+        return;
+      }
+
+      if (result?.status === 403 || result?.status === 410) {
+        stopApprovalPolling();
+        setError(result.message || "Pairing request was rejected or expired.");
+        setApprovalMessage("");
+      } else if (result?.success === true && result?.paired === false) {
+        setApprovalMessage(result.message || "Waiting for hub approval...");
+      }
+    } catch (pollError) {
+      setApprovalMessage("");
+      setError(pollError.message || "Could not poll pairing status.");
+      stopApprovalPolling();
+    }
+  }
+
+  function startApprovalPolling() {
+    stopApprovalPolling();
+    setApprovalPolling(true);
+    setApprovalMessage("Waiting for hub approval...");
+    approvalTimerRef.current = setInterval(pollApprovalStatus, 3000);
+  }
+
+  async function startApprovalPairing() {
+    setAgentBusy(true);
+    setAgentMessage("");
+    setApprovalMessage("");
+    setError("");
+    setErrorDetail("");
+    setHelpCommands([]);
+
+    const result = await startPairing({ deviceName: agentSession?.deviceName || "PrintEase Desktop" });
+
+    if (result?.session) {
+      setAgentSession(result.session);
+    }
+
+    if (result?.success && result?.approvalUrl) {
+      const openResult = await openApprovalUrl(result.approvalUrl);
+      if (openResult?.success) {
+        setAgentMessage("Approval URL opened in your browser. Waiting for hub approval.");
+      } else {
+        setAgentMessage("Approval started. Open the approval link manually if it does not open automatically.");
+      }
+      startApprovalPolling();
+    } else {
+      setError(result?.message || "Could not start approval pairing.");
+    }
+
+    setAgentBusy(false);
   }
 
   async function checkHealth() {

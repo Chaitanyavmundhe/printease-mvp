@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, session } from "electron";
+import { app, BrowserWindow, ipcMain, session, shell } from "electron";
 import { randomUUID } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
@@ -697,6 +697,18 @@ function registerIpcHandlers() {
   ipcMain.handle("printing:stop", () => stopPrinting());
   ipcMain.handle("agent:status", () => sanitizeAgentSession());
   ipcMain.handle("agent:start-pairing", startAgentPairing);
+  ipcMain.handle("agent:open-approval-url", async (_event, url) => {
+    if (!url || typeof url !== "string") {
+      return { success: false, message: "Approval URL is required." };
+    }
+
+    try {
+      await shell.openExternal(url);
+      return { success: true, message: "Approval URL opened in browser." };
+    } catch (error) {
+      return { success: false, message: error?.message || "Could not open approval URL." };
+    }
+  });
   ipcMain.handle("agent:confirm-pairing", confirmAgentPairing);
   ipcMain.handle("agent:heartbeat", async () => {
     const result = await sendAgentHeartbeat();

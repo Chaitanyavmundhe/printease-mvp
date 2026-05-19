@@ -25,6 +25,7 @@ try {
       return () => ipcRenderer.removeListener("agent:updated", listener);
     },
     startPairing: (payload) => ipcRenderer.invoke("agent:start-pairing", payload),
+    openApprovalUrl: (url) => ipcRenderer.invoke("agent:open-approval-url", url),
     confirmPairing: () => ipcRenderer.invoke("agent:confirm-pairing"),
     sendHeartbeat: () => ipcRenderer.invoke("agent:heartbeat"),
     syncPrinters: () => ipcRenderer.invoke("agent:sync-printers"),

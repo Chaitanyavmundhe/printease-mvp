@@ -150,6 +150,10 @@ export function startPairing(payload = {}) {
   return callDesktop("startPairing", "Could not start desktop pairing.", payload);
 }
 
+export function openApprovalUrl(url) {
+  return callDesktop("openApprovalUrl", "Could not open approval URL.", url);
+}
+
 export function confirmPairing() {
   return callDesktop("confirmPairing", "Could not confirm desktop pairing.");
 }

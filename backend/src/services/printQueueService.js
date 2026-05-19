@@ -12,7 +12,7 @@ import { getSupabaseBucketName } from '../config/supabase.js';
 import { generateId } from '../utils/generateCode.js';
 import { getAgentLiveStatus, getPrinterCondition } from '../utils/hubAgentAnalytics.js';
 
-const PAYMENT_READY_STATUSES = new Set(['verified', 'collected']);
+const PAYMENT_READY_STATUSES = new Set(['collected']);
 
 function normalize(value) {
   return String(value || '').trim().toLowerCase();
@@ -24,7 +24,7 @@ function isPrintableOrderStatus(status) {
 }
 
 function paymentReadyMessage(paymentStatus, text) {
-  const prefix = normalize(paymentStatus) === 'collected' ? 'Payment collected' : 'Payment verified';
+  const prefix = normalize(paymentStatus) === 'collected' ? 'Payment collected' : 'Payment pending';
   return `${prefix}. ${text}`;
 }
 
@@ -43,7 +43,7 @@ export async function queuePrintJobIfPaymentReady(orderId, hubId, client) {
     return {
       queued: false,
       blocked: 'PAYMENT_NOT_READY',
-      message: 'Payment is not collected or verified yet. Desktop agent document access remains blocked.'
+      message: 'Payment is not collected yet. Desktop agent document access remains blocked.'
     };
   }
 

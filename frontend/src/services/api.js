@@ -166,6 +166,24 @@ export function pairAgent(pairingCode) {
   });
 }
 
+export function getPairingApprovalSession(sessionId) {
+  return apiRequest(`/api/hub-agents/pair/session/${encodeURIComponent(sessionId)}`);
+}
+
+export function approveAgentPairing(pairingSessionId, approvalToken) {
+  return apiRequest("/api/hub-agents/pair/approve", {
+    method: "POST",
+    body: JSON.stringify({ pairingSessionId, approvalToken }),
+  });
+}
+
+export function rejectAgentPairing(pairingSessionId) {
+  return apiRequest("/api/hub-agents/pair/reject", {
+    method: "POST",
+    body: JSON.stringify({ pairingSessionId }),
+  });
+}
+
 export function pauseHubAgent(agentId) {
   return apiRequest(`/api/hub-agents/${agentId}/pause`, {
     method: "POST",

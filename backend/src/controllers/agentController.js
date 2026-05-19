@@ -6,6 +6,7 @@ import {
   insertPrintJobEvent,
   markPairingSessionConfirmed,
   replaceAgentPrinters,
+  revokeActiveAgentTokens,
   updateAgentHeartbeat,
   updateOrderStatus,
   updatePrintJobStatus,
@@ -102,29 +103,39 @@ async function toAgentJobPayload(job) {
 }
 
 export const startPairing = asyncHandler(async (req, res) => {
-  const { deviceId, agentName, platform, version } = req.body;
+  const { deviceId, agentName, platform, version, publicKey } = req.body;
 
   if (!deviceId || !agentName) {
     return res.status(400).json({ success: false, message: 'Device ID and agent name are required' });
   }
 
   const pairingCode = createPairingCode();
+  const approvalToken = createRawAgentToken();
+  const approvalExpiresAt = getPairingExpiry();
   const session = await createAgentPairingSession({
     id: generateId(),
     pairingCodeHash: hashAgentSecret(pairingCode),
+    approvalTokenHash: hashAgentSecret(approvalToken),
+    publicKey: publicKey || null,
     deviceId,
     agentName,
     platform,
     version,
     expiresAt: getPairingExpiry(),
+    approvalExpiresAt,
     createdAt: new Date().toISOString()
   });
+
+  const frontendUrl = String(process.env.FRONTEND_URL || 'https://printhubdesi.vercel.app').replace(/\/+$/, '');
+  const approvalUrl = `${frontendUrl}/hub/printers/approve-agent?session=${encodeURIComponent(session.id)}&token=${encodeURIComponent(approvalToken)}`;
 
   res.status(201).json({
     success: true,
     pairingCode,
     pairingSessionId: session.id,
+    approvalUrl,
     expiresAt: session.expiresAt,
+    approvalExpiresAt,
     expiresInSeconds: AGENT_PAIRING_TTL_SECONDS
   });
 });
@@ -143,14 +154,22 @@ export const confirmPairing = asyncHandler(async (req, res) => {
   }
 
   if (new Date(session.expiresAt).getTime() <= Date.now()) {
-    return res.status(410).json({ success: false, message: 'Pairing code expired' });
+    return res.status(410).json({ success: false, paired: false, message: 'Pairing session expired' });
   }
 
   if (session.status === 'pending') {
     return res.status(202).json({
       success: true,
       paired: false,
-      message: 'Pairing is still pending'
+      message: 'Waiting for hub approval'
+    });
+  }
+
+  if (session.status === 'rejected') {
+    return res.status(403).json({
+      success: false,
+      paired: false,
+      message: 'Pairing was rejected'
     });
   }
 
@@ -173,9 +192,17 @@ export const confirmPairing = asyncHandler(async (req, res) => {
     const markedSession = await markPairingSessionConfirmed(session.id, client);
     if (!markedSession) return null;
 
+    await revokeActiveAgentTokens(session.agentId, client);
+
     await createAgentToken({
       agentId: session.agentId,
       tokenHash: hashAgentSecret(accessToken)
+    }, client);
+
+    await createAgentToken({
+      agentId: session.agentId,
+      tokenHash: hashAgentSecret(refreshToken),
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
     }, client);
 
     return markedSession;

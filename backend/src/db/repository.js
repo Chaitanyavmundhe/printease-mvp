@@ -158,6 +158,8 @@ export function mapPairingSession(row) {
   return {
     id: row.id,
     pairingCodeHash: row.pairing_code_hash,
+    approvalTokenHash: row.approval_token_hash,
+    publicKey: row.public_key,
     deviceId: row.device_id,
     agentName: row.agent_name,
     platform: row.platform,
@@ -166,6 +168,9 @@ export function mapPairingSession(row) {
     hubId: row.hub_id,
     agentId: row.agent_id,
     expiresAt: timestamp(row.expires_at),
+    approvalExpiresAt: timestamp(row.approval_expires_at),
+    approvedAt: timestamp(row.approved_at),
+    rejectedAt: timestamp(row.rejected_at),
     createdAt: timestamp(row.created_at),
     claimedAt: timestamp(row.claimed_at)
   };
@@ -599,18 +604,23 @@ export async function updatePrinterProtocol(printerId, centreId, updates) {
 export async function createAgentPairingSession(session, client) {
   const result = await executor(client).query(
     `insert into agent_pairing_sessions (
-       id, pairing_code_hash, device_id, agent_name, platform, version, status, expires_at, created_at
+       id, pairing_code_hash, approval_token_hash, public_key,
+       device_id, agent_name, platform, version, status,
+       expires_at, approval_expires_at, created_at
      )
-     values ($1, $2, $3, $4, $5, $6, 'pending', $7, coalesce($8, now()))
+     values ($1, $2, $3, $4, $5, $6, $7, $8, 'pending', $9, $10, coalesce($11, now()))
      returning *`,
     [
       session.id,
       session.pairingCodeHash,
+      session.approvalTokenHash || null,
+      session.publicKey || null,
       session.deviceId,
       session.agentName,
       session.platform || null,
       session.version || null,
       session.expiresAt,
+      session.approvalExpiresAt || session.expiresAt,
       session.createdAt || null
     ]
   );
@@ -628,6 +638,30 @@ export async function findPendingPairingSessionByCodeHash(pairingCodeHash, clien
      order by created_at desc
      limit 1`,
     [pairingCodeHash]
+  );
+
+  return mapPairingSession(result.rows[0]);
+}
+
+export async function findPendingApprovalPairingSessionById(sessionId, client) {
+  const result = await executor(client).query(
+    `select *
+     from agent_pairing_sessions
+     where id = $1
+       and status = 'pending'
+       and expires_at > now()
+       and approval_token_hash is not null
+     limit 1`,
+    [sessionId]
+  );
+
+  return mapPairingSession(result.rows[0]);
+}
+
+export async function findPairingSessionById(sessionId, client) {
+  const result = await executor(client).query(
+    'select * from agent_pairing_sessions where id = $1',
+    [sessionId]
   );
 
   return mapPairingSession(result.rows[0]);
@@ -696,6 +730,40 @@ export async function claimPairingSession(sessionId, hubId, agentId, client) {
        and expires_at > now()
      returning *`,
     [sessionId, hubId, agentId]
+  );
+
+  return mapPairingSession(result.rows[0]);
+}
+
+export async function approvePairingSession(sessionId, hubId, agentId, client) {
+  const result = await executor(client).query(
+    `update agent_pairing_sessions
+     set status = 'claimed',
+         hub_id = $2,
+         agent_id = $3,
+         claimed_at = now(),
+         approved_at = now()
+     where id = $1
+       and status = 'pending'
+       and expires_at > now()
+     returning *`,
+    [sessionId, hubId, agentId]
+  );
+
+  return mapPairingSession(result.rows[0]);
+}
+
+export async function rejectPairingSession(sessionId, hubId, client) {
+  const result = await executor(client).query(
+    `update agent_pairing_sessions
+     set status = 'rejected',
+         hub_id = $2,
+         rejected_at = now()
+     where id = $1
+       and status = 'pending'
+       and expires_at > now()
+     returning *`,
+    [sessionId, hubId]
   );
 
   return mapPairingSession(result.rows[0]);
@@ -1165,7 +1233,7 @@ export async function findNextPrintJobForAgent(agentId, hubId, client) {
        and pj.status in ('queued', 'assigned')
        and a.revoked_at is null
        and a.paused = false
-       and lower(coalesce(po.payment_status, '')) in ('verified', 'collected')
+       and lower(coalesce(po.payment_status, '')) = 'collected'
        and d.storage_path is not null
        and d.storage_path <> ''
        and d.file_sha256 is not null

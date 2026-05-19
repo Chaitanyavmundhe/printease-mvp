@@ -3,6 +3,8 @@ import {
   createPrintJob,
   findAgentByIdAndHub,
   findOrderWithDocumentForHub,
+  findPairingSessionById,
+  findPendingApprovalPairingSessionById,
   findPendingPairingSessionByCodeHash,
   insertPrintJobEvent,
   listAgentPrintersByAgent,
@@ -10,10 +12,12 @@ import {
   listAllAgentsByHub,
   listAgentsByHub,
   listPrintJobsByHub,
+  rejectPairingSession,
   revokeAgent,
   setAgentPaused,
   updateOrderStatus,
   upsertAgentForPairing,
+  approvePairingSession,
   withTransaction
 } from '../db/repository.js';
 import { OFFICIAL_BACKEND_URL } from '../config/agent.js';
@@ -27,8 +31,8 @@ function getHubId(req) {
   return req.user?.centreId || req.user?.hubId;
 }
 
-function isPaymentVerified(order) {
-  return String(order.payment_status || '').toLowerCase() === 'verified';
+function isPaymentCollected(order) {
+  return String(order.payment_status || '').toLowerCase() === 'collected';
 }
 
 function isPrintableOrderStatus(status) {
@@ -101,6 +105,87 @@ export const pairAgentToHub = asyncHandler(async (req, res) => {
   });
 });
 
+export const getPairingSessionDetails = asyncHandler(async (req, res) => {
+  const sessionId = req.params.sessionId;
+  const session = await findPairingSessionById(sessionId);
+
+  if (!session) {
+    return res.status(404).json({ success: false, message: 'Pairing session not found' });
+  }
+
+  res.json({
+    success: true,
+    session: {
+      id: session.id,
+      agentName: session.agentName,
+      platform: session.platform,
+      version: session.version,
+      expiresAt: session.expiresAt,
+      approvalExpiresAt: session.approvalExpiresAt,
+      status: session.status
+    }
+  });
+});
+
+export const approveAgentPairing = asyncHandler(async (req, res) => {
+  const hubId = getHubId(req);
+  const { pairingSessionId, approvalToken } = req.body;
+
+  if (!pairingSessionId || !approvalToken) {
+    return res.status(400).json({ success: false, message: 'Pairing session ID and approval token are required' });
+  }
+
+  const session = await findPendingApprovalPairingSessionById(pairingSessionId);
+  if (!session) {
+    return res.status(404).json({ success: false, message: 'Pairing session not found, expired, or already handled' });
+  }
+
+  if (hashAgentSecret(approvalToken) !== session.approvalTokenHash) {
+    return res.status(403).json({ success: false, message: 'Invalid approval token' });
+  }
+
+  const result = await withTransaction(async (client) => {
+    const agent = await upsertAgentForPairing(session, hubId, client);
+    const approvedSession = await approvePairingSession(session.id, hubId, agent.id, client);
+    if (!approvedSession) return null;
+    return { agent, pairingSession: approvedSession };
+  });
+
+  if (!result) {
+    return res.status(409).json({ success: false, message: 'Pairing session could not be approved' });
+  }
+
+  res.json({
+    success: true,
+    message: 'Desktop device approved',
+    agentId: result.agent.id,
+    hubId,
+    pairingSessionId: result.pairingSession.id
+  });
+});
+
+export const rejectAgentPairing = asyncHandler(async (req, res) => {
+  const hubId = getHubId(req);
+  const { pairingSessionId } = req.body;
+
+  if (!pairingSessionId) {
+    return res.status(400).json({ success: false, message: 'Pairing session ID is required' });
+  }
+
+  const session = await findPairingSessionById(pairingSessionId);
+  if (!session || session.status !== 'pending' || new Date(session.expiresAt).getTime() <= Date.now()) {
+    return res.status(409).json({ success: false, message: 'Pairing session cannot be rejected' });
+  }
+
+  const rejectedSession = await withTransaction(async (client) => rejectPairingSession(session.id, hubId, client));
+
+  res.json({
+    success: true,
+    message: 'Pairing request rejected',
+    pairingSessionId: rejectedSession.id
+  });
+});
+
 export const pauseAgent = asyncHandler(async (req, res) => {
   const agent = await setAgentPaused(req.params.agentId, getHubId(req), true);
 
@@ -148,8 +233,8 @@ export const sendOrderToAgent = asyncHandler(async (req, res) => {
     return res.status(404).json({ success: false, message: 'Order not found for this hub' });
   }
 
-  if (!isPaymentVerified(order)) {
-    return res.status(400).json({ success: false, message: 'Payment is not verified' });
+  if (!isPaymentCollected(order)) {
+    return res.status(400).json({ success: false, message: 'Payment is not collected' });
   }
 
   if (!isPrintableOrderStatus(order.status)) {

@@ -8,6 +8,7 @@ import UserDashboard from "./pages/UserDashboard";
 import HubDashboard from "./pages/HubDashboard";
 import HubPricingPage from "./pages/HubPricingPage";
 import HubPrinterAgentPage from "./pages/HubPrinterAgentPage";
+import ApproveAgentPage from "./pages/ApproveAgentPage";
 import DesktopAgentPage from "./pages/DesktopAgentPage";
 import CentreCodePage from "./pages/CentreCodePage";
 import UploadPage from "./pages/UploadPage";
@@ -26,6 +27,7 @@ const ROUTES = {
   hubDashboard: "/hub/dashboard",
   hubPricing: "/hub/pricing",
   hubPrinters: "/hub/printers",
+  approveAgent: "/hub/printers/approve-agent",
   desktopAgent: "/desktop-agent",
   centre: "/centre",
   upload: "/upload",
@@ -364,8 +366,12 @@ export default function App() {
     setProfileOpen(false);
   }
 
-  function startLogin(role) {
-    if (page !== "payment") setPostAuthRedirect(null);
+  function startLogin(role, redirect = null) {
+    if (redirect) {
+      setPostAuthRedirect(redirect);
+    } else if (page !== "payment") {
+      setPostAuthRedirect(null);
+    }
     setAuthRole(role);
     setAuthMode("login");
     setAuthError("");
@@ -856,6 +862,16 @@ export default function App() {
                 <HubPrinterAgentPage navigate={navigate} />
               ) : (
                 <RouteNotice title="Print Hub Login Required" message="Please login as a print hub to manage printer agents." actionLabel="Login as Print Hub" onAction={() => startLogin("hub")} />
+              )
+            }
+          />
+          <Route
+            path={ROUTES.approveAgent}
+            element={
+              currentUser?.role === "hub" ? (
+                <ApproveAgentPage currentUser={currentUser} navigate={navigate} />
+              ) : (
+                <RouteNotice title="Print Hub Login Required" message="Please login as a print hub to approve desktop devices." actionLabel="Login as Print Hub" onAction={() => startLogin("hub", "approveAgent")} />
               )
             }
           />

@@ -258,6 +258,8 @@ create table if not exists agent_tokens (
 create table if not exists agent_pairing_sessions (
   id text primary key default gen_random_uuid()::text,
   pairing_code_hash text not null,
+  approval_token_hash text,
+  public_key text,
   device_id text not null,
   agent_name text not null,
   platform text,
@@ -266,9 +268,18 @@ create table if not exists agent_pairing_sessions (
   hub_id text references print_hubs(id) on delete cascade,
   agent_id text references agents(id) on delete set null,
   expires_at timestamptz not null,
+  approval_expires_at timestamptz not null,
+  approved_at timestamptz,
+  rejected_at timestamptz,
   created_at timestamptz not null default now(),
   claimed_at timestamptz
 );
+
+alter table agent_pairing_sessions add column if not exists approval_token_hash text;
+alter table agent_pairing_sessions add column if not exists public_key text;
+alter table agent_pairing_sessions add column if not exists approval_expires_at timestamptz;
+alter table agent_pairing_sessions add column if not exists approved_at timestamptz;
+alter table agent_pairing_sessions add column if not exists rejected_at timestamptz;
 
 create table if not exists agent_printers (
   id text primary key default gen_random_uuid()::text,
