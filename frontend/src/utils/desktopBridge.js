@@ -30,6 +30,27 @@ export async function listPrinters() {
   }
 }
 
+export function onPrintersUpdated(callback) {
+  const bridge = getBridge();
+  if (!bridge?.onPrintersUpdated) return () => {};
+
+  return bridge.onPrintersUpdated(callback);
+}
+
+export async function diagnosePrinters() {
+  const bridge = getBridge();
+  if (!bridge?.diagnosePrinters) return desktopFallback();
+
+  try {
+    return await bridge.diagnosePrinters();
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message || "Could not run printer diagnostics.",
+    };
+  }
+}
+
 export async function testPrint(payload = {}) {
   const bridge = getBridge();
   if (!bridge?.testPrint) return desktopFallback();
@@ -81,7 +102,7 @@ export async function checkBackendHealth() {
   } catch (error) {
     return {
       success: false,
-      error: error.message || "Could not check Render backend health.",
+      error: error.message || "Could not check backend health.",
     };
   }
 }

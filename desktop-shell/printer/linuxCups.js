@@ -33,6 +33,29 @@ async function runCommand(command, args) {
   }
 }
 
+async function probeCommand(command, args) {
+  try {
+    const { stdout, stderr } = await runCommand(command, args);
+
+    return {
+      success: true,
+      command: [command, ...args].join(" "),
+      stdout: stdout?.trim() || "",
+      stderr: stderr?.trim() || "",
+      code: 0,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      command: [command, ...args].join(" "),
+      stdout: error.stdout?.trim() || "",
+      stderr: error.stderr?.trim() || "",
+      error: error.message || "Command failed.",
+      code: error.code || error.status || 1,
+    };
+  }
+}
+
 function parseDefaultPrinter(output) {
   const match = String(output || "").match(/system default destination:\s*(.+)$/im);
   return match?.[1]?.trim() || "";
@@ -101,6 +124,22 @@ export async function listPrinters() {
   } catch (error) {
     return cupsFailure(error, "Could not list CUPS printers.");
   }
+}
+
+export async function diagnosePrinters() {
+  const [printerStatus, defaultPrinter, deviceStatus] = await Promise.all([
+    probeCommand("lpstat", ["-p"]),
+    probeCommand("lpstat", ["-d"]),
+    probeCommand("lpstat", ["-v"]),
+  ]);
+
+  return {
+    success: printerStatus.success,
+    platform: process.platform,
+    path: process.env.PATH || "",
+    cupsServer: process.env.CUPS_SERVER || "",
+    probes: [printerStatus, defaultPrinter, deviceStatus],
+  };
 }
 
 async function validatePrinter(printerName) {

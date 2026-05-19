@@ -1,24 +1,25 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain, session } from "electron";
 import { randomUUID } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { listPrinters, stopPrinting, testPrint } from "./printer/printExecutor.js";
+import { diagnosePrinters, listPrinters, stopPrinting, testPrint } from "./printer/printExecutor.js";
 import { confirmPairing, sendHeartbeat, startPairing } from "./agent/heartbeat.js";
 import { createJobPoller, processNextJob } from "./agent/jobPoller.js";
 import { syncPrinters } from "./agent/statusReporter.js";
+import { getApiBaseUrl, getBackendUrl } from "./config/backend.js";
 import { loadConfig, saveConfig, setConfigDirectory } from "./local/config.js";
 
-const BACKEND_URL = "https://printease-backend-byex.onrender.com";
-const API_BASE_URL = `${BACKEND_URL}/api`;
-const DEV_FRONTEND_URL = "http://localhost:5173";
+const DEV_FRONTEND_URL = process.env.PRINTEASE_FRONTEND_URL || "http://127.0.0.1:5175";
 const VERSION = "0.1.0";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const PRELOAD_PATH = path.join(__dirname, "preload.cjs");
 
 let mainWindow = null;
 let ipcHandlersRegistered = false;
+let latestPrinterResult = null;
 let agentSession = {
   deviceId: "",
   deviceName: "",
@@ -103,8 +104,11 @@ async function loadFrontend(window) {
 }
 
 async function checkBackendHealth() {
+  const backendUrl = getBackendUrl({ packaged: app.isPackaged });
+  const apiBaseUrl = getApiBaseUrl({ packaged: app.isPackaged });
+
   try {
-    const response = await fetch(`${API_BASE_URL}/health`, {
+    const response = await fetch(`${apiBaseUrl}/health`, {
       method: "GET",
       headers: {
         Accept: "application/json",
@@ -115,18 +119,77 @@ async function checkBackendHealth() {
     return {
       success: response.ok,
       status: response.status,
-      backendUrl: BACKEND_URL,
-      apiBaseUrl: API_BASE_URL,
+      backendUrl,
+      apiBaseUrl,
       data,
     };
   } catch (error) {
     return {
       success: false,
-      backendUrl: BACKEND_URL,
-      apiBaseUrl: API_BASE_URL,
-      error: error.message || "Could not reach Render backend health endpoint.",
+      backendUrl,
+      apiBaseUrl,
+      error: error.message || "Could not reach backend health endpoint.",
     };
   }
+}
+
+async function reportPrinterDiagnostic(event, result) {
+  try {
+    await fetch(`${getApiBaseUrl({ packaged: app.isPackaged })}/desktop/printer-diagnostics`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        event,
+        deviceId: agentSession.deviceId || null,
+        deviceName: agentSession.deviceName || null,
+        platform: process.platform,
+        version: VERSION,
+        paired: Boolean(agentSession.accessToken),
+        result,
+      }),
+    });
+  } catch (error) {
+    console.warn("[DESKTOP PRINTER DIAGNOSTIC REPORT FAILED]", error.message || error);
+  }
+}
+
+function emitPrinterResult(result) {
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed()) {
+      window.webContents.send("printers:updated", result);
+    }
+  }
+}
+
+async function refreshLocalPrinterResult(event) {
+  const result = await listPrinters();
+  latestPrinterResult = result;
+  console.log("[DESKTOP PRINTERS]", JSON.stringify(result, null, 2));
+  emitPrinterResult(result);
+  await reportPrinterDiagnostic(event, result);
+  return result;
+}
+
+function reportStartupPrinterDiagnostics() {
+  refreshLocalPrinterResult("desktop:startup-list")
+    .then((result) => {
+      console.log("[DESKTOP STARTUP PRINTERS]", JSON.stringify(result, null, 2));
+    })
+    .catch((error) => {
+      console.warn("[DESKTOP STARTUP PRINTERS FAILED]", error.message || error);
+    });
+
+  diagnosePrinters()
+    .then(async (result) => {
+      console.log("[DESKTOP STARTUP PRINTER DIAGNOSTICS]", JSON.stringify(result, null, 2));
+      await reportPrinterDiagnostic("desktop:startup-diagnose", result);
+    })
+    .catch((error) => {
+      console.warn("[DESKTOP STARTUP PRINTER DIAGNOSTICS FAILED]", error.message || error);
+    });
 }
 
 function sanitizeAgentSession() {
@@ -320,17 +383,28 @@ function registerIpcHandlers() {
   if (ipcHandlersRegistered) return;
   ipcHandlersRegistered = true;
 
-  ipcMain.handle("desktop:status", () => ({
-    success: true,
-    isDesktop: true,
-    platform: process.platform,
-    backendUrl: BACKEND_URL,
-    apiBaseUrl: API_BASE_URL,
-    version: VERSION,
-  }));
+  ipcMain.handle("desktop:status", async () => {
+    const printerResult = latestPrinterResult || await refreshLocalPrinterResult("desktop:status");
+
+    return {
+      success: true,
+      isDesktop: true,
+      platform: process.platform,
+      backendUrl: getBackendUrl({ packaged: app.isPackaged }),
+      apiBaseUrl: getApiBaseUrl({ packaged: app.isPackaged }),
+      version: VERSION,
+      printerResult,
+    };
+  });
 
   ipcMain.handle("backend:health", () => checkBackendHealth());
-  ipcMain.handle("printers:list", () => listPrinters());
+  ipcMain.handle("printers:list", () => refreshLocalPrinterResult("printers:list"));
+  ipcMain.handle("printers:diagnose", async () => {
+    const result = await diagnosePrinters();
+    console.log("[DESKTOP PRINTER DIAGNOSTICS]", JSON.stringify(result, null, 2));
+    await reportPrinterDiagnostic("printers:diagnose", result);
+    return result;
+  });
 
   ipcMain.handle("printers:test-print", (_event, payload = {}) => {
     const printerName = typeof payload === "string" ? payload : payload?.printerName;
@@ -360,6 +434,11 @@ function isAllowedNavigation(url) {
 }
 
 function createMainWindow() {
+  console.log("[DESKTOP WINDOW]", {
+    frontendUrl: DEV_FRONTEND_URL,
+    preload: PRELOAD_PATH,
+  });
+
   mainWindow = new BrowserWindow({
     width: 1300,
     height: 850,
@@ -367,13 +446,25 @@ function createMainWindow() {
     minHeight: 700,
     title: "PrintEase Desktop",
     webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
+      preload: PRELOAD_PATH,
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: false,
     },
   });
 
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  mainWindow.webContents.on("preload-error", (_event, preloadPath, error) => {
+    console.error("[DESKTOP PRELOAD ERROR]", {
+      preloadPath,
+      error: error?.stack || error?.message || String(error),
+    });
+  });
+  mainWindow.webContents.on("console-message", (_event, _level, message) => {
+    if (String(message).startsWith("[DESKTOP PRELOAD]")) {
+      console.log(message);
+    }
+  });
   mainWindow.webContents.on("will-navigate", (event, url) => {
     if (!isAllowedNavigation(url)) {
       event.preventDefault();
@@ -384,15 +475,37 @@ function createMainWindow() {
     if (!isMainFrame || app.isPackaged || !validatedURL.startsWith(DEV_FRONTEND_URL)) return;
     await mainWindow?.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(getDevServerErrorHtml())}`);
   });
+  mainWindow.webContents.on("did-finish-load", () => {
+    mainWindow.webContents
+      .executeJavaScript(`({
+        hasBridge: Boolean(window.printeaseDesktop),
+        isDesktop: Boolean(window.printeaseDesktop?.isDesktop),
+        bridgeVersion: window.printeaseDesktop?.bridgeVersion || null,
+        bridgeKeys: window.printeaseDesktop ? Object.keys(window.printeaseDesktop) : []
+      })`)
+      .then((bridgeState) => {
+        console.log("[DESKTOP RENDERER]", {
+          url: mainWindow.webContents.getURL(),
+          ...bridgeState,
+        });
+      })
+      .catch((error) => {
+        console.warn("[DESKTOP RENDERER CHECK FAILED]", error.message || error);
+      });
+
+    if (latestPrinterResult) emitPrinterResult(latestPrinterResult);
+  });
 
   loadFrontend(mainWindow);
 }
 
 app.whenReady().then(async () => {
+  await session.defaultSession.clearCache();
   setConfigDirectory(app.getPath("userData"));
   await ensureDeviceIdentity();
   registerIpcHandlers();
   createMainWindow();
+  setTimeout(reportStartupPrinterDiagnostics, 1000);
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {

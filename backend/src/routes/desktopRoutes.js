@@ -2,6 +2,7 @@ import express from 'express';
 import {
   desktopHeartbeat,
   getDesktopDeviceStatus,
+  logDesktopPrinterDiagnostics,
   registerDesktopDevice,
   syncDesktopEvents,
   syncDesktopOrders,
@@ -14,6 +15,7 @@ import { roleMiddleware } from '../middleware/roleMiddleware.js';
 
 const router = express.Router();
 
+router.post('/printer-diagnostics', logDesktopPrinterDiagnostics);
 router.post('/device/register', authMiddleware, roleMiddleware('hub'), registerDesktopDevice);
 router.post('/device/heartbeat', agentAuthMiddleware, desktopHeartbeat);
 router.get('/device/status', agentAuthMiddleware, getDesktopDeviceStatus);

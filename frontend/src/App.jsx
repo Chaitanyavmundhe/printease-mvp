@@ -16,7 +16,7 @@ import TrackPage from "./pages/TrackPage";
 import HistoryPage from "./pages/HistoryPage";
 import { initialCentres, initialOrders } from "./data/demoData";
 import { calculateTotalAmount, getPricePerPage } from "./utils/price";
-import { isDesktop } from "./utils/desktopBridge";
+import { isDesktop, onPrintersUpdated } from "./utils/desktopBridge";
 import { apiRequest } from "./services/api";
 
 const ROUTES = {
@@ -219,6 +219,9 @@ export default function App() {
 
   useEffect(() => {
     setDesktopAvailable(isDesktop());
+    return onPrintersUpdated(() => {
+      setDesktopAvailable(true);
+    });
   }, []);
 
   useEffect(() => {
@@ -712,6 +715,10 @@ export default function App() {
         startRegister={startRegister}
         logout={logout}
       />
+
+      <div className={`border-b px-4 py-2 text-center text-xs font-semibold ${desktopAvailable ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>
+        PrintEase local dev · frontend 5175 · backend 5005 · desktop bridge {desktopAvailable ? "connected" : "not connected"}
+      </div>
 
       <main className="mx-auto max-w-6xl px-4 py-8">
         <BackendStatus />

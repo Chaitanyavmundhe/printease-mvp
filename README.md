@@ -37,6 +37,8 @@ The backend keeps `credentials: true` and does not use a wildcard origin. It all
 - `https://printhubdesi.vercel.app`
 - `http://localhost:5173`
 - `http://127.0.0.1:5173`
+- `http://localhost:5175`
+- `http://127.0.0.1:5175`
 - HTTPS Vercel preview origins ending in `.vercel.app` whose hostname includes `printease`, `printhubdesi`, or `printease-mvp`
 
 This lets production, Vercel previews, local Vite, and the Electron dev shell call the same Render backend without allowing random websites.

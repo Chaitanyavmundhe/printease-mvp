@@ -11,6 +11,7 @@ import {
   resumeHubAgent,
   revokeHubAgent,
 } from "../services/api";
+import { isDesktop, listPrinters as listLocalPrinters, onPrintersUpdated } from "../utils/desktopBridge";
 
 const EMPTY_ANALYTICS = {
   totalAgents: 0,
@@ -50,6 +51,9 @@ function agentLabel(agent) {
 }
 
 export default function HubPrinterAgentPage({ navigate }) {
+  const [desktopAvailable, setDesktopAvailable] = useState(() => isDesktop());
+  const [localPrinters, setLocalPrinters] = useState([]);
+  const [localPrinterError, setLocalPrinterError] = useState("");
   const [agents, setAgents] = useState([]);
   const [printers, setPrinters] = useState([]);
   const [printJobs, setPrintJobs] = useState([]);
@@ -62,6 +66,7 @@ export default function HubPrinterAgentPage({ navigate }) {
   const [actionId, setActionId] = useState("");
 
   const agentsById = useMemo(() => new Map(agents.map((agent) => [agent.id, agent])), [agents]);
+  const localPrinterNames = localPrinters.map((printer) => printer.displayName || printer.printerName).filter(Boolean).join(", ");
   const printersByAgent = useMemo(() => {
     const grouped = new Map();
     for (const printer of printers) {
@@ -88,12 +93,32 @@ export default function HubPrinterAgentPage({ navigate }) {
       setPrintJobs(Array.isArray(summary.printJobs) ? summary.printJobs : []);
       setAnalytics(summary.analytics || EMPTY_ANALYTICS);
       setBackendHealth(health);
+
+      const desktopNow = isDesktop();
+      setDesktopAvailable(desktopNow);
+
+      if (desktopNow) {
+        const localPrinterResult = await listLocalPrinters();
+        setLocalPrinters(Array.isArray(localPrinterResult?.printers) ? localPrinterResult.printers : []);
+        setLocalPrinterError(localPrinterResult?.success === false ? localPrinterResult.error || localPrinterResult.message || "Could not load local printers." : "");
+      } else {
+        setLocalPrinters([]);
+        setLocalPrinterError("");
+      }
     } catch (loadError) {
       setError(loadError.message || "Could not load printer agent dashboard.");
     } finally {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    return onPrintersUpdated((result) => {
+      setDesktopAvailable(true);
+      setLocalPrinters(Array.isArray(result?.printers) ? result.printers : []);
+      setLocalPrinterError(result?.success === false ? result.error || result.message || "Could not load local printers." : "");
+    });
+  }, []);
 
   useEffect(() => {
     refreshAll();
@@ -148,6 +173,11 @@ export default function HubPrinterAgentPage({ navigate }) {
           <p className={`mt-2 text-sm font-semibold ${backendHealth?.success ? "text-emerald-700" : "text-amber-700"}`}>
             Backend: {backendHealth ? (backendHealth.success ? "online" : "check failed") : "checking"}
           </p>
+          {desktopAvailable && (
+            <p className={`mt-2 text-sm font-semibold ${localPrinters.length > 0 ? "text-emerald-700" : "text-amber-700"}`}>
+              Local desktop printers: {localPrinters.length > 0 ? localPrinterNames : "checking"}
+            </p>
+          )}
         </div>
         <div className="flex flex-wrap gap-2">
           <button onClick={() => navigate("hubDashboard")} className="inline-flex items-center gap-2 rounded-xl border px-4 py-3 font-semibold">
@@ -251,6 +281,43 @@ export default function HubPrinterAgentPage({ navigate }) {
                 </div>
               );
             })}
+          </div>
+        )}
+      </Card>
+
+      <Card>
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h3 className="text-xl font-bold">Local Desktop Printers</h3>
+            <p className="mt-1 text-sm text-slate-600">
+              {desktopAvailable ? "Detected in this desktop shell before backend sync." : "Open PrintEase Desktop to detect local printers."}
+            </p>
+          </div>
+          {desktopAvailable && (
+            <button onClick={() => navigate("desktopAgent")} className="inline-flex items-center gap-2 rounded-xl border px-4 py-3 font-semibold">
+              <Printer size={16} /> Desktop Agent
+            </button>
+          )}
+        </div>
+        {localPrinterError ? (
+          <p className="mt-4 rounded-2xl bg-rose-50 p-4 text-sm font-semibold text-rose-700">{localPrinterError}</p>
+        ) : localPrinters.length === 0 ? (
+          <p className="mt-4 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
+            {desktopAvailable ? "No local desktop printers detected in this view." : "Desktop bridge disconnected. Open this page inside the PrintEase Desktop window to see local printers."}
+          </p>
+        ) : (
+          <div className="mt-5 grid gap-3 lg:grid-cols-2">
+            {localPrinters.map((printer) => (
+              <div key={printer.systemPrinterId || printer.printerName} className="rounded-2xl border bg-white p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h4 className="font-bold">{printer.displayName || printer.printerName}</h4>
+                    <p className="mt-1 text-sm text-slate-600">{printer.rawStatus || printer.status || "unknown"}</p>
+                  </div>
+                  <StatusBadge>{printer.isDefault ? "default" : printer.status || "local"}</StatusBadge>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </Card>

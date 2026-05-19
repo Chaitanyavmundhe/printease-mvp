@@ -4,10 +4,12 @@ import Card from "../components/Card";
 import {
   checkBackendHealth,
   confirmPairing,
+  diagnosePrinters,
   getAgentStatus,
   getDesktopStatus,
   isDesktop,
   listPrinters,
+  onPrintersUpdated,
   pollPrintJobs,
   sendHeartbeat,
   startJobPolling,
@@ -45,6 +47,10 @@ function normalizePrinterResult(result) {
   };
 }
 
+function localPrinterMessage(count) {
+  return `Detected ${count} local printer${count === 1 ? "" : "s"}.`;
+}
+
 export default function DesktopAgentPage() {
   const [desktopAvailable, setDesktopAvailable] = useState(() => isDesktop());
   const [status, setStatus] = useState(null);
@@ -59,11 +65,28 @@ export default function DesktopAgentPage() {
   const [agentBusy, setAgentBusy] = useState(false);
   const [agentMessage, setAgentMessage] = useState("");
   const [backendHealth, setBackendHealth] = useState(null);
+  const [printerDiagnostics, setPrinterDiagnostics] = useState(null);
 
   const defaultPrinter = useMemo(() => printers.find((printer) => printer.isDefault) || printers[0] || null, [printers]);
+  const localPrinterNames = printers.map((printer) => printer.displayName || printer.printerName).filter(Boolean).join(", ");
+
+  function applyPrinterResult(result) {
+    const normalized = normalizePrinterResult(result);
+
+    setPrinters(normalized.printers);
+    setSelectedPrinterName(normalized.printers.find((printer) => printer.isDefault)?.printerName || normalized.printers[0]?.printerName || "");
+    setError(normalized.error);
+    setErrorDetail(normalized.detail);
+    setHelpCommands(normalized.helpCommands);
+    setMessage(normalized.error ? "" : localPrinterMessage(normalized.printers.length));
+  }
 
   useEffect(() => {
     setDesktopAvailable(isDesktop());
+    return onPrintersUpdated((result) => {
+      setDesktopAvailable(true);
+      applyPrinterResult(result);
+    });
   }, []);
 
   useEffect(() => {
@@ -76,11 +99,17 @@ export default function DesktopAgentPage() {
       }
 
       setStatus(nextStatus);
+      if (nextStatus.printerResult) applyPrinterResult(nextStatus.printerResult);
     });
 
     getAgentStatus().then((nextSession) => {
       if (nextSession?.success) setAgentSession(nextSession);
     });
+  }, [desktopAvailable]);
+
+  useEffect(() => {
+    if (!desktopAvailable) return;
+    refreshPrinters();
   }, [desktopAvailable]);
 
   useEffect(() => {
@@ -97,14 +126,25 @@ export default function DesktopAgentPage() {
     setMessage("");
 
     const result = await listPrinters();
-    const normalized = normalizePrinterResult(result);
-
-    setPrinters(normalized.printers);
-    setSelectedPrinterName(normalized.printers.find((printer) => printer.isDefault)?.printerName || normalized.printers[0]?.printerName || "");
-    setError(normalized.error);
-    setErrorDetail(normalized.detail);
-    setHelpCommands(normalized.helpCommands);
+    applyPrinterResult(result);
     setLoadingPrinters(false);
+  }
+
+  async function runPrinterDiagnostics() {
+    setError("");
+    setErrorDetail("");
+    setHelpCommands([]);
+    setMessage("");
+
+    const result = await diagnosePrinters();
+    setPrinterDiagnostics(result);
+
+    if (result?.success === false) {
+      setError(result.error || "Printer diagnostics found a local printing issue.");
+      return;
+    }
+
+    setMessage("Printer diagnostics completed.");
   }
 
   async function sendTestPrint() {
@@ -170,11 +210,11 @@ export default function DesktopAgentPage() {
     setBackendHealth(result);
 
     if (result?.success === false) {
-      setError(result.error || result.message || "Render backend health check failed.");
+      setError(result.error || result.message || "Backend health check failed.");
       return;
     }
 
-    setMessage("Render backend health check passed.");
+    setMessage("Backend health check passed.");
   }
 
   if (!desktopAvailable) {
@@ -184,7 +224,8 @@ export default function DesktopAgentPage() {
           <Printer size={22} />
           <div>
             <h2 className="text-2xl font-bold">Desktop Agent</h2>
-            <p className="mt-1 text-slate-600">Open PrintEase Desktop to use printer controls.</p>
+            <p className="mt-1 font-semibold text-amber-700">Desktop bridge disconnected</p>
+            <p className="mt-1 text-slate-600">Open this page inside the PrintEase Desktop window to use printer controls.</p>
           </div>
         </div>
       </Card>
@@ -200,8 +241,12 @@ export default function DesktopAgentPage() {
             <div>
               <h2 className="text-3xl font-bold">Desktop Agent</h2>
               <p className="mt-1 font-semibold text-emerald-700">Desktop mode detected</p>
+              <p className="mt-1 text-sm font-semibold text-emerald-700">Desktop bridge connected</p>
               <p className="mt-2 text-sm text-slate-600">Platform: {status?.platform || window.printeaseDesktop?.platform || "unknown"}</p>
-              <p className="text-sm text-slate-600">Backend: {status?.backendUrl || "https://printease-backend-byex.onrender.com"}</p>
+              <p className="text-sm text-slate-600">Backend: {status?.backendUrl || "http://127.0.0.1:5005"}</p>
+              <p className={`mt-2 text-sm font-semibold ${printers.length > 0 ? "text-emerald-700" : "text-amber-700"}`}>
+                Local printers: {printers.length > 0 ? localPrinterNames : "checking"}
+              </p>
               {backendHealth && (
                 <p className={`mt-1 text-sm font-semibold ${backendHealth.success ? "text-emerald-700" : "text-rose-700"}`}>
                   Backend health: {backendHealth.success ? "online" : "unreachable"}
@@ -225,6 +270,13 @@ export default function DesktopAgentPage() {
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-3 font-semibold text-white disabled:opacity-60"
             >
               <RefreshCw size={16} /> {loadingPrinters ? "Refreshing" : "Refresh Printers"}
+            </button>
+            <button
+              type="button"
+              onClick={runPrinterDiagnostics}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-3 font-semibold"
+            >
+              <Printer size={16} /> Diagnose
             </button>
           </div>
         </div>
@@ -385,6 +437,22 @@ export default function DesktopAgentPage() {
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {printerDiagnostics?.probes?.length > 0 && (
+          <div className="mt-5 rounded-2xl border bg-slate-50 p-4 text-sm">
+            <p className="font-semibold text-slate-900">Desktop printer diagnostics</p>
+            <div className="mt-3 grid gap-3">
+              {printerDiagnostics.probes.map((probe) => (
+                <div key={probe.command} className="rounded-xl bg-white p-3">
+                  <p className="font-mono text-xs font-semibold text-slate-700">{probe.command}</p>
+                  {probe.stdout && <pre className="mt-2 whitespace-pre-wrap text-xs text-slate-700">{probe.stdout}</pre>}
+                  {probe.stderr && <pre className="mt-2 whitespace-pre-wrap text-xs text-rose-700">{probe.stderr}</pre>}
+                  {probe.error && <p className="mt-2 text-xs text-rose-700">{probe.error}</p>}
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </Card>

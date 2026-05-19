@@ -1,7 +1,8 @@
-const DEFAULT_API_BASE_URL = "https://printease-backend-byex.onrender.com";
+const PRODUCTION_API_BASE_URL = "https://printease-backend-byex.onrender.com";
+const LOCAL_API_BASE_URL = "http://127.0.0.1:5005";
+const DEFAULT_API_BASE_URL = import.meta.env.DEV ? LOCAL_API_BASE_URL : PRODUCTION_API_BASE_URL;
 const configuredApiUrl = import.meta.env.VITE_API_URL?.trim();
-const isDesktopRuntime = typeof window !== "undefined" && Boolean(window.printeaseDesktop?.isDesktop);
-const API_BASE_URL = (isDesktopRuntime ? DEFAULT_API_BASE_URL : configuredApiUrl || DEFAULT_API_BASE_URL).replace(/\/+$/, "");
+const API_BASE_URL = (configuredApiUrl || DEFAULT_API_BASE_URL).replace(/\/+$/, "");
 
 export default API_BASE_URL;
 
@@ -128,7 +129,7 @@ export async function apiRequest(endpoint, options = {}) {
     }
 
     throw new ApiError(
-      `Backend API is unreachable at ${API_BASE_URL}. Please check Render backend, CORS, Vercel VITE_API_URL, and deployment status.`,
+      `Backend API is unreachable at ${API_BASE_URL}. Please check the backend server, CORS, and VITE_API_URL.`,
       0,
       error
     );

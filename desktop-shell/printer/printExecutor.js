@@ -24,6 +24,13 @@ export async function listPrinters() {
   return printerModule.listPrinters();
 }
 
+export async function diagnosePrinters() {
+  const printerModule = getPrinterModule();
+  if (!printerModule?.diagnosePrinters) return unsupportedPlatform();
+
+  return printerModule.diagnosePrinters();
+}
+
 export async function testPrint(printerName) {
   if (paused) {
     return {

@@ -1,5 +1,5 @@
-const BACKEND_URL = "https://printease-backend-byex.onrender.com";
-const API_BASE_URL = `${BACKEND_URL}/api`;
+import { getApiBaseUrl } from "../config/backend.js";
+
 const VERSION = "0.1.0";
 
 function createHeaders(agentToken) {
@@ -16,7 +16,7 @@ function createHeaders(agentToken) {
 }
 
 export async function backendRequest({ endpoint, method = "GET", agentToken, body }) {
-  const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+  const response = await fetch(`${getApiBaseUrl()}${endpoint}`, {
     method,
     headers: createHeaders(agentToken),
     body: body ? JSON.stringify(body) : undefined,
@@ -25,7 +25,7 @@ export async function backendRequest({ endpoint, method = "GET", agentToken, bod
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    const error = new Error(data.message || `Render API request failed with status ${response.status}`);
+    const error = new Error(data.message || `Backend API request failed with status ${response.status}`);
     error.status = response.status;
     error.details = data;
     throw error;

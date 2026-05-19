@@ -132,6 +132,41 @@ export const registerDesktopDevice = asyncHandler(async (req, res) => {
   });
 });
 
+export const logDesktopPrinterDiagnostics = asyncHandler(async (req, res) => {
+  const result = req.body?.result || {};
+  const printers = Array.isArray(result.printers) ? result.printers : [];
+  const probes = Array.isArray(result.probes) ? result.probes : [];
+
+  console.log('[DESKTOP PRINTER DIAGNOSTIC]', {
+    event: req.body?.event || 'unknown',
+    deviceId: req.body?.deviceId || null,
+    deviceName: req.body?.deviceName || null,
+    platform: req.body?.platform || null,
+    paired: Boolean(req.body?.paired),
+    success: result.success,
+    printerCount: printers.length,
+    printers: printers.map((printer) => ({
+      printerName: printer.printerName,
+      status: printer.status,
+      isDefault: printer.isDefault,
+      rawStatus: printer.rawStatus
+    })),
+    error: result.error || result.message || null,
+    probes: probes.map((probe) => ({
+      command: probe.command,
+      success: probe.success,
+      stdout: probe.stdout,
+      stderr: probe.stderr,
+      error: probe.error
+    }))
+  });
+
+  res.json({
+    success: true,
+    logged: true
+  });
+});
+
 export const desktopHeartbeat = asyncHandler(async (req, res) => {
   const agent = await updateAgentHeartbeat(req.agent.id, {
     status: req.body.status || 'online',

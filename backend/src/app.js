@@ -30,7 +30,9 @@ const allowedOrigins = new Set([
   process.env.FRONTEND_URL,
   'https://printhubdesi.vercel.app',
   'http://localhost:5173',
-  'http://127.0.0.1:5173'
+  'http://127.0.0.1:5173',
+  'http://localhost:5175',
+  'http://127.0.0.1:5175'
 ].map(normalizeOrigin).filter(Boolean));
 
 function isAllowedVercelPreviewOrigin(origin) {

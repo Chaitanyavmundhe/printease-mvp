@@ -12,7 +12,7 @@ PrintEase uses one shared React frontend for both the web app and the desktop ap
 
 The desktop app must never bundle, import, spawn, or run `backend/`.
 
-The desktop app and shared frontend must call the deployed Render backend:
+In packaged production builds, the desktop app and shared frontend call the deployed Render backend:
 
 ```txt
 https://printease-backend-byex.onrender.com
@@ -23,6 +23,14 @@ The desktop health check uses the API health endpoint:
 ```txt
 https://printease-backend-byex.onrender.com/api/health
 ```
+
+During local development, the Vite frontend and Electron shell default to the local backend:
+
+```txt
+http://127.0.0.1:5005
+```
+
+Set `PRINTEASE_BACKEND_URL` when launching Electron, or `VITE_API_URL` when launching Vite, to override the default backend URL.
 
 No backend secrets belong in `frontend/` or `desktop-shell/`, including:
 
@@ -36,7 +44,7 @@ No backend secrets belong in `frontend/` or `desktop-shell/`, including:
 During development, Electron loads the existing frontend dev server:
 
 ```txt
-http://localhost:5173
+http://127.0.0.1:5175
 ```
 
 For a later production build, Electron is prepared to load:
@@ -79,7 +87,7 @@ Windows printer support is intentionally a safe placeholder in this phase. It do
 
 ## Agent Runtime
 
-`desktop-shell/agent/` talks only to the deployed Render API:
+`desktop-shell/agent/` talks to the configured backend API:
 
 - `/api/agent/pair/start`
 - `/api/agent/pair/confirm`

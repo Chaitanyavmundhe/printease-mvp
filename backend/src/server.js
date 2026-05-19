@@ -1,7 +1,7 @@
 import app from './app.js';
 import { applySchema } from './db/schemaRunner.js';
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5005;
 
 console.log('[ENV CHECK]', {
   NODE_ENV: process.env.NODE_ENV,
@@ -15,13 +15,18 @@ if (!process.env.JWT_SECRET) {
   throw new Error('JWT_SECRET is missing. Add it in Render Environment Variables.');
 }
 
-const hasDatabaseUrl = Boolean(process.env.DATABASE_URL);
+const hasDatabaseConfig = Boolean(
+  process.env.DATABASE_URL ||
+  process.env.PGHOST ||
+  process.env.PGDATABASE ||
+  process.env.PGUSER
+);
 
-if (!hasDatabaseUrl) {
-  console.warn('[ENV WARNING] DATABASE_URL is missing. Add the Supabase PostgreSQL URL in Render when database routes are enabled.');
+if (!hasDatabaseConfig) {
+  console.warn('[ENV WARNING] Database configuration is missing. Add DATABASE_URL or PG* values when database routes are enabled.');
 }
 
-if (hasDatabaseUrl) {
+if (hasDatabaseConfig) {
   await applySchema();
 }
 

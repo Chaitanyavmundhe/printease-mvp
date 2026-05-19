@@ -1,7 +1,7 @@
 create extension if not exists "pgcrypto";
 
 create table if not exists users (
-  id uuid primary key default gen_random_uuid(),
+  id text primary key default gen_random_uuid()::text,
   name text not null,
   mobile text not null unique,
   password_hash text not null,
@@ -29,8 +29,8 @@ begin
 end $$;
 
 create table if not exists print_hubs (
-  id uuid primary key default gen_random_uuid(),
-  owner_id uuid references users(id) on delete cascade,
+  id text primary key default gen_random_uuid()::text,
+  owner_id text references users(id) on delete cascade,
   hub_name text not null,
   centre_code text not null unique,
   mobile text not null,
@@ -50,9 +50,47 @@ alter table print_hubs add column if not exists color_single numeric(10, 2) not 
 alter table print_hubs add column if not exists color_double numeric(10, 2) not null default 3;
 alter table print_hubs add column if not exists watermark_charge numeric(10, 2) not null default 2;
 
+do $$
+begin
+  if to_regclass('public.centres') is not null then
+    insert into print_hubs (
+      id,
+      owner_id,
+      hub_name,
+      centre_code,
+      mobile,
+      status,
+      upi_id,
+      bw_single,
+      bw_double,
+      color_single,
+      color_double,
+      watermark_charge,
+      created_at
+    )
+    select
+      c.id,
+      case when u.id is null then null else c.owner_id end,
+      c.name,
+      c.centre_code,
+      c.mobile,
+      c.status,
+      c.upi_id,
+      c.bw_single,
+      c.bw_double,
+      c.color_single,
+      c.color_double,
+      c.watermark_charge,
+      c.created_at
+    from centres c
+    left join users u on u.id = c.owner_id
+    on conflict (id) do nothing;
+  end if;
+end $$;
+
 create table if not exists documents (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid references users(id) on delete set null,
+  id text primary key default gen_random_uuid()::text,
+  user_id text references users(id) on delete set null,
   file_name text not null,
   file_type text,
   file_size integer,
@@ -68,10 +106,10 @@ alter table documents add column if not exists storage_path text;
 alter table documents add column if not exists page_count integer;
 
 create table if not exists print_orders (
-  id uuid primary key default gen_random_uuid(),
+  id text primary key default gen_random_uuid()::text,
   order_code text not null unique,
-  user_id uuid references users(id) on delete set null,
-  hub_id uuid not null references print_hubs(id) on delete cascade,
+  user_id text references users(id) on delete set null,
+  hub_id text not null references print_hubs(id) on delete cascade,
   document_name text not null,
   document_url text,
   pages integer not null,
@@ -86,9 +124,54 @@ create table if not exists print_orders (
   created_at timestamptz not null default now()
 );
 
+do $$
+begin
+  if to_regclass('public.orders') is not null then
+    insert into print_orders (
+      id,
+      order_code,
+      user_id,
+      hub_id,
+      document_name,
+      document_url,
+      pages,
+      copies,
+      color_type,
+      side_type,
+      watermark_enabled,
+      amount,
+      payment_status,
+      status,
+      pickup_code,
+      created_at
+    )
+    select
+      o.id,
+      o.order_code,
+      case when u.id is null then null else o.user_id end,
+      o.centre_id,
+      o.document_name,
+      o.document_id,
+      o.pages,
+      o.copies,
+      o.color_type,
+      o.side_type,
+      o.watermark_enabled,
+      o.amount,
+      o.payment_status,
+      o.status,
+      o.pickup_code,
+      o.created_at
+    from orders o
+    join print_hubs h on h.id = o.centre_id
+    left join users u on u.id = o.user_id
+    on conflict (id) do nothing;
+  end if;
+end $$;
+
 create table if not exists payments (
-  id uuid primary key default gen_random_uuid(),
-  order_id uuid not null references print_orders(id) on delete cascade,
+  id text primary key default gen_random_uuid()::text,
+  order_id text not null references print_orders(id) on delete cascade,
   amount numeric(10, 2) not null,
   method text,
   transaction_id text,
@@ -97,9 +180,29 @@ create table if not exists payments (
   verified_at timestamptz
 );
 
+alter table payments add column if not exists method text;
+alter table payments add column if not exists transaction_id text;
+do $$
+begin
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'payments'
+      and column_name = 'gateway'
+  ) then
+    alter table payments alter column gateway drop not null;
+
+    update payments
+    set
+      method = coalesce(method, gateway),
+      transaction_id = coalesce(transaction_id, gateway_payment_id, gateway_order_id);
+  end if;
+end $$;
+
 create table if not exists printers (
-  id uuid primary key default gen_random_uuid(),
-  hub_id uuid not null references print_hubs(id) on delete cascade,
+  id text primary key default gen_random_uuid()::text,
+  hub_id text references print_hubs(id) on delete cascade,
   printer_name text not null,
   printer_type text not null default 'laser',
   protocol text not null default 'PDF_MANUAL_DOWNLOAD',
@@ -110,9 +213,26 @@ create table if not exists printers (
   created_at timestamptz not null default now()
 );
 
+alter table printers add column if not exists hub_id text references print_hubs(id) on delete cascade;
+do $$
+begin
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'printers'
+      and column_name = 'centre_id'
+  ) then
+    alter table printers alter column centre_id drop not null;
+
+    update printers
+    set hub_id = coalesce(hub_id, centre_id);
+  end if;
+end $$;
+
 create table if not exists agents (
-  id uuid primary key default gen_random_uuid(),
-  hub_id uuid not null references print_hubs(id) on delete cascade,
+  id text primary key default gen_random_uuid()::text,
+  hub_id text not null references print_hubs(id) on delete cascade,
   agent_name text not null,
   device_id text not null,
   platform text,
@@ -127,8 +247,8 @@ create table if not exists agents (
 );
 
 create table if not exists agent_tokens (
-  id uuid primary key default gen_random_uuid(),
-  agent_id uuid not null references agents(id) on delete cascade,
+  id text primary key default gen_random_uuid()::text,
+  agent_id text not null references agents(id) on delete cascade,
   token_hash text not null unique,
   created_at timestamptz not null default now(),
   expires_at timestamptz,
@@ -136,24 +256,24 @@ create table if not exists agent_tokens (
 );
 
 create table if not exists agent_pairing_sessions (
-  id uuid primary key default gen_random_uuid(),
+  id text primary key default gen_random_uuid()::text,
   pairing_code_hash text not null,
   device_id text not null,
   agent_name text not null,
   platform text,
   version text,
   status text not null default 'pending',
-  hub_id uuid references print_hubs(id) on delete cascade,
-  agent_id uuid references agents(id) on delete set null,
+  hub_id text references print_hubs(id) on delete cascade,
+  agent_id text references agents(id) on delete set null,
   expires_at timestamptz not null,
   created_at timestamptz not null default now(),
   claimed_at timestamptz
 );
 
 create table if not exists agent_printers (
-  id uuid primary key default gen_random_uuid(),
-  agent_id uuid not null references agents(id) on delete cascade,
-  hub_id uuid not null references print_hubs(id) on delete cascade,
+  id text primary key default gen_random_uuid()::text,
+  agent_id text not null references agents(id) on delete cascade,
+  hub_id text not null references print_hubs(id) on delete cascade,
   printer_name text not null,
   system_printer_id text,
   status text not null default 'unknown',
@@ -163,10 +283,10 @@ create table if not exists agent_printers (
 );
 
 create table if not exists print_jobs (
-  id uuid primary key default gen_random_uuid(),
-  order_id uuid not null references print_orders(id) on delete cascade,
-  hub_id uuid not null references print_hubs(id) on delete cascade,
-  agent_id uuid references agents(id) on delete set null,
+  id text primary key default gen_random_uuid()::text,
+  order_id text not null references print_orders(id) on delete cascade,
+  hub_id text not null references print_hubs(id) on delete cascade,
+  agent_id text references agents(id) on delete set null,
   printer_name text,
   status text not null default 'queued',
   file_url text not null,
@@ -186,9 +306,9 @@ create table if not exists print_jobs (
 );
 
 create table if not exists print_job_events (
-  id uuid primary key default gen_random_uuid(),
-  print_job_id uuid not null references print_jobs(id) on delete cascade,
-  agent_id uuid references agents(id) on delete set null,
+  id text primary key default gen_random_uuid()::text,
+  print_job_id text not null references print_jobs(id) on delete cascade,
+  agent_id text references agents(id) on delete set null,
   event_type text not null,
   old_status text,
   new_status text,
