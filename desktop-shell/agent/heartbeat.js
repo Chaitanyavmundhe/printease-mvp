@@ -44,7 +44,7 @@ export function createHeartbeatPayload({ paused = false, status = "online", sele
   };
 }
 
-export async function startPairing({ deviceId, agentName }) {
+export async function startPairing({ deviceId, agentName, publicKey }) {
   if (!deviceId || !agentName) {
     return {
       success: false,
@@ -61,6 +61,7 @@ export async function startPairing({ deviceId, agentName }) {
         agentName,
         platform: process.platform,
         version: VERSION,
+        publicKey: publicKey || undefined,
       },
     });
   } catch (error) {

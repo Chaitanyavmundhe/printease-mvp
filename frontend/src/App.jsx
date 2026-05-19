@@ -247,6 +247,16 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    if (page !== "approveAgent" || currentUser) return;
+
+    setPostAuthRedirect(`${location.pathname}${location.search}`);
+    setAuthRole("hub");
+    setAuthMode("login");
+    setAuthError("");
+    navigate("auth", { replace: true });
+  }, [page, currentUser, location.pathname, location.search]);
+
+  useEffect(() => {
     async function restoreSession() {
       const token = localStorage.getItem("printease_token");
 
@@ -542,6 +552,8 @@ export default function App() {
     setPendingPayment(null);
     navigate("home");
   }
+
+  const approvalReturnPath = `${location.pathname}${location.search}`;
 
   async function handleCentreCode() {
     const code = centreCode.trim();
@@ -870,8 +882,10 @@ export default function App() {
             element={
               currentUser?.role === "hub" ? (
                 <ApproveAgentPage currentUser={currentUser} navigate={navigate} />
+              ) : currentUser ? (
+                <RouteNotice title="Only Hub Accounts" message="Only hub accounts can approve desktop agents." />
               ) : (
-                <RouteNotice title="Print Hub Login Required" message="Please login as a print hub to approve desktop devices." actionLabel="Login as Print Hub" onAction={() => startLogin("hub", "approveAgent")} />
+                <RouteNotice title="Print Hub Login Required" message="Please login as a print hub to approve desktop devices." actionLabel="Login as Print Hub" onAction={() => startLogin("hub", approvalReturnPath)} />
               )
             }
           />

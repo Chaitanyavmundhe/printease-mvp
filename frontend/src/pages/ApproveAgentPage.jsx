@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { CheckCircle, ShieldCheck, ShieldOff, X, Loader2 } from "lucide-react";
+import { CheckCircle, ShieldCheck, ShieldOff, Loader2 } from "lucide-react";
 import Card from "../components/Card";
 import { approveAgentPairing, getPairingApprovalSession, rejectAgentPairing } from "../services/api";
 
@@ -30,6 +30,7 @@ export default function ApproveAgentPage({ currentUser }) {
 
   const canApprove = Boolean(sessionId && approvalToken && session);
   const needsLogin = !currentUser;
+  const officialBackendUrl = "https://printease-backend-byex.onrender.com";
 
   useEffect(() => {
     if (!sessionId || !currentUser || currentUser.role !== "hub") return;
@@ -67,8 +68,8 @@ export default function ApproveAgentPage({ currentUser }) {
     setMessage("");
 
     try {
-      const result = await approveAgentPairing(sessionId, approvalToken);
-      setMessage(result.message || "Device approved. Return to PrintEase Desktop.");
+      await approveAgentPairing(sessionId, approvalToken);
+      setMessage("Device approved. Return to PrintEase Desktop.");
       setSession((prev) => ({ ...prev, status: "claimed" }));
     } catch (approveError) {
       setError(approveError.message || "Could not approve device.");
@@ -100,7 +101,7 @@ export default function ApproveAgentPage({ currentUser }) {
           <div className="flex items-center gap-3">
             <ShieldCheck size={24} className="text-slate-900" />
             <div>
-              <h2 className="text-3xl font-bold">Approve Desktop Device</h2>
+              <h2 className="text-3xl font-bold">Approve desktop device?</h2>
               <p className="mt-1 text-slate-600">Authorize a local desktop device without sharing your hub password.</p>
             </div>
           </div>
@@ -132,6 +133,7 @@ export default function ApproveAgentPage({ currentUser }) {
               <p className="mt-2 text-lg font-semibold text-slate-900">{session?.agentName || "Unknown device"}</p>
               <p className="mt-2 text-sm text-slate-600">Platform: {session?.platform || "Unknown"}</p>
               <p className="mt-1 text-sm text-slate-600">Version: {session?.version || "Unknown"}</p>
+              <p className="mt-1 break-all text-sm text-slate-600">Official backend: {officialBackendUrl}</p>
               <p className="mt-1 text-sm text-slate-600">Approval token: {approvalToken ? "Available" : "Missing"}</p>
             </div>
           </div>

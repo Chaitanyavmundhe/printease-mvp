@@ -1,7 +1,21 @@
 export const OFFICIAL_BACKEND_URL =
   (process.env.PUBLIC_BACKEND_URL || 'https://printease-backend-byex.onrender.com').replace(/\/+$/, '');
 
-export const AGENT_PAIRING_TTL_SECONDS = Number(process.env.AGENT_PAIRING_TTL_SECONDS || 60);
+function boundedPairingTtlSeconds(value, fallback) {
+  const seconds = Number(value);
+  if (!Number.isFinite(seconds) || seconds <= 0) return fallback;
+  return Math.min(120, Math.max(60, Math.round(seconds)));
+}
+
+export const AGENT_PAIRING_TTL_SECONDS = boundedPairingTtlSeconds(
+  process.env.AGENT_PAIRING_TTL_SECONDS,
+  60
+);
+
+export const AGENT_APPROVAL_TTL_SECONDS = boundedPairingTtlSeconds(
+  process.env.AGENT_APPROVAL_TTL_SECONDS || AGENT_PAIRING_TTL_SECONDS,
+  AGENT_PAIRING_TTL_SECONDS
+);
 
 export const AGENT_POLL_INTERVAL_MS = Number(process.env.AGENT_POLL_INTERVAL_MS || 5000);
 

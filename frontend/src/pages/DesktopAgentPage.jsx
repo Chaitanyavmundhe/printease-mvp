@@ -3,6 +3,7 @@ import { Link2, Printer, RefreshCw, Send, Wifi, X, ShieldCheck, Loader2 } from "
 import Card from "../components/Card";
 import {
   checkBackendHealth,
+  confirmApprovalPairing,
   confirmPairing,
   diagnosePrinters,
   getAgentStatus,
@@ -15,6 +16,7 @@ import {
   onPrintersUpdated,
   pollPrintJobs,
   sendHeartbeat,
+  startApprovalPairing as requestApprovalPairing,
   startJobPolling,
   startPairing,
   stopJobPolling,
@@ -72,7 +74,9 @@ export default function DesktopAgentPage() {
   const [autoPollingStarted, setAutoPollingStarted] = useState(false);
   const [approvalPolling, setApprovalPolling] = useState(false);
   const [approvalMessage, setApprovalMessage] = useState("");
+  const [manualPairingVisible, setManualPairingVisible] = useState(false);
   const approvalTimerRef = useRef(null);
+  const approvalSessionIdRef = useRef("");
 
   const defaultPrinter = useMemo(() => printers.find((printer) => printer.isDefault) || printers[0] || null, [printers]);
   const localPrinterNames = printers.map((printer) => printer.displayName || printer.printerName).filter(Boolean).join(", ");
@@ -122,6 +126,12 @@ export default function DesktopAgentPage() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (agentSession?.pairingSessionId) {
+      approvalSessionIdRef.current = agentSession.pairingSessionId;
+    }
+  }, [agentSession?.pairingSessionId]);
 
   useEffect(() => {
     if (!desktopAvailable) return;
@@ -316,7 +326,7 @@ export default function DesktopAgentPage() {
 
   async function pollApprovalStatus() {
     try {
-      const result = await confirmPairing();
+      const result = await confirmApprovalPairing(approvalSessionIdRef.current || agentSession?.pairingSessionId);
 
       if (result?.session) {
         setAgentSession(result.session);
@@ -326,6 +336,7 @@ export default function DesktopAgentPage() {
         stopApprovalPolling();
         setAgentMessage(result.message || "Device paired successfully.");
         setApprovalMessage("");
+        approvalSessionIdRef.current = "";
         return;
       }
 
@@ -333,6 +344,7 @@ export default function DesktopAgentPage() {
         stopApprovalPolling();
         setError(result.message || "Pairing request was rejected or expired.");
         setApprovalMessage("");
+        approvalSessionIdRef.current = "";
       } else if (result?.success === true && result?.paired === false) {
         setApprovalMessage(result.message || "Waiting for hub approval...");
       }
@@ -348,9 +360,10 @@ export default function DesktopAgentPage() {
     setApprovalPolling(true);
     setApprovalMessage("Waiting for hub approval...");
     approvalTimerRef.current = setInterval(pollApprovalStatus, 3000);
+    pollApprovalStatus();
   }
 
-  async function startApprovalPairing() {
+  async function beginApprovalPairing() {
     setAgentBusy(true);
     setAgentMessage("");
     setApprovalMessage("");
@@ -358,10 +371,11 @@ export default function DesktopAgentPage() {
     setErrorDetail("");
     setHelpCommands([]);
 
-    const result = await startPairing({ deviceName: agentSession?.deviceName || "PrintEase Desktop" });
+    const result = await requestApprovalPairing({ deviceName: agentSession?.deviceName || "PrintEase Desktop" });
 
     if (result?.session) {
       setAgentSession(result.session);
+      approvalSessionIdRef.current = result.session.pairingSessionId || "";
     }
 
     if (result?.success && result?.approvalUrl) {
@@ -470,6 +484,7 @@ export default function DesktopAgentPage() {
               <p>Device: {agentSession?.deviceName || "PrintEase Desktop"}</p>
               <p>Paired: {agentSession?.paired ? "Yes" : "No"}</p>
               {agentSession?.agentId && <p className="break-all">Agent ID: {agentSession.agentId}</p>}
+              {agentSession?.hubId && <p className="break-all">Hub ID: {agentSession.hubId}</p>}
               {agentSession?.pairingCode && (
                 <p className="text-lg font-bold text-slate-900">Pairing code: {agentSession.pairingCode}</p>
               )}
@@ -486,20 +501,46 @@ export default function DesktopAgentPage() {
           <div className="grid gap-2 sm:min-w-[300px]">
             <button
               type="button"
-              disabled={agentBusy}
-              onClick={() => runAgentAction(() => startPairing({ deviceName: agentSession?.deviceName || "PrintEase Desktop" }))}
-              className="rounded-xl border px-4 py-2 font-semibold"
+              disabled={agentBusy || approvalPolling}
+              onClick={beginApprovalPairing}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-3 font-semibold text-white disabled:bg-slate-300"
             >
-              Start Pairing
+              {agentBusy || approvalPolling ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck size={16} />}
+              Pair with Hub Account
             </button>
+            {(approvalMessage || approvalPolling) && (
+              <p className="rounded-xl bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-700">
+                {approvalMessage || "Waiting for hub approval..."}
+              </p>
+            )}
             <button
               type="button"
-              disabled={agentBusy || !agentSession?.pairingSessionId}
-              onClick={() => runAgentAction(confirmPairing)}
-              className="rounded-xl border px-4 py-2 font-semibold disabled:opacity-50"
+              disabled={agentBusy}
+              onClick={() => setManualPairingVisible((visible) => !visible)}
+              className="rounded-xl border px-4 py-2 font-semibold"
             >
-              Confirm Pairing
+              Use manual pairing code
             </button>
+            {manualPairingVisible && (
+              <div className="grid gap-2 rounded-2xl border bg-slate-50 p-3">
+                <button
+                  type="button"
+                  disabled={agentBusy}
+                  onClick={() => runAgentAction(() => startPairing({ deviceName: agentSession?.deviceName || "PrintEase Desktop" }))}
+                  className="rounded-xl border bg-white px-4 py-2 font-semibold"
+                >
+                  Generate Pairing Code
+                </button>
+                <button
+                  type="button"
+                  disabled={agentBusy || !agentSession?.pairingSessionId}
+                  onClick={() => runAgentAction(confirmPairing)}
+                  className="rounded-xl border bg-white px-4 py-2 font-semibold disabled:opacity-50"
+                >
+                  Confirm Manual Pairing
+                </button>
+              </div>
+            )}
             <button
               type="button"
               disabled={agentBusy || !agentSession?.paired}

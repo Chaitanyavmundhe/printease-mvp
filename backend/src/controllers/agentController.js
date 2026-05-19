@@ -13,6 +13,7 @@ import {
   withTransaction
 } from '../db/repository.js';
 import {
+  AGENT_APPROVAL_TTL_SECONDS,
   AGENT_AUTO_PRINT,
   AGENT_PAIRING_TTL_SECONDS,
   AGENT_POLL_INTERVAL_MS,
@@ -33,6 +34,10 @@ const JOB_STATUS_TO_ORDER_STATUS = {
 
 function getPairingExpiry() {
   return new Date(Date.now() + AGENT_PAIRING_TTL_SECONDS * 1000).toISOString();
+}
+
+function getApprovalExpiry() {
+  return new Date(Date.now() + AGENT_APPROVAL_TTL_SECONDS * 1000).toISOString();
 }
 
 function parsePrivateStorageReference(fileUrl) {
@@ -111,7 +116,8 @@ export const startPairing = asyncHandler(async (req, res) => {
 
   const pairingCode = createPairingCode();
   const approvalToken = createRawAgentToken();
-  const approvalExpiresAt = getPairingExpiry();
+  const pairingExpiresAt = getPairingExpiry();
+  const approvalExpiresAt = getApprovalExpiry();
   const session = await createAgentPairingSession({
     id: generateId(),
     pairingCodeHash: hashAgentSecret(pairingCode),
@@ -121,7 +127,7 @@ export const startPairing = asyncHandler(async (req, res) => {
     agentName,
     platform,
     version,
-    expiresAt: getPairingExpiry(),
+    expiresAt: pairingExpiresAt,
     approvalExpiresAt,
     createdAt: new Date().toISOString()
   });
@@ -134,9 +140,10 @@ export const startPairing = asyncHandler(async (req, res) => {
     pairingCode,
     pairingSessionId: session.id,
     approvalUrl,
-    expiresAt: session.expiresAt,
+    expiresAt: session.approvalExpiresAt,
+    pairingCodeExpiresAt: session.expiresAt,
     approvalExpiresAt,
-    expiresInSeconds: AGENT_PAIRING_TTL_SECONDS
+    expiresInSeconds: AGENT_APPROVAL_TTL_SECONDS
   });
 });
 
@@ -153,6 +160,14 @@ export const confirmPairing = asyncHandler(async (req, res) => {
     return res.status(404).json({ success: false, message: 'Pairing session not found' });
   }
 
+  if (session.status === 'rejected') {
+    return res.status(403).json({
+      success: false,
+      paired: false,
+      message: 'Pairing was rejected'
+    });
+  }
+
   if (new Date(session.expiresAt).getTime() <= Date.now()) {
     return res.status(410).json({ success: false, paired: false, message: 'Pairing session expired' });
   }
@@ -162,14 +177,6 @@ export const confirmPairing = asyncHandler(async (req, res) => {
       success: true,
       paired: false,
       message: 'Waiting for hub approval'
-    });
-  }
-
-  if (session.status === 'rejected') {
-    return res.status(403).json({
-      success: false,
-      paired: false,
-      message: 'Pairing was rejected'
     });
   }
 

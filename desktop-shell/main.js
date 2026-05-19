@@ -8,7 +8,7 @@ import { confirmPairing, sendHeartbeat, startPairing } from "./agent/heartbeat.j
 import { createJobPoller, processNextJob } from "./agent/jobPoller.js";
 import { syncPrinters } from "./agent/statusReporter.js";
 import { getApiBaseUrl, getBackendUrl } from "./config/backend.js";
-import { loadConfig, saveConfig, setConfigDirectory } from "./local/config.js";
+import { loadConfig, loadSecretConfig, saveConfig, saveSecretConfig, setConfigDirectory } from "./local/config.js";
 
 const DEV_FRONTEND_URL = process.env.PRINTEASE_FRONTEND_URL || "http://127.0.0.1:5175";
 const VERSION = "0.1.0";
@@ -33,6 +33,8 @@ let agentSession = {
   agentId: "",
   hubId: "",
   accessToken: "",
+  refreshToken: "",
+  publicKey: "",
   pairedAt: "",
   lastHeartbeatAt: "",
   lastHeartbeatError: "",
@@ -316,13 +318,21 @@ async function ensureDeviceIdentity(deviceName) {
   if (agentSession.deviceId && agentSession.deviceName) return;
 
   const savedConfig = await loadConfig();
+  const savedSecrets = await loadSecretConfig();
   agentSession.deviceId = savedConfig.deviceId || randomUUID();
   agentSession.deviceName = deviceName || savedConfig.deviceName || os.hostname() || "PrintEase Desktop";
+  // TODO: generate a device keypair here and send only publicKey during pairing.
+  agentSession.publicKey = savedConfig.publicKey || "";
+  agentSession.agentId = savedConfig.agentId || agentSession.agentId || "";
+  agentSession.hubId = savedConfig.hubId || agentSession.hubId || "";
+  agentSession.accessToken = savedSecrets.accessToken || agentSession.accessToken || "";
+  agentSession.refreshToken = savedSecrets.refreshToken || agentSession.refreshToken || "";
   agentSession.selectedPrinterName = savedConfig.selectedPrinterName || agentSession.selectedPrinterName || "";
 
   await saveConfig({
     deviceId: agentSession.deviceId,
     deviceName: agentSession.deviceName,
+    publicKey: agentSession.publicKey,
     agentId: agentSession.agentId,
     hubId: agentSession.hubId,
     selectedPrinterName: agentSession.selectedPrinterName,
@@ -427,6 +437,7 @@ async function startAgentPairing(_event, payload = {}) {
   const result = await startPairing({
     deviceId: agentSession.deviceId,
     agentName: agentSession.deviceName,
+    publicKey: agentSession.publicKey,
   });
 
   if (result.success) {
@@ -441,10 +452,13 @@ async function startAgentPairing(_event, payload = {}) {
   };
 }
 
-async function confirmAgentPairing() {
+async function confirmAgentPairing(_event, payload = {}) {
   await ensureDeviceIdentity();
 
-  if (!agentSession.pairingSessionId) {
+  const pairingSessionId = typeof payload === "string" ? payload : payload?.pairingSessionId;
+  const sessionId = pairingSessionId || agentSession.pairingSessionId;
+
+  if (!sessionId) {
     return {
       success: false,
       paired: false,
@@ -454,7 +468,7 @@ async function confirmAgentPairing() {
   }
 
   const result = await confirmPairing({
-    pairingSessionId: agentSession.pairingSessionId,
+    pairingSessionId: sessionId,
     deviceId: agentSession.deviceId,
   });
 
@@ -464,15 +478,23 @@ async function confirmAgentPairing() {
     agentSession.accessToken = returnedAgentToken;
     agentSession.agentId = result.agentId || "";
     agentSession.hubId = result.hubId || result.shopId || "";
+    agentSession.refreshToken = result.refreshToken || "";
     agentSession.pairedAt = new Date().toISOString();
     agentSession.pairingCode = "";
+    agentSession.pairingSessionId = "";
+    agentSession.expiresAt = "";
 
     await saveConfig({
       deviceId: agentSession.deviceId,
       deviceName: agentSession.deviceName,
+      publicKey: agentSession.publicKey,
       agentId: agentSession.agentId,
       hubId: agentSession.hubId,
       selectedPrinterName: agentSession.selectedPrinterName,
+    });
+    await saveSecretConfig({
+      accessToken: agentSession.accessToken,
+      refreshToken: agentSession.refreshToken,
     });
 
     result.runtime = await startAgentRuntime("agent:paired");
@@ -661,6 +683,27 @@ function stopAgentPolling() {
   };
 }
 
+function isTrustedApprovalUrl(url) {
+  try {
+    const parsed = new URL(url);
+    const isApprovalPath = parsed.pathname === "/hub/printers/approve-agent";
+    const isOfficialHost = parsed.protocol === "https:" && parsed.hostname === "printhubdesi.vercel.app";
+    const isTrustedPreview = parsed.protocol === "https:" &&
+      parsed.hostname.endsWith(".vercel.app") &&
+      (
+        parsed.hostname.includes("printease") ||
+        parsed.hostname.includes("printhubdesi") ||
+        parsed.hostname.includes("printease-mvp")
+      );
+    const isLocalFrontend = ["localhost", "127.0.0.1"].includes(parsed.hostname) &&
+      ["5173", "5175"].includes(parsed.port);
+
+    return isApprovalPath && (isOfficialHost || isTrustedPreview || isLocalFrontend);
+  } catch {
+    return false;
+  }
+}
+
 function registerIpcHandlers() {
   if (ipcHandlersRegistered) return;
   ipcHandlersRegistered = true;
@@ -697,9 +740,14 @@ function registerIpcHandlers() {
   ipcMain.handle("printing:stop", () => stopPrinting());
   ipcMain.handle("agent:status", () => sanitizeAgentSession());
   ipcMain.handle("agent:start-pairing", startAgentPairing);
+  ipcMain.handle("agent:start-approval-pairing", startAgentPairing);
   ipcMain.handle("agent:open-approval-url", async (_event, url) => {
     if (!url || typeof url !== "string") {
       return { success: false, message: "Approval URL is required." };
+    }
+
+    if (!isTrustedApprovalUrl(url)) {
+      return { success: false, message: "Approval URL is not trusted." };
     }
 
     try {
@@ -710,6 +758,7 @@ function registerIpcHandlers() {
     }
   });
   ipcMain.handle("agent:confirm-pairing", confirmAgentPairing);
+  ipcMain.handle("agent:confirm-approval-pairing", confirmAgentPairing);
   ipcMain.handle("agent:heartbeat", async () => {
     const result = await sendAgentHeartbeat();
     if (result.success) startHeartbeatLoop();

@@ -150,12 +150,20 @@ export function startPairing(payload = {}) {
   return callDesktop("startPairing", "Could not start desktop pairing.", payload);
 }
 
+export function startApprovalPairing(payload = {}) {
+  return callDesktop("startApprovalPairing", "Could not start approval pairing.", payload);
+}
+
 export function openApprovalUrl(url) {
   return callDesktop("openApprovalUrl", "Could not open approval URL.", url);
 }
 
 export function confirmPairing() {
   return callDesktop("confirmPairing", "Could not confirm desktop pairing.");
+}
+
+export function confirmApprovalPairing(pairingSessionId) {
+  return callDesktop("confirmApprovalPairing", "Could not confirm approval pairing.", pairingSessionId);
 }
 
 export function sendHeartbeat() {

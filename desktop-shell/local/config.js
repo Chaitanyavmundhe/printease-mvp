@@ -1,8 +1,11 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { safeStorage } from "electron";
 
 let configFilePath = "";
+let secretFilePath = "";
 let memoryConfig = {};
+let memorySecrets = {};
 
 function stripSecrets(value = {}) {
   const nextConfig = { ...value };
@@ -18,6 +21,7 @@ function stripSecrets(value = {}) {
 
 export function setConfigDirectory(directory) {
   configFilePath = path.join(directory, "config.json");
+  secretFilePath = path.join(directory, "agent-secrets.json");
 }
 
 export async function loadConfig() {
@@ -45,4 +49,50 @@ export async function saveConfig(nextConfig = {}) {
   }
 
   return { ...memoryConfig };
+}
+
+function normalizeSecrets(value = {}) {
+  return {
+    accessToken: typeof value.accessToken === "string" ? value.accessToken : "",
+    refreshToken: typeof value.refreshToken === "string" ? value.refreshToken : "",
+  };
+}
+
+function canUseSafeStorage() {
+  return Boolean(safeStorage?.isEncryptionAvailable?.());
+}
+
+export async function loadSecretConfig() {
+  if (!secretFilePath || !canUseSafeStorage()) return { ...memorySecrets };
+
+  try {
+    const rawConfig = await readFile(secretFilePath, "utf8");
+    const payload = JSON.parse(rawConfig);
+    const encrypted = Buffer.from(String(payload.data || ""), "base64");
+    const decrypted = safeStorage.decryptString(encrypted);
+    memorySecrets = normalizeSecrets(JSON.parse(decrypted));
+  } catch {
+    memorySecrets = {};
+  }
+
+  return { ...memorySecrets };
+}
+
+export async function saveSecretConfig(nextSecrets = {}) {
+  memorySecrets = normalizeSecrets({
+    ...memorySecrets,
+    ...nextSecrets,
+  });
+
+  // TODO: use an OS keychain abstraction for packaged production builds.
+  if (secretFilePath && canUseSafeStorage()) {
+    const encrypted = safeStorage.encryptString(JSON.stringify(memorySecrets));
+    await mkdir(path.dirname(secretFilePath), { recursive: true });
+    await writeFile(secretFilePath, `${JSON.stringify({
+      version: 1,
+      data: encrypted.toString("base64"),
+    }, null, 2)}\n`, "utf8");
+  }
+
+  return { ...memorySecrets };
 }

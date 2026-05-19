@@ -629,6 +629,7 @@ export async function createAgentPairingSession(session, client) {
 }
 
 export async function findPendingPairingSessionByCodeHash(pairingCodeHash, client) {
+  const lockClause = client ? ' for update' : '';
   const result = await executor(client).query(
     `select *
      from agent_pairing_sessions
@@ -636,7 +637,7 @@ export async function findPendingPairingSessionByCodeHash(pairingCodeHash, clien
        and status = 'pending'
        and expires_at > now()
      order by created_at desc
-     limit 1`,
+     limit 1${lockClause}`,
     [pairingCodeHash]
   );
 
@@ -644,14 +645,15 @@ export async function findPendingPairingSessionByCodeHash(pairingCodeHash, clien
 }
 
 export async function findPendingApprovalPairingSessionById(sessionId, client) {
+  const lockClause = client ? ' for update' : '';
   const result = await executor(client).query(
     `select *
      from agent_pairing_sessions
      where id = $1
        and status = 'pending'
-       and expires_at > now()
+       and coalesce(approval_expires_at, expires_at) > now()
        and approval_token_hash is not null
-     limit 1`,
+     limit 1${lockClause}`,
     [sessionId]
   );
 
@@ -745,7 +747,7 @@ export async function approvePairingSession(sessionId, hubId, agentId, client) {
          approved_at = now()
      where id = $1
        and status = 'pending'
-       and expires_at > now()
+       and coalesce(approval_expires_at, expires_at) > now()
      returning *`,
     [sessionId, hubId, agentId]
   );
@@ -761,7 +763,7 @@ export async function rejectPairingSession(sessionId, hubId, client) {
          rejected_at = now()
      where id = $1
        and status = 'pending'
-       and expires_at > now()
+       and coalesce(approval_expires_at, expires_at) > now()
      returning *`,
     [sessionId, hubId]
   );

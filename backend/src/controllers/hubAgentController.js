@@ -40,6 +40,12 @@ function isPrintableOrderStatus(status) {
   return !['printing', 'ready for pickup', 'collected', 'printing failed'].includes(normalized);
 }
 
+function httpError(message, statusCode) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  return error;
+}
+
 export const listHubAgents = asyncHandler(async (req, res) => {
   const hubId = getHubId(req);
   const [agents, printers, printJobs] = await Promise.all([
@@ -89,7 +95,7 @@ export const pairAgentToHub = asyncHandler(async (req, res) => {
 
     const agent = await upsertAgentForPairing(session, hubId, client);
     const claimedSession = await claimPairingSession(session.id, hubId, agent.id, client);
-    if (!claimedSession) return null;
+    if (!claimedSession) throw httpError('Pairing code not found or expired', 404);
 
     return { agent, pairingSession: claimedSession };
   });
@@ -135,21 +141,29 @@ export const approveAgentPairing = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: 'Pairing session ID and approval token are required' });
   }
 
-  const session = await findPendingApprovalPairingSessionById(pairingSessionId);
-  if (!session) {
+  const approvalTokenHash = hashAgentSecret(approvalToken);
+
+  const result = await withTransaction(async (client) => {
+    const session = await findPendingApprovalPairingSessionById(pairingSessionId, client);
+    if (!session) return { reason: 'not_found' };
+
+    if (approvalTokenHash !== session.approvalTokenHash) {
+      return { reason: 'invalid_token' };
+    }
+
+    const agent = await upsertAgentForPairing(session, hubId, client);
+    const approvedSession = await approvePairingSession(session.id, hubId, agent.id, client);
+    if (!approvedSession) throw httpError('Pairing session could not be approved', 409);
+    return { agent, pairingSession: approvedSession };
+  });
+
+  if (result?.reason === 'not_found') {
     return res.status(404).json({ success: false, message: 'Pairing session not found, expired, or already handled' });
   }
 
-  if (hashAgentSecret(approvalToken) !== session.approvalTokenHash) {
+  if (result?.reason === 'invalid_token') {
     return res.status(403).json({ success: false, message: 'Invalid approval token' });
   }
-
-  const result = await withTransaction(async (client) => {
-    const agent = await upsertAgentForPairing(session, hubId, client);
-    const approvedSession = await approvePairingSession(session.id, hubId, agent.id, client);
-    if (!approvedSession) return null;
-    return { agent, pairingSession: approvedSession };
-  });
 
   if (!result) {
     return res.status(409).json({ success: false, message: 'Pairing session could not be approved' });
@@ -178,6 +192,10 @@ export const rejectAgentPairing = asyncHandler(async (req, res) => {
   }
 
   const rejectedSession = await withTransaction(async (client) => rejectPairingSession(session.id, hubId, client));
+
+  if (!rejectedSession) {
+    return res.status(409).json({ success: false, message: 'Pairing session cannot be rejected' });
+  }
 
   res.json({
     success: true,
