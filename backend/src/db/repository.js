@@ -954,6 +954,38 @@ export async function findActivePrintJobByOrder(orderId, hubId, client) {
   return mapPrintJob(result.rows[0]);
 }
 
+export async function findBestAgentForHub(hubId, client) {
+  const result = await executor(client).query(
+    `select *
+     from agents a
+     where a.hub_id = $1
+       and a.revoked_at is null
+       and a.paused = false
+     order by
+       case when a.last_seen_at >= now() - interval '45 seconds' then 0 else 1 end asc,
+       a.last_seen_at desc nulls last,
+       a.created_at desc
+     limit 1`,
+    [hubId]
+  );
+
+  const row = result.rows[0];
+  return row ? mapAgent(row) : null;
+}
+
+export async function findPreferredPrinterHintForAgent(agentId, client) {
+  const result = await executor(client).query(
+    `select printer_name
+     from agent_printers
+     where agent_id = $1
+     order by is_default desc nulls last, last_checked_at desc nulls last, created_at desc
+     limit 1`,
+    [agentId]
+  );
+
+  return result.rows[0]?.printer_name || null;
+}
+
 export async function findBestAvailableAgentPrinterForHub(hubId, client) {
   const result = await executor(client).query(
     `select
@@ -1160,7 +1192,9 @@ export async function findNextPrintJobForAgent(agentId, hubId, client) {
       [agentId, job.id]
     );
 
-    return mapPrintJob(assigned.rows[0]);
+    const mapped = mapPrintJob(assigned.rows[0]);
+    mapped._claimedByAgent = !job.agent_id;
+    return mapped;
   }
 
   return mapPrintJob(job);

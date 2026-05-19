@@ -62,39 +62,6 @@ function canSendToAgent(order) {
   return isPaymentVerified(order) && !AGENT_LOCKED_STATUSES.has(normalizeStatus(order.status));
 }
 
-function getNoOnlinePrinterReason(agents = [], printers = []) {
-  if (!agents.length) {
-    return "No paired desktop device found. Pair PrintEase Desktop first.";
-  }
-
-  const onlineAgents = agents.filter((agent) => normalizeStatus(agent.liveStatus || agent.status) === "online");
-  if (!onlineAgents.length) {
-    return "No online desktop device. Start PrintEase Desktop and wait for heartbeat.";
-  }
-
-  const enabledAgents = onlineAgents.filter((agent) => !agent.paused);
-  if (!enabledAgents.length) {
-    return "All online desktop devices have new job assignment disabled.";
-  }
-
-  if (!printers.length) {
-    return "Desktop is online but no printer has synced to cloud. Refresh printers in PrintEase Desktop.";
-  }
-
-  const enabledAgentIds = new Set(enabledAgents.map((agent) => agent.id));
-  const printersForOnlineAgents = printers.filter((printer) => enabledAgentIds.has(printer.agentId));
-  if (!printersForOnlineAgents.length) {
-    return "Online desktop device has not synced any printers.";
-  }
-
-  const unavailablePrinter = printersForOnlineAgents.find((printer) => !isRouteablePrinter(printer));
-  if (unavailablePrinter) {
-    const condition = getEffectivePrinterCondition(unavailablePrinter) || "unknown";
-    return unavailablePrinter.warningText || "Printer " + (unavailablePrinter.printerName || "unknown") + " is not available (" + condition + ").";
-  }
-
-  return "No available synced printer. Check heartbeat, printer sync, and Supabase agent_printers migration.";
-}
 
 export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus, refreshOrders, navigate }) {
   const [agents, setAgents] = useState([]);
@@ -135,8 +102,6 @@ export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus,
     return grouped;
   }, [agentPrinters]);
   const selectedAgentPrinters = (printersByAgent.get(selectedAgentId) || []).filter(isRouteablePrinter);
-  const hasOnlinePrinter = routeableAgents.some((agent) => (printersByAgent.get(agent.id) || []).some(isRouteablePrinter));
-  const noOnlinePrinterReason = getNoOnlinePrinterReason(agents, agentPrinters);
   const jobByOrderId = useMemo(() => {
     return new Map(printJobs.map((job) => [job.orderId, job]));
   }, [printJobs]);
@@ -197,8 +162,8 @@ export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus,
   }
 
   function openSendModal(order) {
-    const firstAgent = routeableAgents.find((agent) => (printersByAgent.get(agent.id) || []).some(isRouteablePrinter)) || routeableAgents[0] || null;
-    const firstPrinter = firstAgent ? (printersByAgent.get(firstAgent.id) || []).find(isRouteablePrinter) : null;
+    const firstAgent = routeableAgents[0] || null;
+    const firstPrinter = firstAgent ? (printersByAgent.get(firstAgent.id) || [])[0] : null;
 
     setSendModalOrder(order);
     setSelectedAgentId(firstAgent?.id || "");
@@ -243,8 +208,8 @@ export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus,
 
     const orderId = order.backendId || order.id;
 
-    if (!selectedAgentId || !selectedPrinterName) {
-      setAgentError("Select a desktop device and printer first.");
+    if (!selectedAgentId) {
+      setAgentError("Select a desktop device before sending to agent.");
       return;
     }
 
@@ -401,7 +366,7 @@ export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus,
                         <p className="mt-1 text-xs text-slate-500">Document stored securely. Printer agent will receive it only after payment is collected or verified.</p>
                       )}
                       {isPaymentVerified(item) && (
-                        <p className="mt-1 text-xs text-emerald-700">Payment completed. Print job can be queued/sent to desktop agent.</p>
+                        <p className="mt-1 text-xs text-emerald-700">Payment completed. Print job can be queued for the desktop agent even if no cloud printer is currently synced.</p>
                       )}
                     </td>
                     <td>
@@ -426,21 +391,21 @@ export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus,
                             <IndianRupee size={15} /> {collectingOrderId === orderId ? "Saving" : "Mark Cash Collected"}
                           </button>
                         )}
-                        {sendEnabled && hasOnlinePrinter && (
+                        {sendEnabled && routeableAgents.length > 0 && (
                           <button
                             onClick={() => openSendModal(item)}
                             disabled={sendingOrderId === orderId}
                             className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-700 px-3 py-2 font-semibold text-white disabled:bg-slate-300"
                           >
-                            <Send size={15} /> {sendingOrderId === orderId ? "Sending" : "Send to Printer"}
+                            <Send size={15} /> {sendingOrderId === orderId ? "Sending" : "Send to Agent"}
                           </button>
                         )}
-                        {sendEnabled && !hasOnlinePrinter && (
+                        {sendEnabled && routeableAgents.length === 0 && (
                           <button
                             onClick={() => navigate("hubPrinters")}
                             className="rounded-xl border border-amber-200 px-3 py-2 text-left text-xs font-semibold text-amber-800"
                           >
-                            Payment completed, but no online desktop printer is available. {noOnlinePrinterReason}
+                            Payment completed. No online desktop agent is currently paired. The job will queue and wait for PrintEase Desktop to connect.
                           </button>
                         )}
                       </div>
@@ -526,7 +491,7 @@ export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus,
                 <button
                   type="button"
                   onClick={sendToAgent}
-                  disabled={!selectedAgentId || !selectedPrinterName || Boolean(sendingOrderId)}
+                  disabled={!selectedAgentId || Boolean(sendingOrderId)}
                   className="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-4 py-2 font-semibold text-white disabled:bg-slate-300"
                 >
                   <Send size={16} /> {sendingOrderId ? "Queueing" : "Queue Print Job"}

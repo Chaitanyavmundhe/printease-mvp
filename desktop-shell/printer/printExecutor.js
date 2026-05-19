@@ -56,7 +56,16 @@ export async function printFile({ printerName, filePath, copies = 1 } = {}) {
   const printerModule = getPrinterModule();
   if (!printerModule?.printFile) return unsupportedPlatform();
 
-  return printerModule.printFile({ printerName, filePath, copies });
+  const result = await printerModule.printFile({ printerName, filePath, copies });
+  if (result && typeof result.success === 'boolean') {
+    return result;
+  }
+
+  return {
+    success: false,
+    message: 'Printer module returned unexpected result.',
+    reasonCode: 'LOCAL_PRINT_FAILED'
+  };
 }
 
 export async function stopPrinting() {

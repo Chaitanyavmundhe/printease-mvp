@@ -223,7 +223,8 @@ async function validatePrinter(printerName) {
   if (!printerName || typeof printerName !== "string") {
     return {
       success: false,
-      error: "Select a printer before sending a test print.",
+      reasonCode: "PRINTER_NOT_SELECTED",
+      message: "Select a printer before sending a test print.",
     };
   }
 
@@ -234,7 +235,18 @@ async function validatePrinter(printerName) {
   if (!printer) {
     return {
       success: false,
-      error: "Selected printer was not found in the detected local printers.",
+      reasonCode: "PRINTER_NOT_FOUND",
+      message: "Selected printer was not found in the detected local printers.",
+    };
+  }
+
+  const condition = (printer.condition || printer.status || "").toLowerCase();
+  const isOffline = ["offline", "unable", "disconnected", "paused", "disabled", "stopped"].includes(condition) || printer.accepting === false;
+  if (isOffline) {
+    return {
+      success: false,
+      reasonCode: "PRINTER_OFFLINE",
+      message: `Printer ${printer.printerName} is currently offline or not accepting jobs.`,
     };
   }
 
@@ -298,7 +310,8 @@ export async function printFile({ printerName, filePath, copies = 1 } = {}) {
   if (!filePath || typeof filePath !== "string") {
     return {
       success: false,
-      error: "A file path is required before printing.",
+      reasonCode: "PRINTER_NOT_SELECTED",
+      message: "A file path is required before printing.",
     };
   }
 
@@ -321,6 +334,10 @@ export async function printFile({ printerName, filePath, copies = 1 } = {}) {
       stderr: stderr?.trim() || "",
     };
   } catch (error) {
-    return cupsFailure(error, "Could not send print job.");
+    const result = cupsFailure(error, "Could not send print job.");
+    return {
+      ...result,
+      reasonCode: result.reasonCode || "LOCAL_PRINT_FAILED"
+    };
   }
 }

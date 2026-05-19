@@ -338,6 +338,16 @@ function findPrinterByName(printerResult, printerName) {
   )) || null;
 }
 
+function resolveLocalPrinterName() {
+  if (agentSession.selectedPrinterName) return agentSession.selectedPrinterName;
+  if (!latestPrinterResult) return "";
+
+  const printers = Array.isArray(latestPrinterResult.printers) ? latestPrinterResult.printers : [];
+  const preferred = printers.find((printer) => printer.isDefault) || latestPrinterResult.defaultPrinter;
+
+  return preferred?.printerName || "";
+}
+
 async function selectDesktopPrinter(_event, payload = {}) {
   const printerName = typeof payload === "string" ? payload : payload?.printerName;
 
@@ -611,7 +621,7 @@ async function pollAgentOnce(_event, payload = {}) {
 
   return processNextJob({
     agentToken: agentSession.accessToken,
-    printerName: payload.printerName || agentSession.selectedPrinterName,
+    printerName: payload.printerName || resolveLocalPrinterName(),
   });
 }
 
@@ -629,7 +639,7 @@ function startAgentPolling(_event, payload = {}) {
 
   const result = jobPoller.start({
     agentToken: agentSession.accessToken,
-    printerName: payload.printerName || agentSession.selectedPrinterName,
+    printerName: payload.printerName || resolveLocalPrinterName(),
     intervalMs: payload.intervalMs,
   });
 

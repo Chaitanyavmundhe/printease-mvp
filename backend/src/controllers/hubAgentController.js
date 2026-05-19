@@ -174,10 +174,10 @@ export const sendOrderToAgent = asyncHandler(async (req, res) => {
     });
   }
 
-  if (!agentId || !printerName) {
+  if (!agentId) {
     return res.status(400).json({
       success: false,
-      message: 'Select a desktop device and printer before sending to agent'
+      message: 'Select a desktop device before sending to agent'
     });
   }
 
@@ -190,14 +190,19 @@ export const sendOrderToAgent = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: 'Selected desktop device is disabled for new jobs' });
   }
 
-  const agentPrinters = await listAgentPrintersByAgent(selectedAgent.id, hubId);
-  const selectedPrinter = agentPrinters.find((printer) => printer.printerName === printerName);
+  let printerHint = null;
+  if (printerName) {
+    const agentPrinters = await listAgentPrintersByAgent(selectedAgent.id, hubId);
+    const selectedPrinter = agentPrinters.find((printer) => printer.printerName === printerName);
 
-  if (!selectedPrinter) {
-    return res.status(400).json({
-      success: false,
-      message: 'Selected printer does not belong to this desktop device'
-    });
+    if (!selectedPrinter) {
+      return res.status(400).json({
+        success: false,
+        message: 'Selected printer does not belong to this desktop device'
+      });
+    }
+
+    printerHint = selectedPrinter.printerName;
   }
 
   const printJob = await withTransaction(async (client) => {
@@ -206,7 +211,7 @@ export const sendOrderToAgent = asyncHandler(async (req, res) => {
       orderId: order.id,
       hubId,
       agentId: selectedAgent.id,
-      printerName: selectedPrinter.printerName,
+      printerName: printerHint || null,
       fileUrl: `private://${getSupabaseBucketName()}/${storagePath}`,
       fileSha256,
       fileType,

@@ -95,6 +95,7 @@ async function toAgentJobPayload(job) {
     paymentVerified: true,
     approvedForPrint: true,
     printable: true,
+    printerName: job.printerName || null,
     status: job.status,
     createdAt: job.createdAt
   };
@@ -276,12 +277,17 @@ export const getNextJob = asyncHandler(async (req, res) => {
     const nextJob = await findNextPrintJobForAgent(req.agent.id, req.agent.hubId, client);
 
     if (nextJob) {
+      const eventType = nextJob._claimedByAgent ? 'claimed_by_agent' : 'assigned';
+      const eventMessage = nextJob._claimedByAgent
+        ? 'Unassigned print job claimed by desktop agent.'
+        : 'Job assigned to agent';
+
       await insertPrintJobEvent({
         printJobId: nextJob.id,
         agentId: req.agent.id,
-        eventType: 'assigned',
+        eventType,
         newStatus: nextJob.status,
-        message: 'Job assigned to agent',
+        message: eventMessage,
         rawStatus: { source: 'agent_poll' }
       }, client);
     }

@@ -159,7 +159,9 @@ export async function processNextJob({ agentToken, printerName } = {}) {
     });
 
     if (!printResult.success) {
-      throw new Error(printResult.message || printResult.error || "Local print command failed.");
+      const error = new Error(printResult.message || printResult.error || "Local print command failed.");
+      error.reasonCode = printResult.reasonCode || printResult.errorCode || "LOCAL_PRINT_FAILED";
+      throw error;
     }
 
     await markJobStatus({ agentToken, jobId: job.jobId, status: "completed" });
@@ -171,11 +173,12 @@ export async function processNextJob({ agentToken, printerName } = {}) {
       printResult,
     };
   } catch (error) {
+    const reasonCode = error.reasonCode || error.code || "LOCAL_PRINT_FAILED";
     await markJobStatus({
       agentToken,
       jobId: job.jobId,
       status: "failed",
-      reasonCode: "LOCAL_PRINT_FAILED",
+      reasonCode,
       reasonText: error.message || "Local print job failed.",
     }).catch(() => {});
 

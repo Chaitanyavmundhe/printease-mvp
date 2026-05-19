@@ -173,7 +173,7 @@ export default function HubPrinterAgentPage({ navigate }) {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 className="text-3xl font-bold">Printer Status Sync</h2>
-          <p className="text-slate-600">Backend monitors status only. Actual printing happens on PrintEase Desktop.</p>
+          <p className="text-slate-600">Backend monitors printer status for monitoring only. Actual printing happens on PrintEase Desktop, which selects the local printer and reports success or failure.</p>
           <p className={`mt-2 text-sm font-semibold ${backendHealth?.success ? "text-emerald-700" : "text-amber-700"}`}>
             Backend: {backendHealth ? (backendHealth.success ? "online" : "check failed") : "checking"}
           </p>

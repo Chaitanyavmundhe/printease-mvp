@@ -1,10 +1,9 @@
 import {
   createPrintJob,
   findActivePrintJobByOrder,
-  findBestAvailableAgentPrinterForHub,
+  findBestAgentForHub,
   findOrderWithDocumentForHub,
-  listAgentPrintersByHub,
-  listAgentsByHub,
+  findPreferredPrinterHintForAgent,
   insertPrintJobEvent,
   updateOrderStatus
 } from '../db/repository.js';
@@ -27,40 +26,6 @@ function isPrintableOrderStatus(status) {
 function paymentReadyMessage(paymentStatus, text) {
   const prefix = normalize(paymentStatus) === 'collected' ? 'Payment collected' : 'Payment verified';
   return `${prefix}. ${text}`;
-}
-
-function isRouteablePrinter(printer) {
-  const condition = getPrinterCondition(printer);
-  return printer?.accepting !== false && condition === 'available';
-}
-
-async function describeNoAvailablePrinter(hubId, client) {
-  const [agents, printers] = await Promise.all([
-    listAgentsByHub(hubId, client),
-    listAgentPrintersByHub(hubId, client)
-  ]);
-
-  if (!agents.length) return 'No paired desktop device found. Pair PrintEase Desktop first.';
-
-  const onlineAgents = agents.filter((agent) => getAgentLiveStatus(agent) === 'online');
-  if (!onlineAgents.length) return 'No online desktop device. Start PrintEase Desktop and wait for heartbeat.';
-
-  const enabledAgents = onlineAgents.filter((agent) => !agent.paused);
-  if (!enabledAgents.length) return 'All online desktop devices have new job assignment disabled.';
-
-  if (!printers.length) return 'Desktop is online but no printer has synced to cloud. Refresh printers in PrintEase Desktop.';
-
-  const enabledAgentIds = new Set(enabledAgents.map((agent) => agent.id));
-  const printersForOnlineAgents = printers.filter((printer) => enabledAgentIds.has(printer.agentId));
-  if (!printersForOnlineAgents.length) return 'Online desktop device has not synced any printers.';
-
-  const unavailablePrinter = printersForOnlineAgents.find((printer) => !isRouteablePrinter(printer));
-  if (unavailablePrinter) {
-    const condition = getPrinterCondition(unavailablePrinter);
-    return unavailablePrinter.warningText || `Printer ${unavailablePrinter.printerName || 'unknown'} is not available (${condition}).`;
-  }
-
-  return 'No available synced printer. Check heartbeat, printer sync, and Supabase agent_printers migration.';
 }
 
 export async function queuePrintJobIfPaymentReady(orderId, hubId, client) {
@@ -102,20 +67,17 @@ export async function queuePrintJobIfPaymentReady(orderId, hubId, client) {
     };
   }
 
-  const target = await findBestAvailableAgentPrinterForHub(hubId, client);
-  if (!target?.agent || !target?.printer) {
-    return {
-      queued: false,
-      message: paymentReadyMessage(paymentStatus, await describeNoAvailablePrinter(hubId, client))
-    };
-  }
+  const targetAgent = await findBestAgentForHub(hubId, client);
+  const printerHint = targetAgent
+    ? await findPreferredPrinterHintForAgent(targetAgent.id, client)
+    : null;
 
   const printJob = await createPrintJob({
     id: generateId(),
     orderId,
     hubId,
-    agentId: target.agent.id,
-    printerName: target.printer.printerName,
+    agentId: targetAgent?.id || null,
+    printerName: printerHint || null,
     fileUrl: `private://${getSupabaseBucketName()}/${storagePath}`,
     fileSha256,
     fileType,
@@ -127,15 +89,20 @@ export async function queuePrintJobIfPaymentReady(orderId, hubId, client) {
 
   await insertPrintJobEvent({
     printJobId: printJob.id,
-    agentId: target.agent.id,
+    agentId: targetAgent?.id || null,
     eventType: 'queued_after_payment_ready',
     newStatus: 'queued',
-    message: paymentReadyMessage(paymentStatus, 'Print job queued for desktop agent.'),
+    message: paymentReadyMessage(
+      paymentStatus,
+      targetAgent
+        ? 'Print job queued for desktop agent.'
+        : 'Queued. Waiting for PrintEase Desktop agent.'
+    ),
     rawStatus: {
       orderId,
       hubId,
-      agentId: target.agent.id,
-      printerName: target.printer.printerName,
+      agentId: targetAgent?.id || null,
+      printerName: printerHint || null,
       paymentStatus
     }
   }, client);
@@ -146,6 +113,11 @@ export async function queuePrintJobIfPaymentReady(orderId, hubId, client) {
     queued: true,
     printJob,
     order: queuedOrder,
-    message: paymentReadyMessage(paymentStatus, 'Print job queued for online desktop printer.')
+    message: paymentReadyMessage(
+      paymentStatus,
+      targetAgent
+        ? 'Print job queued for desktop agent.'
+        : 'Print job queued. Open PrintEase Desktop to process it.'
+    )
   };
 }
