@@ -277,10 +277,20 @@ create table if not exists agent_printers (
   printer_name text not null,
   system_printer_id text,
   status text not null default 'unknown',
+  condition text,
+  accepting boolean,
   is_default boolean not null default false,
+  warning_code text,
+  warning_text text,
   last_checked_at timestamptz,
   created_at timestamptz not null default now()
 );
+
+alter table agent_printers add column if not exists condition text;
+alter table agent_printers add column if not exists accepting boolean;
+alter table agent_printers add column if not exists warning_code text;
+alter table agent_printers add column if not exists warning_text text;
+alter table agent_printers add column if not exists last_checked_at timestamptz;
 
 create table if not exists print_jobs (
   id text primary key default gen_random_uuid()::text,

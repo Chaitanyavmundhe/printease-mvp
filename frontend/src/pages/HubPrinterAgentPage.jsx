@@ -64,6 +64,7 @@ export default function HubPrinterAgentPage({ navigate }) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [actionId, setActionId] = useState("");
+  const [lastUpdatedAt, setLastUpdatedAt] = useState("");
 
   const agentsById = useMemo(() => new Map(agents.map((agent) => [agent.id, agent])), [agents]);
   const localPrinterNames = localPrinters.map((printer) => printer.displayName || printer.printerName).filter(Boolean).join(", ");
@@ -93,6 +94,7 @@ export default function HubPrinterAgentPage({ navigate }) {
       setPrintJobs(Array.isArray(summary.printJobs) ? summary.printJobs : []);
       setAnalytics(summary.analytics || EMPTY_ANALYTICS);
       setBackendHealth(health);
+      setLastUpdatedAt(new Date().toISOString());
 
       const desktopNow = isDesktop();
       setDesktopAvailable(desktopNow);
@@ -122,6 +124,8 @@ export default function HubPrinterAgentPage({ navigate }) {
 
   useEffect(() => {
     refreshAll();
+    const interval = setInterval(refreshAll, 7000);
+    return () => clearInterval(interval);
   }, []);
 
   async function submitPairingCode() {
@@ -168,11 +172,12 @@ export default function HubPrinterAgentPage({ navigate }) {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-3xl font-bold">Printer Agent</h2>
-          <p className="text-slate-600">Connected desktop devices, synced printers, and print jobs.</p>
+          <h2 className="text-3xl font-bold">Printer Status Sync</h2>
+          <p className="text-slate-600">Backend monitors status only. Actual printing happens on PrintEase Desktop.</p>
           <p className={`mt-2 text-sm font-semibold ${backendHealth?.success ? "text-emerald-700" : "text-amber-700"}`}>
             Backend: {backendHealth ? (backendHealth.success ? "online" : "check failed") : "checking"}
           </p>
+          {lastUpdatedAt && <p className="mt-2 text-xs text-slate-500">Last updated: {new Date(lastUpdatedAt).toLocaleTimeString()}</p>}
           {desktopAvailable && (
             <p className={`mt-2 text-sm font-semibold ${localPrinters.length > 0 ? "text-emerald-700" : "text-amber-700"}`}>
               Local desktop printers: {localPrinters.length > 0 ? localPrinterNames : "checking"}
@@ -252,23 +257,23 @@ export default function HubPrinterAgentPage({ navigate }) {
                   <div className="mt-4 grid gap-2 text-sm text-slate-600 sm:grid-cols-2">
                     <p>Last seen: {formatDateTime(agent.lastSeenAt)}</p>
                     <p>Printers: {agentPrinters.length}</p>
-                    <p>Mode: {agent.paused ? "Paused" : "Active"}</p>
+                    <p>New jobs: {agent.paused ? "Disabled" : "Enabled"}</p>
                     <p>Paired: {formatDateTime(agent.pairedAt)}</p>
                   </div>
                   <div className="mt-4 flex flex-wrap gap-2">
                     <button
-                      onClick={() => runAgentAction(agent.id, pauseHubAgent, "Could not pause device.")}
+                      onClick={() => runAgentAction(agent.id, pauseHubAgent, "Could not disable new jobs.")}
                       disabled={busy || agent.paused || agent.liveStatus === "revoked"}
                       className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold disabled:opacity-50"
                     >
-                      <Pause size={15} /> Pause
+                      <Pause size={15} /> Disable New Jobs
                     </button>
                     <button
-                      onClick={() => runAgentAction(agent.id, resumeHubAgent, "Could not resume device.")}
+                      onClick={() => runAgentAction(agent.id, resumeHubAgent, "Could not enable new jobs.")}
                       disabled={busy || !agent.paused || agent.liveStatus === "revoked"}
                       className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold disabled:opacity-50"
                     >
-                      <Play size={15} /> Resume
+                      <Play size={15} /> Enable New Jobs
                     </button>
                     <button
                       onClick={() => runAgentAction(agent.id, revokeHubAgent, "Could not revoke device.")}
@@ -323,7 +328,8 @@ export default function HubPrinterAgentPage({ navigate }) {
       </Card>
 
       <Card>
-        <h3 className="text-xl font-bold">Printers</h3>
+        <h3 className="text-xl font-bold">Synced Printer Status</h3>
+        <p className="mt-1 text-sm text-slate-600">These are status reports from desktop devices. The backend does not stop, pause, or command local OS printers.</p>
         {printers.length === 0 ? (
           <p className="mt-4 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
             No printers synced yet. Open Desktop Agent page and click Refresh Printers.
@@ -343,7 +349,9 @@ export default function HubPrinterAgentPage({ navigate }) {
                   </div>
                   <div className="mt-3 grid gap-2 text-sm text-slate-600 sm:grid-cols-2">
                     <p>{printer.isDefault ? "Default printer" : "Not default"}</p>
+                    <p>Accepting: {printer.accepting === false ? "No" : "Yes"}</p>
                     <p>Last checked: {formatDateTime(printer.lastCheckedAt)}</p>
+                    {printer.warningText && <p className="font-semibold text-amber-700 sm:col-span-2">{printer.warningCode}: {printer.warningText}</p>}
                   </div>
                   <div className="mt-4 flex flex-wrap gap-2">
                     <button disabled className="rounded-xl border px-3 py-2 text-sm font-semibold text-slate-400">

@@ -6,7 +6,7 @@ export default function PaymentPage({ selectedCentre, documentName, pages, copie
   return (
     <Card className="mx-auto max-w-xl">
       <h2 className="text-2xl font-bold">Secure Payment</h2>
-      <p className="mt-2 text-slate-600">Payment must be verified before the print job appears in centre dashboard.</p>
+      <p className="mt-2 text-slate-600">Document stored securely. Printer agent will receive it only after payment is collected or verified.</p>
       <div className="mt-6 space-y-3 rounded-2xl bg-slate-50 p-4">
         <Row label="Centre" value={selectedCentre?.name || "N/A"} />
         <Row label="Document" value={documentName || "Uploaded Document"} />

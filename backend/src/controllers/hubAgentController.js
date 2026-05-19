@@ -108,7 +108,11 @@ export const pauseAgent = asyncHandler(async (req, res) => {
     return res.status(404).json({ success: false, message: 'Agent not found' });
   }
 
-  res.json({ success: true, agent });
+  res.json({
+    success: true,
+    message: 'New job assignment disabled for this desktop device. This does not stop the local printer.',
+    agent
+  });
 });
 
 export const resumeAgent = asyncHandler(async (req, res) => {
@@ -118,7 +122,11 @@ export const resumeAgent = asyncHandler(async (req, res) => {
     return res.status(404).json({ success: false, message: 'Agent not found' });
   }
 
-  res.json({ success: true, agent });
+  res.json({
+    success: true,
+    message: 'New job assignment enabled for this desktop device.',
+    agent
+  });
 });
 
 export const revokeHubAgent = asyncHandler(async (req, res) => {
@@ -179,7 +187,7 @@ export const sendOrderToAgent = asyncHandler(async (req, res) => {
   }
 
   if (selectedAgent.paused) {
-    return res.status(400).json({ success: false, message: 'Selected desktop device is paused' });
+    return res.status(400).json({ success: false, message: 'Selected desktop device is disabled for new jobs' });
   }
 
   const agentPrinters = await listAgentPrintersByAgent(selectedAgent.id, hubId);

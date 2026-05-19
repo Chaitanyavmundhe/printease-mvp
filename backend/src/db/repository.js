@@ -181,7 +181,11 @@ export function mapAgentPrinter(row) {
     printerName: row.printer_name,
     systemPrinterId: row.system_printer_id,
     status: row.status,
+    condition: row.condition || row.status,
+    accepting: row.accepting === null || row.accepting === undefined ? null : Boolean(row.accepting),
     isDefault: row.is_default,
+    warningCode: row.warning_code || null,
+    warningText: row.warning_text || null,
     lastCheckedAt: timestamp(row.last_checked_at),
     createdAt: timestamp(row.created_at)
   };
@@ -490,8 +494,8 @@ export async function updateOrderPayment(orderId, paymentStatus, status, client)
   return mapOrder(result.rows[0]);
 }
 
-export async function createPayment(payment) {
-  const result = await query(
+export async function createPayment(payment, client) {
+  const result = await executor(client).query(
     `insert into payments (
        id, order_id, amount, method, transaction_id, status, created_at, verified_at
      )
@@ -838,17 +842,23 @@ export async function replaceAgentPrinters(agentId, hubId, printers = [], client
   for (const printer of printers) {
     const result = await executor(client).query(
       `insert into agent_printers (
-         agent_id, hub_id, printer_name, system_printer_id, status, is_default, last_checked_at
+         agent_id, hub_id, printer_name, system_printer_id, status, condition, accepting,
+         is_default, warning_code, warning_text, last_checked_at
        )
-       values ($1, $2, $3, $4, $5, $6, now())
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, coalesce($11::timestamptz, now()))
        returning *`,
       [
         agentId,
         hubId,
         printer.printerName,
         printer.systemPrinterId || null,
-        printer.status || 'unknown',
-        Boolean(printer.isDefault)
+        printer.status || printer.condition || 'unknown',
+        printer.condition || printer.status || 'unknown',
+        typeof printer.accepting === 'boolean' ? printer.accepting : null,
+        Boolean(printer.isDefault),
+        printer.warningCode || null,
+        printer.warningText || null,
+        printer.lastCheckedAt || null
       ]
     );
 
@@ -964,7 +974,11 @@ export async function findBestAvailableAgentPrinterForHub(hubId, client) {
        p.printer_name,
        p.system_printer_id,
        p.status as printer_status,
+       p.condition as printer_condition,
+       p.accepting as printer_accepting,
        p.is_default,
+       p.warning_code,
+       p.warning_text,
        p.last_checked_at,
        p.created_at as printer_created_at
      from agents a
@@ -973,15 +987,16 @@ export async function findBestAvailableAgentPrinterForHub(hubId, client) {
        and a.revoked_at is null
        and a.paused = false
        and a.last_seen_at >= now() - interval '45 seconds'
-       and lower(coalesce(p.status, 'unknown')) not in (
+       and lower(coalesce(p.condition, p.status, 'unknown')) not in (
          'paused', 'disabled', 'stopped', 'offline', 'unable', 'disconnected'
        )
+       and coalesce(p.accepting, true) = true
      order by
        p.is_default desc,
        case
-         when lower(coalesce(p.status, '')) in ('idle', 'available', 'enabled') then 0
-         when lower(coalesce(p.status, '')) = 'printing' then 1
-         when lower(coalesce(p.status, '')) = 'unknown' then 2
+         when lower(coalesce(p.condition, p.status, '')) in ('idle', 'available', 'enabled', 'accepting') then 0
+         when lower(coalesce(p.condition, p.status, '')) = 'printing' then 1
+         when lower(coalesce(p.condition, p.status, '')) = 'unknown' then 2
          else 3
        end asc,
        a.last_seen_at desc,
@@ -1015,7 +1030,11 @@ export async function findBestAvailableAgentPrinterForHub(hubId, client) {
       printer_name: row.printer_name,
       system_printer_id: row.system_printer_id,
       status: row.printer_status,
+      condition: row.printer_condition,
+      accepting: row.printer_accepting,
       is_default: row.is_default,
+      warning_code: row.warning_code,
+      warning_text: row.warning_text,
       last_checked_at: row.last_checked_at,
       created_at: row.printer_created_at
     })
@@ -1100,12 +1119,25 @@ export async function findPrintJobForAgent(jobId, agentId, hubId, client) {
 
 export async function findNextPrintJobForAgent(agentId, hubId, client) {
   const result = await executor(client).query(
-    `select *
-     from print_jobs
-     where hub_id = $2
-       and (agent_id = $1 or agent_id is null)
-       and status in ('queued', 'assigned')
-     order by created_at asc
+    `select pj.*
+     from print_jobs pj
+     join agents a on a.id = $1 and a.hub_id = $2
+     join print_orders po on po.id = pj.order_id and po.hub_id = pj.hub_id
+     join documents d on d.id::text = po.document_url
+     where pj.hub_id = $2
+       and (pj.agent_id = $1 or pj.agent_id is null)
+       and pj.status in ('queued', 'assigned')
+       and a.revoked_at is null
+       and a.paused = false
+       and lower(coalesce(po.payment_status, '')) in ('verified', 'collected')
+       and d.storage_path is not null
+       and d.storage_path <> ''
+       and d.file_sha256 is not null
+       and d.file_sha256 <> ''
+       and lower(coalesce(d.file_type, pj.file_type, '')) = 'application/pdf'
+       and pj.file_sha256 is not null
+       and pj.file_sha256 <> ''
+     order by pj.created_at asc
      limit 1
      for update skip locked`,
     [agentId, hubId]

@@ -1,5 +1,6 @@
 import express from 'express';
 import {
+  collectCashPayment,
   createOrder,
   getCentreOrders,
   getMyOrders,
@@ -15,6 +16,7 @@ router.post('/', optionalAuthMiddleware, createOrder);
 router.get('/mine', authMiddleware, roleMiddleware('user'), getMyOrders);
 router.get('/centre/mine', authMiddleware, roleMiddleware('hub'), getCentreOrders);
 router.get('/:id', getOrderById);
+router.post('/:id/collect-payment', authMiddleware, roleMiddleware('hub'), collectCashPayment);
 router.patch('/:id/status', authMiddleware, roleMiddleware('hub'), updateOrderStatus);
 
 export default router;

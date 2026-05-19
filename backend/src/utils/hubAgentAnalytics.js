@@ -30,11 +30,12 @@ export function getAgentLiveStatus(agent) {
 }
 
 export function getPrinterCondition(printer) {
-  const status = normalize(printer?.status);
+  const status = normalize(printer?.condition || printer?.status);
 
-  if (['idle', 'available', 'enabled'].includes(status)) return 'available';
-  if (status === 'printing') return 'printing';
-  if (['paused', 'disabled', 'stopped'].includes(status)) return 'paused';
+  if (printer?.accepting === false) return 'paused';
+  if (['idle', 'available', 'enabled', 'accepting'].includes(status)) return 'available';
+  if (['printing', 'processing'].includes(status)) return 'printing';
+  if (['paused', 'disabled', 'stopped', 'not accepting'].includes(status)) return 'paused';
   if (['offline', 'unable', 'disconnected'].includes(status)) return 'offline';
   return 'unknown';
 }

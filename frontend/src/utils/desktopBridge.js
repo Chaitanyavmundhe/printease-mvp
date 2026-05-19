@@ -37,6 +37,13 @@ export function onPrintersUpdated(callback) {
   return bridge.onPrintersUpdated(callback);
 }
 
+export function onAgentUpdated(callback) {
+  const bridge = getBridge();
+  if (!bridge?.onAgentUpdated) return () => {};
+
+  return bridge.onAgentUpdated(callback);
+}
+
 export async function diagnosePrinters() {
   const bridge = getBridge();
   if (!bridge?.diagnosePrinters) return desktopFallback();

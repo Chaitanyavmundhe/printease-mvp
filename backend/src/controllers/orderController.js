@@ -2,15 +2,19 @@ import {
   createOrder as saveOrder,
   findCentreByCode,
   findCentreById,
+  createPayment as savePayment,
   findDocumentById,
   findOrderByIdOrCode,
   listOrdersByCentre,
   listOrdersByUser,
-  updateOrderStatus as saveOrderStatus
+  updateOrderPayment,
+  updateOrderStatus as saveOrderStatus,
+  withTransaction
 } from '../db/repository.js';
 import { calculatePrice } from '../utils/calculatePrice.js';
 import { generateId, generateOrderCode, generateShortCode } from '../utils/generateCode.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
+import { queuePrintJobIfPaymentReady } from '../services/printQueueService.js';
 
 export const createOrder = asyncHandler(async (req, res) => {
   const {
@@ -120,6 +124,62 @@ export const getMyOrders = asyncHandler(async (req, res) => {
 export const getCentreOrders = asyncHandler(async (req, res) => {
   const orders = await listOrdersByCentre(req.user.centreId);
   res.json({ success: true, orders });
+});
+
+export const collectCashPayment = asyncHandler(async (req, res) => {
+  const hubId = req.user?.centreId || req.user?.hubId;
+  const orderId = req.params.id;
+
+  const result = await withTransaction(async (client) => {
+    const order = await findOrderByIdOrCode(orderId, client);
+
+    if (!order || order.centreId !== hubId) {
+      return { notFound: true };
+    }
+
+    const normalizedPaymentStatus = String(order.paymentStatus || '').toLowerCase();
+    if (!['pending', 'unpaid', ''].includes(normalizedPaymentStatus)) {
+      const autoQueue = await queuePrintJobIfPaymentReady(order.id, hubId, client);
+      return {
+        order,
+        payment: null,
+        autoQueue,
+        printJob: autoQueue.printJob || autoQueue.existingPrintJob || null
+      };
+    }
+
+    const now = new Date().toISOString();
+    const payment = await savePayment({
+      id: generateId(),
+      orderId: order.id,
+      amount: order.amount,
+      method: 'CASH',
+      transactionId: `cash_collected_${Date.now()}`,
+      status: 'collected',
+      createdAt: now,
+      verifiedAt: now
+    }, client);
+
+    const collectedOrder = await updateOrderPayment(order.id, 'collected', 'Payment Collected', client);
+    const autoQueue = await queuePrintJobIfPaymentReady(collectedOrder.id, hubId, client);
+
+    return {
+      payment,
+      order: autoQueue.order || collectedOrder,
+      autoQueue,
+      printJob: autoQueue.printJob || autoQueue.existingPrintJob || null
+    };
+  });
+
+  if (result?.notFound) {
+    return res.status(404).json({ success: false, message: 'Order not found for this hub' });
+  }
+
+  res.json({
+    success: true,
+    message: result.autoQueue?.message || 'Payment collected.',
+    ...result
+  });
 });
 
 export const updateOrderStatus = asyncHandler(async (req, res) => {

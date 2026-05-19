@@ -18,6 +18,11 @@ try {
     testPrint: (payload) => ipcRenderer.invoke("printers:test-print", payload),
     stopPrinting: () => ipcRenderer.invoke("printing:stop"),
     getAgentStatus: () => ipcRenderer.invoke("agent:status"),
+    onAgentUpdated: (callback) => {
+      const listener = (_event, result) => callback(result);
+      ipcRenderer.on("agent:updated", listener);
+      return () => ipcRenderer.removeListener("agent:updated", listener);
+    },
     startPairing: (payload) => ipcRenderer.invoke("agent:start-pairing", payload),
     confirmPairing: () => ipcRenderer.invoke("agent:confirm-pairing"),
     sendHeartbeat: () => ipcRenderer.invoke("agent:heartbeat"),

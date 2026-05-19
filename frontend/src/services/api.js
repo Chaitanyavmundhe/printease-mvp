@@ -198,6 +198,12 @@ export function listHubPrintJobs() {
   return apiRequest("/api/hub-agents/print-jobs");
 }
 
+export function collectCashPayment(orderId) {
+  return apiRequest(`/api/orders/${orderId}/collect-payment`, {
+    method: "POST",
+  });
+}
+
 export function sendOrderToAgent(orderId, target = {}) {
   return apiRequest(`/api/hub-agents/orders/${orderId}/send-to-agent`, {
     method: "POST",

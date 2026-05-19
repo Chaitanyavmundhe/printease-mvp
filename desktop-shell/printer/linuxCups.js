@@ -66,22 +66,91 @@ function parsePrinterStatus(rawStatus) {
   return match?.[1]?.trim() || "unknown";
 }
 
-function parsePrinters(printerOutput, defaultPrinter) {
+function normalizePrinterCondition(status, accepting) {
+  const raw = [status, accepting?.rawAccepting].filter(Boolean).join(" ").toLowerCase();
+
+  if (accepting?.accepting === false || raw.includes("not accepting")) return "paused";
+  if (raw.includes("printing") || raw.includes("processing")) return "printing";
+  if (["paused", "disabled", "stopped"].some((word) => raw.includes(word))) return "paused";
+  if (["offline", "unable", "disconnected"].some((word) => raw.includes(word))) return "offline";
+  if (["idle", "available", "enabled", "accepting"].some((word) => raw.includes(word))) return "available";
+  return "unknown";
+}
+
+function warningForCondition(condition, accepting) {
+  if (condition === "offline") {
+    return {
+      warningCode: "PRINTER_OFFLINE",
+      warningText: "Local printer appears offline or disconnected.",
+    };
+  }
+
+  if (condition === "paused") {
+    return {
+      warningCode: "PRINTER_PAUSED",
+      warningText: accepting?.accepting === false
+        ? "Local printer is not accepting jobs."
+        : "Local printer appears paused or disabled.",
+    };
+  }
+
+  return {
+    warningCode: null,
+    warningText: null,
+  };
+}
+
+function parseAccepting(output) {
+  const acceptingByPrinter = new Map();
+
+  for (const line of String(output || "").split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    const acceptingMatch = trimmed.match(/^(\S+)\s+accepting\s+requests/i);
+    const notAcceptingMatch = trimmed.match(/^(\S+)\s+not\s+accepting\s+requests/i);
+    const printerName = acceptingMatch?.[1] || notAcceptingMatch?.[1];
+
+    if (printerName) {
+      acceptingByPrinter.set(printerName, {
+        accepting: Boolean(acceptingMatch),
+        rawAccepting: trimmed,
+      });
+    }
+  }
+
+  return acceptingByPrinter;
+}
+
+function parsePrinters(printerOutput, defaultPrinter, acceptingOutput = "") {
+  const acceptingByPrinter = parseAccepting(acceptingOutput);
+  const lastCheckedAt = new Date().toISOString();
+
   return String(printerOutput || "")
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => line.startsWith("printer "))
     .map((line) => {
       const [, printerName = ""] = line.match(/^printer\s+(\S+)/i) || [];
+      const status = parsePrinterStatus(line);
+      const accepting = acceptingByPrinter.get(printerName) || null;
+      const condition = normalizePrinterCondition(status, accepting);
+      const warning = warningForCondition(condition, accepting);
 
       return {
         printerName,
         displayName: printerName,
         systemPrinterId: printerName,
-        status: parsePrinterStatus(line),
+        status,
+        condition,
+        accepting: accepting?.accepting ?? (condition !== "paused" && condition !== "offline"),
         isDefault: printerName === defaultPrinter,
         rawStatus: line,
+        rawAccepting: accepting?.rawAccepting || "",
+        warningCode: warning.warningCode,
+        warningText: warning.warningText,
         platform: "linux",
+        lastCheckedAt,
       };
     })
     .filter((printer) => printer.printerName);
@@ -109,17 +178,24 @@ function cupsFailure(error, fallbackMessage) {
 
 export async function listPrinters() {
   try {
-    const [{ stdout: printerOutput }, defaultResult] = await Promise.all([
+    const [{ stdout: printerOutput }, defaultResult, acceptingResult] = await Promise.all([
       runCommand("lpstat", ["-p"]),
       runCommand("lpstat", ["-d"]).catch((error) => ({ stdout: "", stderr: error.stderr || error.message })),
+      runCommand("lpstat", ["-a"]).catch((error) => ({ stdout: "", stderr: error.stderr || error.message })),
     ]);
 
     const defaultPrinter = parseDefaultPrinter(defaultResult.stdout || "");
+    const printers = parsePrinters(printerOutput, defaultPrinter, acceptingResult.stdout || "");
 
     return {
-      success: true,
-      printers: parsePrinters(printerOutput, defaultPrinter),
+      success: printers.length > 0,
+      printers,
       defaultPrinter,
+      diagnostics: {
+        accepting: acceptingResult.stdout?.trim() || "",
+      },
+      error: printers.length > 0 ? undefined : "No CUPS printers were detected.",
+      helpCommands: printers.length > 0 ? undefined : HELP_COMMANDS,
     };
   } catch (error) {
     return cupsFailure(error, "Could not list CUPS printers.");
@@ -127,10 +203,11 @@ export async function listPrinters() {
 }
 
 export async function diagnosePrinters() {
-  const [printerStatus, defaultPrinter, deviceStatus] = await Promise.all([
+  const [printerStatus, defaultPrinter, deviceStatus, acceptingStatus] = await Promise.all([
     probeCommand("lpstat", ["-p"]),
     probeCommand("lpstat", ["-d"]),
     probeCommand("lpstat", ["-v"]),
+    probeCommand("lpstat", ["-a"]),
   ]);
 
   return {
@@ -138,7 +215,7 @@ export async function diagnosePrinters() {
     platform: process.platform,
     path: process.env.PATH || "",
     cupsServer: process.env.CUPS_SERVER || "",
-    probes: [printerStatus, defaultPrinter, deviceStatus],
+    probes: [printerStatus, defaultPrinter, deviceStatus, acceptingStatus],
   };
 }
 

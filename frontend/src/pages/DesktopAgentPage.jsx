@@ -9,6 +9,7 @@ import {
   getDesktopStatus,
   isDesktop,
   listPrinters,
+  onAgentUpdated,
   onPrintersUpdated,
   pollPrintJobs,
   sendHeartbeat,
@@ -79,15 +80,25 @@ export default function DesktopAgentPage() {
     setError(normalized.error);
     setErrorDetail(normalized.detail);
     setHelpCommands(normalized.helpCommands);
-    setMessage(normalized.error ? "" : localPrinterMessage(normalized.printers.length));
+    const syncMessage = result?.cloudSync?.success === false ? " Cloud sync warning: " + result.cloudSync.message : "";
+    setMessage(normalized.error ? "" : localPrinterMessage(normalized.printers.length) + syncMessage);
   }
 
   useEffect(() => {
     setDesktopAvailable(isDesktop());
-    return onPrintersUpdated((result) => {
+    const unsubscribePrinters = onPrintersUpdated((result) => {
       setDesktopAvailable(true);
       applyPrinterResult(result);
     });
+    const unsubscribeAgent = onAgentUpdated((result) => {
+      setDesktopAvailable(true);
+      if (result?.success) setAgentSession(result);
+    });
+
+    return () => {
+      unsubscribePrinters();
+      unsubscribeAgent();
+    };
   }, []);
 
   useEffect(() => {
@@ -333,7 +344,11 @@ export default function DesktopAgentPage() {
               )}
               {agentSession?.expiresAt && <p>Expires: {new Date(agentSession.expiresAt).toLocaleString()}</p>}
               <p>Polling: {agentSession?.polling ? "Running" : "Stopped"}</p>
+              <p>Heartbeat loop: {agentSession?.heartbeatRunning ? "Running" : "Stopped"}</p>
               {agentSession?.lastHeartbeatAt && <p>Last heartbeat: {new Date(agentSession.lastHeartbeatAt).toLocaleString()}</p>}
+              {agentSession?.lastHeartbeatError && <p className="font-semibold text-amber-700">Heartbeat warning: {agentSession.lastHeartbeatError}</p>}
+              {agentSession?.lastPrinterSyncAt && <p>Last printer sync: {new Date(agentSession.lastPrinterSyncAt).toLocaleString()}</p>}
+              {agentSession?.lastPrinterSyncError && <p className="font-semibold text-amber-700">Printer sync warning: {agentSession.lastPrinterSyncError}</p>}
             </div>
           </div>
 
@@ -431,7 +446,8 @@ export default function DesktopAgentPage() {
                         {printer.displayName || printer.printerName}
                         {printer.isDefault ? " · Default" : ""}
                       </span>
-                      <span className="block text-sm text-slate-600">{printer.status || "unknown"} · {printer.platform}</span>
+                      <span className="block text-sm text-slate-600">{printer.condition || printer.status || "unknown"} · accepting {printer.accepting === false ? "no" : "yes"} · {printer.platform}</span>
+                      {printer.warningText && <span className="mt-1 block text-xs font-semibold text-amber-700">{printer.warningCode}: {printer.warningText}</span>}
                       {printer.rawStatus && <span className="mt-1 block text-xs text-slate-500">{printer.rawStatus}</span>}
                     </span>
                   </label>
@@ -454,8 +470,9 @@ export default function DesktopAgentPage() {
               onClick={stopLocalPrinting}
               className="inline-flex items-center justify-center gap-2 rounded-xl border border-rose-200 px-4 py-3 font-semibold text-rose-700 hover:bg-rose-50"
             >
-              <X size={16} /> STOP Printing
+              <X size={16} /> STOP Printing on this PC
             </button>
+            <p className="text-xs text-slate-500">This only affects this desktop app.</p>
           </div>
         </div>
 

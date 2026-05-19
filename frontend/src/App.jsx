@@ -216,6 +216,7 @@ export default function App() {
 
   const [centres, setCentres] = useState(initialCentres);
   const [orders, setOrders] = useState(initialOrders);
+  const [lastOrdersUpdatedAt, setLastOrdersUpdatedAt] = useState("");
 
   useEffect(() => {
     setDesktopAvailable(isDesktop());
@@ -402,6 +403,7 @@ export default function App() {
       const data = await apiRequest(user.role === "hub" ? "/api/orders/centre/mine" : "/api/orders/mine");
       const nextOrders = Array.isArray(data.orders) ? data.orders.map((item) => normalizeOrder(item, centreList)) : [];
       setOrders(nextOrders);
+      setLastOrdersUpdatedAt(new Date().toISOString());
       return nextOrders;
     } catch (error) {
       return [];
@@ -640,6 +642,7 @@ export default function App() {
       const nextOrder = normalizeOrder(verifiedData.order || orderData.order, centres);
       setOrder(nextOrder);
       setOrders((prev) => upsertOrder(prev, nextOrder));
+      setLastOrdersUpdatedAt(new Date().toISOString());
       setDocumentFile(null);
       navigate("track");
     } catch (error) {
@@ -660,6 +663,7 @@ export default function App() {
         });
         const savedOrder = normalizeOrder(data.order, centres);
         setOrders((prev) => upsertOrder(prev, savedOrder));
+        setLastOrdersUpdatedAt(new Date().toISOString());
         if (order?.id === orderId || order?.backendId === existingOrder.backendId) setOrder(savedOrder);
         return;
       }
@@ -669,8 +673,28 @@ export default function App() {
     }
 
     setOrders((prev) => prev.map((item) => (item.id === orderId ? { ...item, status: nextStatus } : item)));
+    setLastOrdersUpdatedAt(new Date().toISOString());
     if (order?.id === orderId) setOrder((prev) => ({ ...prev, status: nextStatus }));
   }
+
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const shouldPollHistory = page === "history";
+    const shouldPollTrack = page === "track" && order?.backendId;
+    if (!shouldPollHistory && !shouldPollTrack) return;
+
+    const intervalMs = shouldPollHistory ? 25000 : 10000;
+    const interval = setInterval(async () => {
+      const nextOrders = await loadOrdersForSession(currentUser, centres);
+      if (shouldPollTrack && order?.backendId) {
+        const nextOrder = nextOrders.find((item) => item.backendId === order.backendId || item.id === order.id);
+        if (nextOrder) setOrder(nextOrder);
+      }
+    }, intervalMs);
+
+    return () => clearInterval(interval);
+  }, [page, currentUser?.id, order?.backendId]);
 
   async function updateCentrePrice(field, value) {
     if (!currentHub) return;
@@ -717,7 +741,7 @@ export default function App() {
       />
 
       <div className={`border-b px-4 py-2 text-center text-xs font-semibold ${desktopAvailable ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800"}`}>
-        PrintEase local dev · frontend 5175 · backend 5005 · desktop bridge {desktopAvailable ? "connected" : "not connected"}
+        PrintEase local dev · frontend may run locally · backend Render cloud only · desktop bridge {desktopAvailable ? "connected" : "not connected"}
       </div>
 
       <main className="mx-auto max-w-6xl px-4 py-8">
@@ -822,8 +846,8 @@ export default function App() {
               )
             }
           />
-          <Route path={ROUTES.track} element={<TrackPage order={order} />} />
-          <Route path={ROUTES.history} element={<HistoryPage orders={orders} currentUser={currentUser} />} />
+          <Route path={ROUTES.track} element={<TrackPage order={order} lastUpdatedAt={lastOrdersUpdatedAt} />} />
+          <Route path={ROUTES.history} element={<HistoryPage orders={orders} currentUser={currentUser} lastUpdatedAt={lastOrdersUpdatedAt} />} />
           <Route path="*" element={<Navigate to={ROUTES.home} replace />} />
         </Routes>
       </main>

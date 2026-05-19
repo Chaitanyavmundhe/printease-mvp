@@ -73,6 +73,7 @@ async function resolveDownloadUrl(fileUrl) {
   return data.signedUrl;
 }
 
+// Agent document access is gated by payment_status and print_jobs approval.
 async function toAgentJobPayload(job) {
   if (!job) return null;
 
@@ -230,15 +231,34 @@ export const getAgentConfig = asyncHandler(async (req, res) => {
   });
 });
 
+function normalizePrinterCondition(input, accepting) {
+  const value = String(input || '').trim().toLowerCase();
+  if (accepting === false || value.includes('not accepting')) return 'paused';
+  if (['idle', 'available', 'enabled', 'accepting'].includes(value)) return 'available';
+  if (['printing', 'processing'].includes(value)) return 'printing';
+  if (['paused', 'disabled', 'stopped'].includes(value)) return 'paused';
+  if (['offline', 'unable', 'disconnected'].includes(value)) return 'offline';
+  return 'unknown';
+}
+
 export const syncPrinters = asyncHandler(async (req, res) => {
   const printers = Array.isArray(req.body.printers) ? req.body.printers : [];
   const normalizedPrinters = printers
-    .map((printer) => ({
-      printerName: printer.printerName || printer.name,
-      systemPrinterId: printer.systemPrinterId || printer.id || printer.name,
-      status: printer.status || 'unknown',
-      isDefault: Boolean(printer.isDefault)
-    }))
+    .map((printer) => {
+      const condition = normalizePrinterCondition(printer.condition || printer.status, printer.accepting);
+
+      return {
+        printerName: printer.printerName || printer.name,
+        systemPrinterId: printer.systemPrinterId || printer.id || printer.name,
+        status: condition,
+        condition,
+        accepting: typeof printer.accepting === 'boolean' ? printer.accepting : null,
+        isDefault: Boolean(printer.isDefault),
+        lastCheckedAt: printer.lastCheckedAt || null,
+        warningCode: printer.warningCode || null,
+        warningText: printer.warningText || null
+      };
+    })
     .filter((printer) => printer.printerName);
 
   const savedPrinters = await replaceAgentPrinters(req.agent.id, req.agent.hubId, normalizedPrinters);

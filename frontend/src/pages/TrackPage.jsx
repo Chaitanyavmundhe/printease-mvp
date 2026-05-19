@@ -36,7 +36,7 @@ function normalizeStatus(status) {
   return statusMap[key] || status;
 }
 
-export default function TrackPage({ order }) {
+export default function TrackPage({ order, lastUpdatedAt }) {
   if (!order) return <Card>No active order found.</Card>;
   const currentStatus = normalizeStatus(order.status);
   const activeIndex = orderStatuses.indexOf(currentStatus);
@@ -44,6 +44,7 @@ export default function TrackPage({ order }) {
   return (
     <Card className="mx-auto max-w-2xl">
       <h2 className="text-2xl font-bold">Order Tracking</h2>
+      {lastUpdatedAt && <p className="mt-1 text-xs text-slate-500">Last updated: {new Date(lastUpdatedAt).toLocaleTimeString()}</p>}
       <div className="mt-4 rounded-2xl bg-slate-50 p-4">
         <Row label="Order ID" value={order.id} />
         <Row label="Centre" value={order.centre} />

@@ -1,12 +1,13 @@
 import Card from "../components/Card";
 import StatusBadge from "../components/StatusBadge";
 
-export default function HistoryPage({ orders, currentUser }) {
+export default function HistoryPage({ orders, currentUser, lastUpdatedAt }) {
   return (
     <Card>
       <h2 className="text-2xl font-bold">Usage History</h2>
       <p className="mt-2 text-sm text-slate-600">
         {currentUser ? `Showing records for ${currentUser.name}` : "Demo history. Login to connect this with user profile."}
+        {lastUpdatedAt ? ` Last updated: ${new Date(lastUpdatedAt).toLocaleTimeString()}` : ""}
       </p>
       <div className="mt-6 overflow-x-auto">
         <table className="w-full min-w-[750px] text-left text-sm">

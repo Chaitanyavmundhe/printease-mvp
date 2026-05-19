@@ -12,6 +12,7 @@ import { loadConfig, saveConfig, setConfigDirectory } from "./local/config.js";
 
 const DEV_FRONTEND_URL = process.env.PRINTEASE_FRONTEND_URL || "http://127.0.0.1:5175";
 const VERSION = "0.1.0";
+const HEARTBEAT_INTERVAL_MS = 15000;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -20,6 +21,7 @@ const PRELOAD_PATH = path.join(__dirname, "preload.cjs");
 let mainWindow = null;
 let ipcHandlersRegistered = false;
 let latestPrinterResult = null;
+let heartbeatTimer = null;
 let agentSession = {
   deviceId: "",
   deviceName: "",
@@ -31,6 +33,9 @@ let agentSession = {
   accessToken: "",
   pairedAt: "",
   lastHeartbeatAt: "",
+  lastHeartbeatError: "",
+  lastPrinterSyncAt: "",
+  lastPrinterSyncError: "",
 };
 let jobPoller = null;
 
@@ -156,6 +161,18 @@ async function reportPrinterDiagnostic(event, result) {
   }
 }
 
+function isAgentPaired() {
+  return Boolean(agentSession.accessToken && agentSession.agentId && agentSession.hubId);
+}
+
+function emitAgentSession() {
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed()) {
+      window.webContents.send("agent:updated", sanitizeAgentSession());
+    }
+  }
+}
+
 function emitPrinterResult(result) {
   for (const window of BrowserWindow.getAllWindows()) {
     if (!window.isDestroyed()) {
@@ -164,12 +181,64 @@ function emitPrinterResult(result) {
   }
 }
 
+async function syncPrintersToCloud(printerResult, event = "printers:sync") {
+  if (!isAgentPaired()) {
+    const result = {
+      success: false,
+      message: "Pair desktop before syncing printers to cloud.",
+      skipped: true,
+    };
+    agentSession.lastPrinterSyncError = result.message;
+    emitAgentSession();
+    return result;
+  }
+
+  if (!printerResult?.success) {
+    const result = {
+      success: false,
+      message: printerResult?.error || printerResult?.message || "Local printer discovery failed; cloud sync skipped.",
+    };
+    agentSession.lastPrinterSyncError = result.message;
+    emitAgentSession();
+    return result;
+  }
+
+  const syncResult = await syncPrinters({
+    agentToken: agentSession.accessToken,
+    printers: printerResult.printers,
+  });
+
+  if (syncResult.success) {
+    agentSession.lastPrinterSyncAt = new Date().toISOString();
+    agentSession.lastPrinterSyncError = "";
+  } else {
+    agentSession.lastPrinterSyncError = syncResult.message || "Cloud printer sync failed.";
+  }
+
+  console.log("[DESKTOP PRINTER CLOUD SYNC]", JSON.stringify({
+    event,
+    success: syncResult.success,
+    printerCount: printerResult.printers?.length || 0,
+    message: syncResult.message,
+  }, null, 2));
+  emitAgentSession();
+  return syncResult;
+}
+
 async function refreshLocalPrinterResult(event) {
   const result = await listPrinters();
   latestPrinterResult = result;
   console.log("[DESKTOP PRINTERS]", JSON.stringify(result, null, 2));
   emitPrinterResult(result);
   await reportPrinterDiagnostic(event, result);
+
+  if (isAgentPaired()) {
+    const cloudSync = await syncPrintersToCloud(result, event);
+    latestPrinterResult = { ...result, cloudSync };
+    emitPrinterResult(latestPrinterResult);
+    return latestPrinterResult;
+  }
+
   return result;
 }
 
@@ -205,6 +274,10 @@ function sanitizeAgentSession() {
     paired: Boolean(agentSession.accessToken),
     pairedAt: agentSession.pairedAt,
     lastHeartbeatAt: agentSession.lastHeartbeatAt,
+    lastHeartbeatError: agentSession.lastHeartbeatError,
+    lastPrinterSyncAt: agentSession.lastPrinterSyncAt,
+    lastPrinterSyncError: agentSession.lastPrinterSyncError,
+    heartbeatRunning: Boolean(heartbeatTimer),
     polling: Boolean(jobPoller?.isRunning),
   };
 }
@@ -273,8 +346,10 @@ async function confirmAgentPairing() {
     deviceId: agentSession.deviceId,
   });
 
-  if (result.success && result.paired && result.accessToken) {
-    agentSession.accessToken = result.accessToken;
+  const returnedAgentToken = result.accessToken || result.agentToken;
+
+  if (result.success && result.paired && returnedAgentToken) {
+    agentSession.accessToken = returnedAgentToken;
     agentSession.agentId = result.agentId || "";
     agentSession.hubId = result.hubId || result.shopId || "";
     agentSession.pairedAt = new Date().toISOString();
@@ -286,11 +361,14 @@ async function confirmAgentPairing() {
       agentId: agentSession.agentId,
       hubId: agentSession.hubId,
     });
+
+    result.runtime = await startAgentRuntime("agent:paired");
   }
 
   return {
     ...result,
     accessToken: undefined,
+    agentToken: undefined,
     refreshToken: undefined,
     session: sanitizeAgentSession(),
   };
@@ -306,11 +384,62 @@ async function sendAgentHeartbeat() {
 
   if (result.success) {
     agentSession.lastHeartbeatAt = new Date().toISOString();
+    agentSession.lastHeartbeatError = "";
+  } else {
+    agentSession.lastHeartbeatError = result.message || "Heartbeat failed.";
   }
 
+  emitAgentSession();
   return {
     ...result,
     session: sanitizeAgentSession(),
+  };
+}
+
+function startHeartbeatLoop() {
+  if (!isAgentPaired()) {
+    return {
+      success: false,
+      message: "Pair desktop before starting heartbeat.",
+      session: sanitizeAgentSession(),
+    };
+  }
+
+  if (heartbeatTimer) {
+    return {
+      success: true,
+      message: "Heartbeat loop is already running.",
+      session: sanitizeAgentSession(),
+    };
+  }
+
+  heartbeatTimer = setInterval(() => {
+    sendAgentHeartbeat().catch((error) => {
+      agentSession.lastHeartbeatError = error.message || "Heartbeat failed.";
+      emitAgentSession();
+      console.warn("[DESKTOP HEARTBEAT FAILED]", error.message || error);
+    });
+  }, HEARTBEAT_INTERVAL_MS);
+
+  heartbeatTimer.unref?.();
+  emitAgentSession();
+  return {
+    success: true,
+    message: "Heartbeat loop started.",
+    session: sanitizeAgentSession(),
+  };
+}
+
+async function startAgentRuntime(reason) {
+  const heartbeat = await sendAgentHeartbeat();
+  const printerResult = await refreshLocalPrinterResult(reason + ":printer-sync");
+  const loop = startHeartbeatLoop();
+
+  return {
+    success: Boolean(heartbeat.success && loop.success),
+    heartbeat,
+    printerResult,
+    loop,
   };
 }
 
@@ -318,17 +447,19 @@ async function syncAgentPrinters() {
   const pairingError = requirePairedAgent();
   if (pairingError) return pairingError;
 
-  const printerResult = await listPrinters();
-  if (!printerResult.success) return printerResult;
+  const printerResult = await refreshLocalPrinterResult("agent:manual-printer-sync");
+  if (!printerResult.success) return {
+    ...printerResult,
+    session: sanitizeAgentSession(),
+  };
 
-  const syncResult = await reportStatus({
-    agentToken: agentSession.accessToken,
-    printers: printerResult.printers,
-    paused: false,
-  });
+  const heartbeat = await sendAgentHeartbeat();
+  const printerSync = printerResult.cloudSync || await syncPrintersToCloud(printerResult, "agent:manual-printer-sync");
 
   return {
-    ...syncResult,
+    success: Boolean(heartbeat.success && printerSync.success),
+    heartbeat,
+    printerSync,
     localPrinters: printerResult.printers,
     session: sanitizeAgentSession(),
   };
@@ -416,7 +547,11 @@ function registerIpcHandlers() {
   ipcMain.handle("agent:status", () => sanitizeAgentSession());
   ipcMain.handle("agent:start-pairing", startAgentPairing);
   ipcMain.handle("agent:confirm-pairing", confirmAgentPairing);
-  ipcMain.handle("agent:heartbeat", sendAgentHeartbeat);
+  ipcMain.handle("agent:heartbeat", async () => {
+    const result = await sendAgentHeartbeat();
+    if (result.success) startHeartbeatLoop();
+    return result;
+  });
   ipcMain.handle("agent:sync-printers", syncAgentPrinters);
   ipcMain.handle("agent:poll-once", pollAgentOnce);
   ipcMain.handle("agent:start-polling", startAgentPolling);
@@ -513,6 +648,11 @@ app.whenReady().then(async () => {
       createMainWindow();
     }
   });
+});
+
+app.on("before-quit", () => {
+  if (heartbeatTimer) clearInterval(heartbeatTimer);
+  jobPoller?.stop?.();
 });
 
 app.on("window-all-closed", () => {

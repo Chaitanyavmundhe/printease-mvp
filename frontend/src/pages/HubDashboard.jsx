@@ -4,7 +4,7 @@ import Card from "../components/Card";
 import Metric from "../components/Metric";
 import StatusBadge from "../components/StatusBadge";
 import { hubStatusOptions } from "../data/demoData";
-import { getHubAgentSummary, pairAgent, sendOrderToAgent } from "../services/api";
+import { collectCashPayment, getHubAgentSummary, pairAgent, sendOrderToAgent } from "../services/api";
 
 function normalizeStatus(status) {
   return String(status || "").toLowerCase().replace(/\s+/g, "_");
@@ -12,11 +12,21 @@ function normalizeStatus(status) {
 
 function isPaymentVerified(order) {
   const value = String(order?.paymentStatus || order?.payment_status || "").toLowerCase();
-  return value === "verified" || value === "paid" || value.includes("verif");
+  return value === "verified" || value === "collected" || value === "paid" || value.includes("verif");
+}
+
+function isPaymentPending(order) {
+  const value = String(order?.paymentStatus || order?.payment_status || "").toLowerCase();
+  return value === "pending" || value === "unpaid" || !value;
 }
 
 const CLOSED_STATUSES = new Set(["collected", "refund_requested", "printing_failed", "cancelled"]);
 const AGENT_LOCKED_STATUSES = new Set(["sent_to_agent", "queued_for_printing", "printing", "ready_for_pickup", "collected", "printing_failed"]);
+
+function isRouteablePrinter(printer) {
+  const condition = normalizeStatus(printer?.condition || printer?.status);
+  return printer?.accepting !== false && !["paused", "disabled", "stopped", "offline", "unable", "disconnected"].includes(condition);
+}
 const EMPTY_ANALYTICS = {
   onlineAgents: 0,
   availablePrinters: 0,
@@ -55,6 +65,8 @@ export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus,
   const [sendModalOrder, setSendModalOrder] = useState(null);
   const [selectedAgentId, setSelectedAgentId] = useState("");
   const [selectedPrinterName, setSelectedPrinterName] = useState("");
+  const [collectingOrderId, setCollectingOrderId] = useState("");
+  const [lastUpdatedAt, setLastUpdatedAt] = useState("");
   const ordersForHub = hubOrders || [];
 
   const totalPages = ordersForHub.reduce((sum, item) => sum + item.pages * item.copies, 0);
@@ -62,7 +74,7 @@ export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus,
   const pendingOrders = ordersForHub.filter((item) => !CLOSED_STATUSES.has(normalizeStatus(item.status))).length;
   const primaryAgent = agents[0] || null;
   const defaultPrinter = agentPrinters.find((printer) => printer.isDefault) || agentPrinters[0] || null;
-  const agentStatus = primaryAgent ? (primaryAgent.paused ? "Paused" : primaryAgent.status || "Offline") : "Offline";
+  const agentStatus = primaryAgent ? (primaryAgent.paused ? "New Jobs Disabled" : primaryAgent.status || "Offline") : "Offline";
   const routeableAgents = useMemo(() => {
     return agents.filter((agent) => {
       const status = normalizeStatus(agent.liveStatus || agent.status);
@@ -78,8 +90,8 @@ export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus,
     }
     return grouped;
   }, [agentPrinters]);
-  const selectedAgentPrinters = printersByAgent.get(selectedAgentId) || [];
-  const hasOnlinePrinter = routeableAgents.some((agent) => (printersByAgent.get(agent.id) || []).length > 0);
+  const selectedAgentPrinters = (printersByAgent.get(selectedAgentId) || []).filter(isRouteablePrinter);
+  const hasOnlinePrinter = routeableAgents.some((agent) => (printersByAgent.get(agent.id) || []).some(isRouteablePrinter));
   const jobByOrderId = useMemo(() => {
     return new Map(printJobs.map((job) => [job.orderId, job]));
   }, [printJobs]);
@@ -94,6 +106,7 @@ export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus,
       setAgentPrinters(Array.isArray(data.printers) ? data.printers : []);
       setPrintJobs(Array.isArray(data.printJobs) ? data.printJobs : []);
       setAgentAnalytics(data.analytics || EMPTY_ANALYTICS);
+      setLastUpdatedAt(new Date().toISOString());
     } catch (error) {
       setAgentError(error.message || "Could not load agent status.");
     } finally {
@@ -104,6 +117,11 @@ export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus,
   useEffect(() => {
     if (currentHub?.id) {
       refreshAgentStatus();
+      const interval = setInterval(() => {
+        refreshAgentStatus();
+        refreshOrders?.();
+      }, 10000);
+      return () => clearInterval(interval);
     }
   }, [currentHub?.id]);
 
@@ -115,7 +133,7 @@ export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus,
     setAgentError("");
 
     if (!code) {
-      setPairingMessage("Enter the code shown in the local PrintEase Hub Agent.");
+      setPairingMessage("Enter the code shown in PrintEase Desktop.");
       return;
     }
 
@@ -134,8 +152,8 @@ export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus,
   }
 
   function openSendModal(order) {
-    const firstAgent = routeableAgents.find((agent) => (printersByAgent.get(agent.id) || []).length > 0) || routeableAgents[0] || null;
-    const firstPrinter = firstAgent ? (printersByAgent.get(firstAgent.id) || [])[0] : null;
+    const firstAgent = routeableAgents.find((agent) => (printersByAgent.get(agent.id) || []).some(isRouteablePrinter)) || routeableAgents[0] || null;
+    const firstPrinter = firstAgent ? (printersByAgent.get(firstAgent.id) || []).find(isRouteablePrinter) : null;
 
     setSendModalOrder(order);
     setSelectedAgentId(firstAgent?.id || "");
@@ -155,6 +173,23 @@ export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus,
 
     setSelectedAgentId(agentId);
     setSelectedPrinterName(defaultForAgent?.printerName || "");
+  }
+
+  async function markCashCollected(order) {
+    const orderId = order.backendId || order.id;
+    setCollectingOrderId(orderId);
+    setAgentError("");
+    setPairingMessage("");
+
+    try {
+      const data = await collectCashPayment(orderId);
+      setPairingMessage(data.message || "Payment collected.");
+      await Promise.all([refreshAgentStatus(), refreshOrders?.()]);
+    } catch (error) {
+      setAgentError(error.message || "Could not mark cash collected.");
+    } finally {
+      setCollectingOrderId("");
+    }
   }
 
   async function sendToAgent() {
@@ -236,6 +271,7 @@ export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus,
               </p>
               <p className="mt-2">Default printer: <b>{defaultPrinter?.printerName || "Not selected"}</b></p>
               <p className="mt-2">Last seen: {formatDateTime(primaryAgent?.lastSeenAt)}</p>
+              {lastUpdatedAt && <p className="mt-2 text-xs">Last updated: {new Date(lastUpdatedAt).toLocaleTimeString()}</p>}
             </div>
             {routeableAgents.length > 0 && (
               <div className="mt-4 flex flex-wrap gap-2 text-xs text-slate-600">
@@ -314,7 +350,15 @@ export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus,
                     <td>{item.document}</td>
                     <td>{item.pages} × {item.copies}</td>
                     <td>₹{item.amount}</td>
-                    <td><StatusBadge color="green">{item.paymentStatus}</StatusBadge></td>
+                    <td>
+                      <StatusBadge color="green">{item.paymentStatus}</StatusBadge>
+                      {isPaymentPending(item) && (
+                        <p className="mt-1 text-xs text-slate-500">Document stored securely. Printer agent will receive it only after payment is collected.</p>
+                      )}
+                      {isPaymentVerified(item) && (
+                        <p className="mt-1 text-xs text-emerald-700">Payment completed. Print job can be queued/sent to desktop agent.</p>
+                      )}
+                    </td>
                     <td>
                       <StatusBadge>{item.status}</StatusBadge>
                       {job?.failureReasonText && <p className="mt-1 text-xs font-semibold text-rose-600">{job.failureReasonText}</p>}
@@ -328,6 +372,15 @@ export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus,
                       <div className="flex flex-col gap-2">
                         {job && <StatusBadge>{job.status}</StatusBadge>}
                         {job && normalizeStatus(job.status) !== "failed" && <p className="text-xs text-slate-500">Queued for Printing</p>}
+                        {isPaymentPending(item) && (
+                          <button
+                            onClick={() => markCashCollected(item)}
+                            disabled={collectingOrderId === orderId}
+                            className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-200 px-3 py-2 font-semibold text-emerald-700 disabled:opacity-50"
+                          >
+                            <IndianRupee size={15} /> {collectingOrderId === orderId ? "Saving" : "Mark Cash Collected"}
+                          </button>
+                        )}
                         {sendEnabled && hasOnlinePrinter && (
                           <button
                             onClick={() => openSendModal(item)}
@@ -342,7 +395,7 @@ export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus,
                             onClick={() => navigate("hubPrinters")}
                             className="rounded-xl border border-amber-200 px-3 py-2 text-left text-xs font-semibold text-amber-800"
                           >
-                            No online desktop printer. Open Printer Agent.
+                            Payment completed, but no online desktop printer is available.
                           </button>
                         )}
                       </div>
