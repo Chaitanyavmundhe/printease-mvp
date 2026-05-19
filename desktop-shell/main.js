@@ -321,9 +321,10 @@ async function syncAgentPrinters() {
   const printerResult = await listPrinters();
   if (!printerResult.success) return printerResult;
 
-  const syncResult = await syncPrinters({
+  const syncResult = await reportStatus({
     agentToken: agentSession.accessToken,
     printers: printerResult.printers,
+    paused: false,
   });
 
   return {

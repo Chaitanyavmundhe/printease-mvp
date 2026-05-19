@@ -66,6 +66,7 @@ export default function DesktopAgentPage() {
   const [agentMessage, setAgentMessage] = useState("");
   const [backendHealth, setBackendHealth] = useState(null);
   const [printerDiagnostics, setPrinterDiagnostics] = useState(null);
+  const [autoPollingStarted, setAutoPollingStarted] = useState(false);
 
   const defaultPrinter = useMemo(() => printers.find((printer) => printer.isDefault) || printers[0] || null, [printers]);
   const localPrinterNames = printers.map((printer) => printer.displayName || printer.printerName).filter(Boolean).join(", ");
@@ -106,6 +107,40 @@ export default function DesktopAgentPage() {
       if (nextSession?.success) setAgentSession(nextSession);
     });
   }, [desktopAvailable]);
+
+  useEffect(() => {
+    if (!desktopAvailable || autoPollingStarted) return;
+    if (!agentSession?.paired || agentSession?.polling) return;
+
+    let active = true;
+
+    async function autoStartPolling() {
+      setError("");
+      setMessage("");
+
+      const syncResult = await syncDesktopPrinters();
+      if (active && syncResult?.session) {
+        setAgentSession(syncResult.session);
+      }
+
+      const pollingResult = await startJobPolling({ printerName: selectedPrinterName || undefined, intervalMs: 5000 });
+      if (active) {
+        if (pollingResult?.session) setAgentSession(pollingResult.session);
+        if (pollingResult?.success) {
+          setAgentMessage("Auto-print enabled. Desktop agent polling started.");
+        } else if (pollingResult?.success === false) {
+          setError(pollingResult.error || pollingResult.message || "Could not start auto-print polling.");
+        }
+        setAutoPollingStarted(true);
+      }
+    }
+
+    autoStartPolling();
+
+    return () => {
+      active = false;
+    };
+  }, [desktopAvailable, agentSession?.paired, agentSession?.polling, selectedPrinterName, autoPollingStarted]);
 
   useEffect(() => {
     if (!desktopAvailable) return;
@@ -243,7 +278,7 @@ export default function DesktopAgentPage() {
               <p className="mt-1 font-semibold text-emerald-700">Desktop mode detected</p>
               <p className="mt-1 text-sm font-semibold text-emerald-700">Desktop bridge connected</p>
               <p className="mt-2 text-sm text-slate-600">Platform: {status?.platform || window.printeaseDesktop?.platform || "unknown"}</p>
-              <p className="text-sm text-slate-600">Backend: {status?.backendUrl || "http://127.0.0.1:5005"}</p>
+              <p className="text-sm text-slate-600">Backend: {status?.backendUrl || "https://printease-backend-byex.onrender.com"}</p>
               <p className={`mt-2 text-sm font-semibold ${printers.length > 0 ? "text-emerald-700" : "text-amber-700"}`}>
                 Local printers: {printers.length > 0 ? localPrinterNames : "checking"}
               </p>
