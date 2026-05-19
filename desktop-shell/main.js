@@ -36,6 +36,7 @@ let agentSession = {
   pairedAt: "",
   lastHeartbeatAt: "",
   lastHeartbeatError: "",
+  selectedPrinterName: "",
   lastPrinterSyncAt: "",
   lastPrinterSyncError: "",
 };
@@ -207,7 +208,12 @@ async function syncPrintersToCloud(printerResult, event = "printers:sync") {
 
   const syncResult = await syncPrinters({
     agentToken: agentSession.accessToken,
-    printers: printerResult.printers,
+    printers: (printerResult.printers || []).map((printer) => ({
+      ...printer,
+      isDefault: agentSession.selectedPrinterName
+        ? printer.printerName === agentSession.selectedPrinterName
+        : Boolean(printer.isDefault),
+    })),
   });
 
   if (syncResult.success) {
@@ -297,6 +303,7 @@ function sanitizeAgentSession() {
     pairedAt: agentSession.pairedAt,
     lastHeartbeatAt: agentSession.lastHeartbeatAt,
     lastHeartbeatError: agentSession.lastHeartbeatError,
+    selectedPrinterName: agentSession.selectedPrinterName,
     lastPrinterSyncAt: agentSession.lastPrinterSyncAt,
     lastPrinterSyncError: agentSession.lastPrinterSyncError,
     heartbeatRunning: Boolean(heartbeatTimer),
@@ -311,13 +318,85 @@ async function ensureDeviceIdentity(deviceName) {
   const savedConfig = await loadConfig();
   agentSession.deviceId = savedConfig.deviceId || randomUUID();
   agentSession.deviceName = deviceName || savedConfig.deviceName || os.hostname() || "PrintEase Desktop";
+  agentSession.selectedPrinterName = savedConfig.selectedPrinterName || agentSession.selectedPrinterName || "";
 
   await saveConfig({
     deviceId: agentSession.deviceId,
     deviceName: agentSession.deviceName,
     agentId: agentSession.agentId,
     hubId: agentSession.hubId,
+    selectedPrinterName: agentSession.selectedPrinterName,
   });
+}
+
+function findPrinterByName(printerResult, printerName) {
+  const printers = Array.isArray(printerResult?.printers) ? printerResult.printers : [];
+  return printers.find((printer) => (
+    printer.printerName === printerName ||
+    printer.systemPrinterId === printerName ||
+    printer.displayName === printerName
+  )) || null;
+}
+
+async function selectDesktopPrinter(_event, payload = {}) {
+  const printerName = typeof payload === "string" ? payload : payload?.printerName;
+
+  if (!printerName) {
+    return {
+      success: false,
+      message: "Choose a printer before saving selection.",
+      session: sanitizeAgentSession(),
+    };
+  }
+
+  const printerResult = latestPrinterResult || await refreshLocalPrinterResult("printers:select-load");
+  const printer = findPrinterByName(printerResult, printerName);
+
+  if (!printer) {
+    return {
+      success: false,
+      message: "Selected printer was not found locally. Refresh printers and try again.",
+      session: sanitizeAgentSession(),
+    };
+  }
+
+  agentSession.selectedPrinterName = printer.printerName;
+  await saveConfig({
+    deviceId: agentSession.deviceId,
+    deviceName: agentSession.deviceName,
+    agentId: agentSession.agentId,
+    hubId: agentSession.hubId,
+    selectedPrinterName: agentSession.selectedPrinterName,
+  });
+
+  latestPrinterResult = {
+    ...printerResult,
+    printers: (printerResult.printers || []).map((item) => ({
+      ...item,
+      isDefault: item.printerName === agentSession.selectedPrinterName,
+    })),
+  };
+  emitPrinterResult(latestPrinterResult);
+
+  let heartbeat = null;
+  let printerSync = null;
+  if (isAgentPaired()) {
+    heartbeat = await sendAgentHeartbeat();
+    printerSync = await syncPrintersToCloud(latestPrinterResult, "printers:selected");
+  } else {
+    agentSession.lastPrinterSyncError = "Printer selected locally but not synced to hub. Pair desktop first.";
+  }
+
+  emitAgentSession();
+
+  return {
+    success: true,
+    message: "Selected printer " + agentSession.selectedPrinterName + ".",
+    printer: findPrinterByName(latestPrinterResult, agentSession.selectedPrinterName),
+    heartbeat,
+    printerSync,
+    session: sanitizeAgentSession(),
+  };
 }
 
 function requirePairedAgent() {
@@ -383,6 +462,7 @@ async function confirmAgentPairing() {
       deviceName: agentSession.deviceName,
       agentId: agentSession.agentId,
       hubId: agentSession.hubId,
+      selectedPrinterName: agentSession.selectedPrinterName,
     });
 
     result.runtime = await startAgentRuntime("agent:paired");
@@ -403,6 +483,7 @@ async function sendAgentHeartbeat() {
 
   const result = await sendHeartbeat({
     agentToken: agentSession.accessToken,
+    selectedPrinter: agentSession.selectedPrinterName,
   });
 
   if (result.success) {
@@ -530,7 +611,7 @@ async function pollAgentOnce(_event, payload = {}) {
 
   return processNextJob({
     agentToken: agentSession.accessToken,
-    printerName: payload.printerName,
+    printerName: payload.printerName || agentSession.selectedPrinterName,
   });
 }
 
@@ -541,14 +622,14 @@ function startAgentPolling(_event, payload = {}) {
   if (!jobPoller) {
     jobPoller = createJobPoller({
       agentToken: agentSession.accessToken,
-      printerName: payload.printerName,
+      printerName: payload.printerName || agentSession.selectedPrinterName,
       intervalMs: payload.intervalMs,
     });
   }
 
   const result = jobPoller.start({
     agentToken: agentSession.accessToken,
-    printerName: payload.printerName,
+    printerName: payload.printerName || agentSession.selectedPrinterName,
     intervalMs: payload.intervalMs,
   });
 
@@ -590,6 +671,7 @@ function registerIpcHandlers() {
 
   ipcMain.handle("backend:health", () => checkBackendHealth());
   ipcMain.handle("printers:list", () => refreshLocalPrinterResult("printers:list"));
+  ipcMain.handle("printers:select", selectDesktopPrinter);
   ipcMain.handle("printers:diagnose", async () => {
     const result = await diagnosePrinters();
     console.log("[DESKTOP PRINTER DIAGNOSTICS]", JSON.stringify(result, null, 2));
@@ -598,7 +680,7 @@ function registerIpcHandlers() {
   });
 
   ipcMain.handle("printers:test-print", (_event, payload = {}) => {
-    const printerName = typeof payload === "string" ? payload : payload?.printerName;
+    const printerName = (typeof payload === "string" ? payload : payload?.printerName) || agentSession.selectedPrinterName;
     return testPrint(printerName);
   });
 

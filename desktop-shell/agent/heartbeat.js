@@ -34,10 +34,11 @@ export async function backendRequest({ endpoint, method = "GET", agentToken, bod
   return data;
 }
 
-export function createHeartbeatPayload({ paused = false, status = "online" } = {}) {
+export function createHeartbeatPayload({ paused = false, status = "online", selectedPrinter = "" } = {}) {
   return {
     status,
     paused,
+    selectedPrinter: selectedPrinter || null,
     platform: process.platform,
     version: VERSION,
   };
@@ -98,7 +99,7 @@ export async function confirmPairing({ pairingSessionId, deviceId }) {
   }
 }
 
-export async function sendHeartbeat({ agentToken, paused = false, status = "online" } = {}) {
+export async function sendHeartbeat({ agentToken, paused = false, status = "online", selectedPrinter = "" } = {}) {
   if (!agentToken) {
     return {
       success: false,
@@ -111,7 +112,7 @@ export async function sendHeartbeat({ agentToken, paused = false, status = "onli
       endpoint: "/agent/heartbeat",
       method: "POST",
       agentToken,
-      body: createHeartbeatPayload({ paused, status }),
+      body: createHeartbeatPayload({ paused, status, selectedPrinter }),
     });
   } catch (error) {
     return {

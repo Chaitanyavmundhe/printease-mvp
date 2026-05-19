@@ -9,6 +9,7 @@ import {
   getDesktopStatus,
   isDesktop,
   listPrinters,
+  selectPrinter as selectDesktopPrinter,
   onAgentUpdated,
   onPrintersUpdated,
   pollPrintJobs,
@@ -76,7 +77,12 @@ export default function DesktopAgentPage() {
     const normalized = normalizePrinterResult(result);
 
     setPrinters(normalized.printers);
-    setSelectedPrinterName(normalized.printers.find((printer) => printer.isDefault)?.printerName || normalized.printers[0]?.printerName || "");
+    setSelectedPrinterName((previous) => {
+      const savedSelection = agentSession?.selectedPrinterName || previous;
+      const selectedStillExists = normalized.printers.some((printer) => printer.printerName === savedSelection);
+      if (selectedStillExists) return savedSelection;
+      return normalized.printers.find((printer) => printer.isDefault)?.printerName || normalized.printers[0]?.printerName || "";
+    });
     setError(normalized.error);
     setErrorDetail(normalized.detail);
     setHelpCommands(normalized.helpCommands);
@@ -92,7 +98,10 @@ export default function DesktopAgentPage() {
     });
     const unsubscribeAgent = onAgentUpdated((result) => {
       setDesktopAvailable(true);
-      if (result?.success) setAgentSession(result);
+      if (result?.success) {
+        setAgentSession(result);
+        if (result.selectedPrinterName) setSelectedPrinterName(result.selectedPrinterName);
+      }
     });
 
     return () => {
@@ -115,7 +124,10 @@ export default function DesktopAgentPage() {
     });
 
     getAgentStatus().then((nextSession) => {
-      if (nextSession?.success) setAgentSession(nextSession);
+      if (nextSession?.success) {
+        setAgentSession(nextSession);
+        if (nextSession.selectedPrinterName) setSelectedPrinterName(nextSession.selectedPrinterName);
+      }
     });
   }, [desktopAvailable]);
 
@@ -174,6 +186,36 @@ export default function DesktopAgentPage() {
     const result = await listPrinters();
     applyPrinterResult(result);
     setLoadingPrinters(false);
+  }
+
+  async function selectLocalPrinter(printerName) {
+    setError("");
+    setErrorDetail("");
+    setHelpCommands([]);
+    setMessage("");
+
+    if (!printerName) {
+      setError("Choose a printer first.");
+      return;
+    }
+
+    const result = await selectDesktopPrinter({ printerName });
+
+    if (result?.success === false) {
+      setError(result.error || result.message || "Could not select printer.");
+      return;
+    }
+
+    if (result?.session) setAgentSession(result.session);
+    const nextPrinterName = result?.session?.selectedPrinterName || result?.printer?.printerName || printerName;
+    setSelectedPrinterName(nextPrinterName);
+    setPrinters((current) => current.map((printer) => ({
+      ...printer,
+      isDefault: printer.printerName === nextPrinterName,
+    })));
+
+    const syncWarning = result?.printerSync?.success === false ? " Cloud sync warning: " + result.printerSync.message : "";
+    setMessage((result?.message || "Printer selected.") + syncWarning);
   }
 
   async function runPrinterDiagnostics() {
@@ -292,6 +334,9 @@ export default function DesktopAgentPage() {
               <p className="text-sm text-slate-600">Backend: {status?.backendUrl || "https://printease-backend-byex.onrender.com"}</p>
               <p className={`mt-2 text-sm font-semibold ${printers.length > 0 ? "text-emerald-700" : "text-amber-700"}`}>
                 Local printers: {printers.length > 0 ? localPrinterNames : "checking"}
+              </p>
+              <p className={`mt-1 text-sm font-semibold ${selectedPrinterName ? "text-emerald-700" : "text-amber-700"}`}>
+                Selected printer: {selectedPrinterName || "Not selected"}
               </p>
               {backendHealth && (
                 <p className={`mt-1 text-sm font-semibold ${backendHealth.success ? "text-emerald-700" : "text-rose-700"}`}>
@@ -438,17 +483,28 @@ export default function DesktopAgentPage() {
                       name="desktopPrinter"
                       value={printer.printerName}
                       checked={selectedPrinterName === printer.printerName}
-                      onChange={(event) => setSelectedPrinterName(event.target.value)}
+                      onChange={(event) => selectLocalPrinter(event.target.value)}
                       className="mt-1"
                     />
-                    <span>
+                    <span className="flex-1">
                       <span className="block font-semibold">
                         {printer.displayName || printer.printerName}
-                        {printer.isDefault ? " · Default" : ""}
+                        {selectedPrinterName === printer.printerName ? " · Selected" : printer.isDefault ? " · Default" : ""}
                       </span>
                       <span className="block text-sm text-slate-600">{printer.condition || printer.status || "unknown"} · accepting {printer.accepting === false ? "no" : "yes"} · {printer.platform}</span>
                       {printer.warningText && <span className="mt-1 block text-xs font-semibold text-amber-700">{printer.warningCode}: {printer.warningText}</span>}
                       {printer.rawStatus && <span className="mt-1 block text-xs text-slate-500">{printer.rawStatus}</span>}
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.preventDefault();
+                          selectLocalPrinter(printer.printerName);
+                        }}
+                        disabled={selectedPrinterName === printer.printerName}
+                        className="mt-3 rounded-xl border px-3 py-2 text-xs font-semibold text-slate-700 disabled:border-emerald-200 disabled:bg-emerald-50 disabled:text-emerald-700"
+                      >
+                        {selectedPrinterName === printer.printerName ? "Selected Printer" : "Use This Printer"}
+                      </button>
                     </span>
                   </label>
                 ))}

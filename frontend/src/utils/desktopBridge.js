@@ -30,6 +30,20 @@ export async function listPrinters() {
   }
 }
 
+export async function selectPrinter(payload = {}) {
+  const bridge = getBridge();
+  if (!bridge?.selectPrinter) return desktopFallback();
+
+  try {
+    return await bridge.selectPrinter(payload);
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message || "Could not select printer.",
+    };
+  }
+}
+
 export function onPrintersUpdated(callback) {
   const bridge = getBridge();
   if (!bridge?.onPrintersUpdated) return () => {};

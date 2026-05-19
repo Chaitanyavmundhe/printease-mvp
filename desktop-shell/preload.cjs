@@ -9,6 +9,7 @@ try {
     getDesktopStatus: () => ipcRenderer.invoke("desktop:status"),
     checkBackendHealth: () => ipcRenderer.invoke("backend:health"),
     listPrinters: () => ipcRenderer.invoke("printers:list"),
+    selectPrinter: (payload) => ipcRenderer.invoke("printers:select", payload),
     onPrintersUpdated: (callback) => {
       const listener = (_event, result) => callback(result);
       ipcRenderer.on("printers:updated", listener);
