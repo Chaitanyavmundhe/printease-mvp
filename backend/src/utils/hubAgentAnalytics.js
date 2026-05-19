@@ -30,7 +30,9 @@ export function getAgentLiveStatus(agent) {
 }
 
 export function getPrinterCondition(printer) {
-  const status = normalize(printer?.condition || printer?.status);
+  const condition = normalize(printer?.condition);
+  const fallbackStatus = normalize(printer?.status);
+  const status = condition && condition !== 'unknown' ? condition : fallbackStatus;
 
   if (printer?.accepting === false) return 'paused';
   if (['idle', 'available', 'enabled', 'accepting'].includes(status)) return 'available';

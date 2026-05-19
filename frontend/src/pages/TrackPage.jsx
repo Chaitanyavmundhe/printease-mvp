@@ -1,4 +1,4 @@
-import { CheckCircle } from "lucide-react";
+import { CheckCircle, CreditCard } from "lucide-react";
 import Card from "../components/Card";
 import Row from "../components/Row";
 
@@ -36,10 +36,17 @@ function normalizeStatus(status) {
   return statusMap[key] || status;
 }
 
-export default function TrackPage({ order, lastUpdatedAt }) {
+function isPaymentPending(order) {
+  const value = String(order?.paymentStatus || "").toLowerCase();
+  return value === "pending" || value === "unpaid" || !value;
+}
+
+export default function TrackPage({ order, lastUpdatedAt, pendingPayment, onSimulateVerifiedPayment, paymentLoading, paymentError }) {
   if (!order) return <Card>No active order found.</Card>;
+
   const currentStatus = normalizeStatus(order.status);
   const activeIndex = orderStatuses.indexOf(currentStatus);
+  const paymentPending = isPaymentPending(order);
 
   return (
     <Card className="mx-auto max-w-2xl">
@@ -49,10 +56,35 @@ export default function TrackPage({ order, lastUpdatedAt }) {
         <Row label="Order ID" value={order.id} />
         <Row label="Centre" value={order.centre} />
         <Row label="Document" value={order.document} />
-        <Row label="Amount Paid" value={`₹${order.amount}`} />
+        <Row label={paymentPending ? "Amount Due" : "Amount Paid"} value={"₹" + order.amount} />
+        <Row label="Payment" value={order.paymentStatus || "Pending"} />
         <Row label="Pickup Code" value={order.pickupCode} />
         {activeIndex === -1 && <Row label="Current Status" value={order.status || "Unknown"} />}
       </div>
+
+      {paymentPending && (
+        <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <p className="font-semibold">Document stored securely. Printer agent will receive it only after payment is collected or verified.</p>
+          {pendingPayment?.id && (
+            <button
+              type="button"
+              onClick={onSimulateVerifiedPayment}
+              disabled={paymentLoading}
+              className="mt-4 inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 font-semibold text-white disabled:bg-slate-400"
+            >
+              <CreditCard size={16} /> {paymentLoading ? "Verifying..." : "Simulate Verified Payment"}
+            </button>
+          )}
+          {paymentError && <p className="mt-3 font-semibold text-rose-700">{paymentError}</p>}
+        </div>
+      )}
+
+      {!paymentPending && (
+        <p className="mt-5 rounded-2xl bg-emerald-50 p-4 text-sm font-semibold text-emerald-700">
+          Payment completed. Print job queued/sent to desktop agent when an online printer is available.
+        </p>
+      )}
+
       <div className="mt-6 space-y-3">
         {orderStatuses.map((status, index) => (
           <div key={status} className="flex items-center gap-3 rounded-2xl border p-4">

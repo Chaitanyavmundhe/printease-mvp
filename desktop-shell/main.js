@@ -13,6 +13,7 @@ import { loadConfig, saveConfig, setConfigDirectory } from "./local/config.js";
 const DEV_FRONTEND_URL = process.env.PRINTEASE_FRONTEND_URL || "http://127.0.0.1:5175";
 const VERSION = "0.1.0";
 const HEARTBEAT_INTERVAL_MS = 15000;
+const PRINTER_SYNC_INTERVAL_MS = 30000;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -22,6 +23,7 @@ let mainWindow = null;
 let ipcHandlersRegistered = false;
 let latestPrinterResult = null;
 let heartbeatTimer = null;
+let printerSyncTimer = null;
 let agentSession = {
   deviceId: "",
   deviceName: "",
@@ -225,12 +227,9 @@ async function syncPrintersToCloud(printerResult, event = "printers:sync") {
   return syncResult;
 }
 
-async function refreshLocalPrinterResult(event) {
-  const result = await listPrinters();
+async function applyPrinterDiscoveryResult(result, event) {
   latestPrinterResult = result;
-  console.log("[DESKTOP PRINTERS]", JSON.stringify(result, null, 2));
   emitPrinterResult(result);
-  await reportPrinterDiagnostic(event, result);
 
   if (isAgentPaired()) {
     const cloudSync = await syncPrintersToCloud(result, event);
@@ -239,7 +238,30 @@ async function refreshLocalPrinterResult(event) {
     return latestPrinterResult;
   }
 
+  agentSession.lastPrinterSyncError = result?.success
+    ? "Printer detected locally but not synced to hub. Pair desktop first."
+    : result?.message || result?.error || "Local printer discovery failed.";
+  emitAgentSession();
   return result;
+}
+
+async function refreshLocalPrinterResult(event) {
+  const result = await listPrinters();
+  console.log("[DESKTOP PRINTERS]", JSON.stringify(result, null, 2));
+  await reportPrinterDiagnostic(event, result);
+  return applyPrinterDiscoveryResult(result, event);
+}
+
+async function syncLatestPrinterStatus(event) {
+  const result = await listPrinters();
+  console.log("[DESKTOP PRINTER STATUS SYNC]", JSON.stringify({
+    event,
+    success: result.success,
+    printerCount: result.printers?.length || 0,
+    defaultPrinter: result.defaultPrinter || null,
+    message: result.message || result.error || "Printer status discovered locally.",
+  }, null, 2));
+  return applyPrinterDiscoveryResult(result, event);
 }
 
 function reportStartupPrinterDiagnostics() {
@@ -278,6 +300,7 @@ function sanitizeAgentSession() {
     lastPrinterSyncAt: agentSession.lastPrinterSyncAt,
     lastPrinterSyncError: agentSession.lastPrinterSyncError,
     heartbeatRunning: Boolean(heartbeatTimer),
+    printerSyncRunning: Boolean(printerSyncTimer),
     polling: Boolean(jobPoller?.isRunning),
   };
 }
@@ -430,16 +453,52 @@ function startHeartbeatLoop() {
   };
 }
 
+function startPrinterSyncLoop() {
+  if (!isAgentPaired()) {
+    return {
+      success: false,
+      message: "Pair desktop before starting cloud printer sync.",
+      session: sanitizeAgentSession(),
+    };
+  }
+
+  if (printerSyncTimer) {
+    return {
+      success: true,
+      message: "Printer sync loop is already running.",
+      session: sanitizeAgentSession(),
+    };
+  }
+
+  printerSyncTimer = setInterval(() => {
+    syncLatestPrinterStatus("agent:printer-sync-loop").catch((error) => {
+      agentSession.lastPrinterSyncError = error.message || "Printer sync failed.";
+      emitAgentSession();
+      console.warn("[DESKTOP PRINTER SYNC FAILED]", error.message || error);
+    });
+  }, PRINTER_SYNC_INTERVAL_MS);
+
+  printerSyncTimer.unref?.();
+  emitAgentSession();
+  return {
+    success: true,
+    message: "Printer sync loop started.",
+    session: sanitizeAgentSession(),
+  };
+}
+
 async function startAgentRuntime(reason) {
   const heartbeat = await sendAgentHeartbeat();
   const printerResult = await refreshLocalPrinterResult(reason + ":printer-sync");
   const loop = startHeartbeatLoop();
+  const printerLoop = startPrinterSyncLoop();
 
   return {
-    success: Boolean(heartbeat.success && loop.success),
+    success: Boolean(heartbeat.success && loop.success && printerLoop.success),
     heartbeat,
     printerResult,
     loop,
+    printerLoop,
   };
 }
 
@@ -652,6 +711,7 @@ app.whenReady().then(async () => {
 
 app.on("before-quit", () => {
   if (heartbeatTimer) clearInterval(heartbeatTimer);
+  if (printerSyncTimer) clearInterval(printerSyncTimer);
   jobPoller?.stop?.();
 });
 

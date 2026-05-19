@@ -6,7 +6,7 @@ export default function PaymentPage({ selectedCentre, documentName, pages, copie
   return (
     <Card className="mx-auto max-w-xl">
       <h2 className="text-2xl font-bold">Secure Payment</h2>
-      <p className="mt-2 text-slate-600">Document stored securely. Printer agent will receive it only after payment is collected or verified.</p>
+      <p className="mt-2 text-slate-600">Create a pending order first. Printer agent will receive the document only after payment is collected or verified.</p>
       <div className="mt-6 space-y-3 rounded-2xl bg-slate-50 p-4">
         <Row label="Centre" value={selectedCentre?.name || "N/A"} />
         <Row label="Document" value={documentName || "Uploaded Document"} />
@@ -18,7 +18,7 @@ export default function PaymentPage({ selectedCentre, documentName, pages, copie
       <div className="mt-6 rounded-2xl border p-4 text-center">
         <QrCode className="mx-auto" size={80} />
         <p className="mt-3 font-semibold">Demo UPI QR</p>
-        <p className="text-sm text-slate-500">In real project, use Razorpay payment order and webhook verification.</p>
+        <p className="text-sm text-slate-500">In this demo, order creation stays pending until you explicitly verify payment.</p>
       </div>
       {paymentError && (
         <p className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
@@ -26,7 +26,7 @@ export default function PaymentPage({ selectedCentre, documentName, pages, copie
         </p>
       )}
       <button disabled={paymentLoading} onClick={handlePayment} className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-400">
-        <CreditCard size={18} /> {paymentLoading ? "Processing..." : "Simulate Verified Payment"}
+        <CreditCard size={18} /> {paymentLoading ? "Creating pending order..." : "Create Pending Order"}
       </button>
     </Card>
   );

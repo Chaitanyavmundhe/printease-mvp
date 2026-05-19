@@ -55,7 +55,7 @@ function normalizePrinters(printers) {
       return {
         printerName: printer.printerName,
         systemPrinterId: printer.systemPrinterId || printer.printerName,
-        status: condition,
+        status: printer.status || condition,
         condition,
         accepting: typeof printer.accepting === "boolean" ? printer.accepting : condition !== "paused" && condition !== "offline",
         isDefault: Boolean(printer.isDefault),

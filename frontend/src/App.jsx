@@ -213,6 +213,7 @@ export default function App() {
   const [order, setOrder] = useState(null);
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [paymentError, setPaymentError] = useState("");
+  const [pendingPayment, setPendingPayment] = useState(null);
 
   const [centres, setCentres] = useState(initialCentres);
   const [orders, setOrders] = useState(initialOrders);
@@ -532,6 +533,7 @@ export default function App() {
     setCurrentUser(null);
     setPostAuthRedirect(null);
     setDocumentFile(null);
+    setPendingPayment(null);
     navigate("home");
   }
 
@@ -634,19 +636,43 @@ export default function App() {
         body: JSON.stringify({ orderId: orderData.order.id }),
       });
 
-      const verifiedData = await apiRequest("/api/payments/verify-demo", {
-        method: "POST",
-        body: JSON.stringify({ paymentId: paymentData.payment.id, demoSuccess: true }),
-      });
-
-      const nextOrder = normalizeOrder(verifiedData.order || orderData.order, centres);
+      const nextOrder = normalizeOrder(orderData.order, centres);
       setOrder(nextOrder);
       setOrders((prev) => upsertOrder(prev, nextOrder));
       setLastOrdersUpdatedAt(new Date().toISOString());
+      setPendingPayment(paymentData.payment || null);
       setDocumentFile(null);
       navigate("track");
     } catch (error) {
       setPaymentError(error.message || "Could not upload document and create order.");
+    } finally {
+      setPaymentLoading(false);
+    }
+  }
+
+  async function handleVerifyDemoPayment() {
+    if (!pendingPayment?.id) {
+      setPaymentError("Create a payment record before verifying demo payment.");
+      return;
+    }
+
+    setPaymentLoading(true);
+    setPaymentError("");
+
+    try {
+      const verifiedData = await apiRequest("/api/payments/verify-demo", {
+        method: "POST",
+        body: JSON.stringify({ paymentId: pendingPayment.id, demoSuccess: true }),
+      });
+
+      const nextOrder = normalizeOrder(verifiedData.order || order, centres);
+      setOrder(nextOrder);
+      setOrders((prev) => upsertOrder(prev, nextOrder));
+      setLastOrdersUpdatedAt(new Date().toISOString());
+      setPendingPayment(null);
+      navigate("track");
+    } catch (error) {
+      setPaymentError(error.message || "Could not verify demo payment.");
     } finally {
       setPaymentLoading(false);
     }
@@ -846,7 +872,19 @@ export default function App() {
               )
             }
           />
-          <Route path={ROUTES.track} element={<TrackPage order={order} lastUpdatedAt={lastOrdersUpdatedAt} />} />
+          <Route
+            path={ROUTES.track}
+            element={
+              <TrackPage
+                order={order}
+                lastUpdatedAt={lastOrdersUpdatedAt}
+                pendingPayment={pendingPayment}
+                onSimulateVerifiedPayment={handleVerifyDemoPayment}
+                paymentLoading={paymentLoading}
+                paymentError={paymentError}
+              />
+            }
+          />
           <Route path={ROUTES.history} element={<HistoryPage orders={orders} currentUser={currentUser} lastUpdatedAt={lastOrdersUpdatedAt} />} />
           <Route path="*" element={<Navigate to={ROUTES.home} replace />} />
         </Routes>

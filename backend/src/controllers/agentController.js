@@ -245,12 +245,14 @@ export const syncPrinters = asyncHandler(async (req, res) => {
   const printers = Array.isArray(req.body.printers) ? req.body.printers : [];
   const normalizedPrinters = printers
     .map((printer) => {
-      const condition = normalizePrinterCondition(printer.condition || printer.status, printer.accepting);
+      const rawCondition = String(printer.condition || '').trim().toLowerCase();
+      const conditionInput = rawCondition && rawCondition !== 'unknown' ? printer.condition : printer.status;
+      const condition = normalizePrinterCondition(conditionInput, printer.accepting);
 
       return {
         printerName: printer.printerName || printer.name,
         systemPrinterId: printer.systemPrinterId || printer.id || printer.name,
-        status: condition,
+        status: printer.status || condition,
         condition,
         accepting: typeof printer.accepting === 'boolean' ? printer.accepting : null,
         isDefault: Boolean(printer.isDefault),

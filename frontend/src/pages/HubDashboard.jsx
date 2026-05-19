@@ -23,9 +23,19 @@ function isPaymentPending(order) {
 const CLOSED_STATUSES = new Set(["collected", "refund_requested", "printing_failed", "cancelled"]);
 const AGENT_LOCKED_STATUSES = new Set(["sent_to_agent", "queued_for_printing", "printing", "ready_for_pickup", "collected", "printing_failed"]);
 
+const ROUTEABLE_PRINTER_STATUSES = new Set(["idle", "available", "enabled", "accepting"]);
+const BLOCKED_PRINTER_STATUSES = new Set(["paused", "disabled", "stopped", "offline", "unable", "disconnected", "not_accepting"]);
+
+function getEffectivePrinterCondition(printer) {
+  const condition = normalizeStatus(printer?.condition);
+  const status = normalizeStatus(printer?.status);
+  return condition && condition !== "unknown" ? condition : status;
+}
+
 function isRouteablePrinter(printer) {
-  const condition = normalizeStatus(printer?.condition || printer?.status);
-  return printer?.accepting !== false && !["paused", "disabled", "stopped", "offline", "unable", "disconnected"].includes(condition);
+  const condition = getEffectivePrinterCondition(printer);
+  if (printer?.accepting === false || BLOCKED_PRINTER_STATUSES.has(condition)) return false;
+  return ROUTEABLE_PRINTER_STATUSES.has(condition);
 }
 const EMPTY_ANALYTICS = {
   onlineAgents: 0,
@@ -50,6 +60,40 @@ function formatDateTime(value) {
 
 function canSendToAgent(order) {
   return isPaymentVerified(order) && !AGENT_LOCKED_STATUSES.has(normalizeStatus(order.status));
+}
+
+function getNoOnlinePrinterReason(agents = [], printers = []) {
+  if (!agents.length) {
+    return "No paired desktop device found. Pair PrintEase Desktop first.";
+  }
+
+  const onlineAgents = agents.filter((agent) => normalizeStatus(agent.liveStatus || agent.status) === "online");
+  if (!onlineAgents.length) {
+    return "No online desktop device. Start PrintEase Desktop and wait for heartbeat.";
+  }
+
+  const enabledAgents = onlineAgents.filter((agent) => !agent.paused);
+  if (!enabledAgents.length) {
+    return "All online desktop devices have new job assignment disabled.";
+  }
+
+  if (!printers.length) {
+    return "Desktop is online but no printer has synced to cloud. Refresh printers in PrintEase Desktop.";
+  }
+
+  const enabledAgentIds = new Set(enabledAgents.map((agent) => agent.id));
+  const printersForOnlineAgents = printers.filter((printer) => enabledAgentIds.has(printer.agentId));
+  if (!printersForOnlineAgents.length) {
+    return "Online desktop device has not synced any printers.";
+  }
+
+  const unavailablePrinter = printersForOnlineAgents.find((printer) => !isRouteablePrinter(printer));
+  if (unavailablePrinter) {
+    const condition = getEffectivePrinterCondition(unavailablePrinter) || "unknown";
+    return unavailablePrinter.warningText || "Printer " + (unavailablePrinter.printerName || "unknown") + " is not available (" + condition + ").";
+  }
+
+  return "No available synced printer. Check heartbeat, printer sync, and Supabase agent_printers migration.";
 }
 
 export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus, refreshOrders, navigate }) {
@@ -92,6 +136,7 @@ export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus,
   }, [agentPrinters]);
   const selectedAgentPrinters = (printersByAgent.get(selectedAgentId) || []).filter(isRouteablePrinter);
   const hasOnlinePrinter = routeableAgents.some((agent) => (printersByAgent.get(agent.id) || []).some(isRouteablePrinter));
+  const noOnlinePrinterReason = getNoOnlinePrinterReason(agents, agentPrinters);
   const jobByOrderId = useMemo(() => {
     return new Map(printJobs.map((job) => [job.orderId, job]));
   }, [printJobs]);
@@ -353,7 +398,7 @@ export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus,
                     <td>
                       <StatusBadge color="green">{item.paymentStatus}</StatusBadge>
                       {isPaymentPending(item) && (
-                        <p className="mt-1 text-xs text-slate-500">Document stored securely. Printer agent will receive it only after payment is collected.</p>
+                        <p className="mt-1 text-xs text-slate-500">Document stored securely. Printer agent will receive it only after payment is collected or verified.</p>
                       )}
                       {isPaymentVerified(item) && (
                         <p className="mt-1 text-xs text-emerald-700">Payment completed. Print job can be queued/sent to desktop agent.</p>
@@ -395,7 +440,7 @@ export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus,
                             onClick={() => navigate("hubPrinters")}
                             className="rounded-xl border border-amber-200 px-3 py-2 text-left text-xs font-semibold text-amber-800"
                           >
-                            Payment completed, but no online desktop printer is available.
+                            Payment completed, but no online desktop printer is available. {noOnlinePrinterReason}
                           </button>
                         )}
                       </div>

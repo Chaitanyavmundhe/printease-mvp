@@ -2,27 +2,17 @@ const PRODUCTION_API_BASE_URL = "https://printease-backend-byex.onrender.com";
 
 function normalizeApiBaseUrl(url) {
   const value = String(url || "").trim().replace(/\/+$/, "");
-  return value;
-}
-
-function isLocalApiBaseUrl(url) {
-  try {
-    const { hostname } = new URL(url);
-    return ["localhost", "127.0.0.1", "0.0.0.0", "::1"].includes(hostname);
-  } catch {
-    return false;
-  }
+  return value.endsWith("/api") ? value.slice(0, -4) : value;
 }
 
 const configuredApiUrl = normalizeApiBaseUrl(import.meta.env.VITE_API_URL);
-let API_BASE_URL = configuredApiUrl || PRODUCTION_API_BASE_URL;
+let API_BASE_URL = PRODUCTION_API_BASE_URL;
 
-if (isLocalApiBaseUrl(API_BASE_URL) && import.meta.env.VITE_ALLOW_LOCAL_BACKEND !== "1") {
+if (configuredApiUrl && configuredApiUrl !== PRODUCTION_API_BASE_URL) {
   console.warn(
-    `[API CONFIG] Ignoring local backend URL "${API_BASE_URL}". ` +
-      "Set VITE_ALLOW_LOCAL_BACKEND=1 only when intentionally testing local backend."
+    `[API CONFIG] Ignoring untrusted backend URL "${configuredApiUrl}". ` +
+      "PrintEase frontend is pinned to the official Render backend."
   );
-  API_BASE_URL = PRODUCTION_API_BASE_URL;
 }
 
 export default API_BASE_URL;

@@ -991,6 +991,10 @@ export async function findBestAvailableAgentPrinterForHub(hubId, client) {
          'paused', 'disabled', 'stopped', 'offline', 'unable', 'disconnected'
        )
        and coalesce(p.accepting, true) = true
+       and (
+         lower(coalesce(p.condition, '')) in ('available', 'idle', 'enabled', 'accepting')
+         or lower(coalesce(p.status, '')) in ('idle', 'available', 'enabled', 'accepting')
+       )
      order by
        p.is_default desc,
        case

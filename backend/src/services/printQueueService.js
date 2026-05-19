@@ -3,12 +3,15 @@ import {
   findActivePrintJobByOrder,
   findBestAvailableAgentPrinterForHub,
   findOrderWithDocumentForHub,
+  listAgentPrintersByHub,
+  listAgentsByHub,
   insertPrintJobEvent,
   updateOrderStatus
 } from '../db/repository.js';
 import { OFFICIAL_BACKEND_URL } from '../config/agent.js';
 import { getSupabaseBucketName } from '../config/supabase.js';
 import { generateId } from '../utils/generateCode.js';
+import { getAgentLiveStatus, getPrinterCondition } from '../utils/hubAgentAnalytics.js';
 
 const PAYMENT_READY_STATUSES = new Set(['verified', 'collected']);
 
@@ -24,6 +27,40 @@ function isPrintableOrderStatus(status) {
 function paymentReadyMessage(paymentStatus, text) {
   const prefix = normalize(paymentStatus) === 'collected' ? 'Payment collected' : 'Payment verified';
   return `${prefix}. ${text}`;
+}
+
+function isRouteablePrinter(printer) {
+  const condition = getPrinterCondition(printer);
+  return printer?.accepting !== false && condition === 'available';
+}
+
+async function describeNoAvailablePrinter(hubId, client) {
+  const [agents, printers] = await Promise.all([
+    listAgentsByHub(hubId, client),
+    listAgentPrintersByHub(hubId, client)
+  ]);
+
+  if (!agents.length) return 'No paired desktop device found. Pair PrintEase Desktop first.';
+
+  const onlineAgents = agents.filter((agent) => getAgentLiveStatus(agent) === 'online');
+  if (!onlineAgents.length) return 'No online desktop device. Start PrintEase Desktop and wait for heartbeat.';
+
+  const enabledAgents = onlineAgents.filter((agent) => !agent.paused);
+  if (!enabledAgents.length) return 'All online desktop devices have new job assignment disabled.';
+
+  if (!printers.length) return 'Desktop is online but no printer has synced to cloud. Refresh printers in PrintEase Desktop.';
+
+  const enabledAgentIds = new Set(enabledAgents.map((agent) => agent.id));
+  const printersForOnlineAgents = printers.filter((printer) => enabledAgentIds.has(printer.agentId));
+  if (!printersForOnlineAgents.length) return 'Online desktop device has not synced any printers.';
+
+  const unavailablePrinter = printersForOnlineAgents.find((printer) => !isRouteablePrinter(printer));
+  if (unavailablePrinter) {
+    const condition = getPrinterCondition(unavailablePrinter);
+    return unavailablePrinter.warningText || `Printer ${unavailablePrinter.printerName || 'unknown'} is not available (${condition}).`;
+  }
+
+  return 'No available synced printer. Check heartbeat, printer sync, and Supabase agent_printers migration.';
 }
 
 export async function queuePrintJobIfPaymentReady(orderId, hubId, client) {
@@ -69,7 +106,7 @@ export async function queuePrintJobIfPaymentReady(orderId, hubId, client) {
   if (!target?.agent || !target?.printer) {
     return {
       queued: false,
-      message: paymentReadyMessage(paymentStatus, 'No online desktop printer available.')
+      message: paymentReadyMessage(paymentStatus, await describeNoAvailablePrinter(hubId, client))
     };
   }
 
