@@ -6,27 +6,49 @@ export default function UploadPage({
   selectedCentre,
   documentFile,
   setDocumentFile,
+  documentFiles,
+  setDocumentFiles,
   documentName,
   setDocumentName,
   pages,
   setPages,
+  selectedPages,
+  setSelectedPages,
   copies,
   setCopies,
   colorType,
   setColorType,
   sideType,
   setSideType,
+  paperSize,
+  setPaperSize,
+  pagesPerSheet,
+  setPagesPerSheet,
   watermark,
   setWatermark,
+  pricePerPage,
+  estimatedSelectedPageCount,
   totalAmount,
+  backendPrice,
+  preparePayment,
+  paymentLoading,
   paymentError,
   navigate,
 }) {
   function handleFileChange(event) {
-    const file = event.target.files?.[0] || null;
-    setDocumentFile(file);
-    if (file) setDocumentName(file.name);
+    const files = Array.from(event.target.files || []);
+    const firstFile = files[0] || null;
+    setDocumentFiles(files);
+    setDocumentFile(firstFile);
+    if (files.length === 1) setDocumentName(firstFile.name);
+    if (files.length > 1) setDocumentName(`${files.length} uploaded documents`);
   }
+
+  const selectedFileCount = documentFiles?.length || (documentFile ? 1 : 0);
+  const selectedFileLabel = selectedFileCount > 1
+    ? `${selectedFileCount} PDFs selected`
+    : documentFile?.name;
+  const selectedFileSize = (documentFiles || []).reduce((sum, file) => sum + file.size, 0) || documentFile?.size || 0;
 
   return (
     <div className="grid gap-6 lg:grid-cols-3">
@@ -48,14 +70,29 @@ export default function UploadPage({
 
         <div className="mt-6 grid gap-4 md:grid-cols-2">
           <label className="cursor-pointer rounded-2xl border border-dashed bg-slate-50 p-6 text-center hover:bg-slate-100 md:col-span-2">
-            <input type="file" accept="application/pdf" onChange={handleFileChange} className="hidden" />
+            <input type="file" accept="application/pdf" multiple onChange={handleFileChange} className="hidden" />
             {documentFile ? <FileText className="mx-auto mb-3" size={36} /> : <Upload className="mx-auto mb-3" size={36} />}
-            <p className="font-semibold">{documentFile ? documentFile.name : "Choose PDF"}</p>
-            <p className="text-sm text-slate-500">{documentFile ? `${Math.ceil(documentFile.size / 1024)} KB selected` : "Maximum file size 10 MB"}</p>
+            <p className="font-semibold">{selectedFileLabel || "Choose PDFs"}</p>
+            <p className="text-sm text-slate-500">{selectedFileCount ? `${Math.ceil(selectedFileSize / 1024)} KB selected` : "Maximum file size 10 MB per file"}</p>
           </label>
 
+          {selectedFileCount > 1 && (
+            <div className="rounded-2xl border bg-white p-4 text-sm md:col-span-2">
+              <p className="font-semibold">Files in this order</p>
+              <div className="mt-3 grid gap-2">
+                {documentFiles.map((file) => (
+                  <div key={`${file.name}-${file.size}`} className="flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2">
+                    <span className="min-w-0 truncate">{file.name}</span>
+                    <span className="shrink-0 text-slate-500">{Math.ceil(file.size / 1024)} KB</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           <input value={documentName} onChange={(e) => setDocumentName(e.target.value)} placeholder="Document name e.g. Assignment.pdf" className="rounded-2xl border px-4 py-3 outline-none focus:ring-2 focus:ring-slate-300 md:col-span-2" />
-          <input type="number" min="1" value={pages} onChange={(e) => setPages(Number(e.target.value))} placeholder="Pages" className="rounded-2xl border px-4 py-3 outline-none focus:ring-2 focus:ring-slate-300" />
+          <input type="number" min="1" value={pages} onChange={(e) => setPages(Number(e.target.value))} placeholder="Estimated pages" className="rounded-2xl border px-4 py-3 outline-none focus:ring-2 focus:ring-slate-300" />
+          <input value={selectedPages} onChange={(e) => setSelectedPages(e.target.value)} placeholder="Page range e.g. all or 1,3-4" className="rounded-2xl border px-4 py-3 outline-none focus:ring-2 focus:ring-slate-300" />
           <input type="number" min="1" value={copies} onChange={(e) => setCopies(Number(e.target.value))} placeholder="Copies" className="rounded-2xl border px-4 py-3 outline-none focus:ring-2 focus:ring-slate-300" />
           <select value={colorType} onChange={(e) => setColorType(e.target.value)} className="rounded-2xl border px-4 py-3">
             <option value="bw">Black & White</option>
@@ -64,6 +101,16 @@ export default function UploadPage({
           <select value={sideType} onChange={(e) => setSideType(e.target.value)} className="rounded-2xl border px-4 py-3">
             <option value="single">Single Side</option>
             <option value="double">Double Side</option>
+          </select>
+          <select value={paperSize} onChange={(e) => setPaperSize(e.target.value)} className="rounded-2xl border px-4 py-3">
+            <option value="A4">A4</option>
+            <option value="Letter">Letter</option>
+            <option value="Legal">Legal</option>
+          </select>
+          <select value={pagesPerSheet} onChange={(e) => setPagesPerSheet(Number(e.target.value))} className="rounded-2xl border px-4 py-3">
+            <option value={1}>1 page per sheet</option>
+            <option value={2}>2 pages per sheet</option>
+            <option value={4}>4 pages per sheet</option>
           </select>
           <label className="flex items-center gap-3 rounded-2xl border px-4 py-3 md:col-span-2">
             <input type="checkbox" checked={watermark} onChange={(e) => setWatermark(e.target.checked)} />
@@ -75,15 +122,23 @@ export default function UploadPage({
       <Card>
         <h3 className="text-xl font-bold">Price Summary</h3>
         <div className="mt-4 space-y-3 text-sm">
-          <Row label="Pages" value={pages} />
+          <Row label="Original Pages" value={backendPrice?.originalPageCount || pages} />
+          <Row label="Selected Pages" value={backendPrice?.selectedPageCount || selectedPages || "All"} />
           <Row label="Copies" value={copies} />
+          <Row label="Printable Pages" value={backendPrice?.printablePageCount || Number(estimatedSelectedPageCount || pages || 0) * Number(copies || 0)} />
+          <Row label="Sheets" value={backendPrice?.sheetCount || "-"} />
           <Row label="Print Type" value={colorType === "bw" ? "B/W" : "Color"} />
           <Row label="Side" value={sideType} />
+          <Row label="Pages/Sheet" value={pagesPerSheet} />
           <Row label="Watermark" value={watermark ? "Yes" : "No"} />
+          <Row label={backendPrice ? "Backend Rate" : "Estimated Rate"} value={`₹${backendPrice?.pricePerPage ?? pricePerPage ?? 0}`} />
+          {backendPrice?.files?.map((file) => (
+            <Row key={file.documentId || file.fileName} label={file.fileName || "File"} value={`₹${file.totalAmount}`} />
+          ))}
           <hr />
           <div className="flex items-center justify-between text-lg font-bold">
-            <span>Total</span>
-            <span className="flex items-center"><IndianRupee size={18} />{totalAmount}</span>
+            <span>{backendPrice ? "Backend Total" : "Estimated Total"}</span>
+            <span className="flex items-center"><IndianRupee size={18} />{backendPrice?.totalAmount ?? totalAmount}</span>
           </div>
         </div>
 
@@ -93,8 +148,8 @@ export default function UploadPage({
           </button>
         )}
 
-        <button onClick={() => navigate("payment")} disabled={!selectedCentre || !documentFile} className="mt-3 w-full rounded-2xl bg-slate-900 px-4 py-3 font-semibold text-white disabled:opacity-40">
-          Continue to Payment
+        <button onClick={preparePayment} disabled={!selectedCentre || !selectedFileCount || paymentLoading} className="mt-3 w-full rounded-2xl bg-slate-900 px-4 py-3 font-semibold text-white disabled:opacity-40">
+          {paymentLoading ? "Calculating final price..." : "Continue to Payment"}
         </button>
       </Card>
     </div>

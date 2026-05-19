@@ -2,8 +2,10 @@ import {
   createAgentPairingSession,
   createAgentToken,
   findNextPrintJobForAgent,
+  findOrderByIdOrCode,
   findPairingSessionByIdAndDevice,
   insertPrintJobEvent,
+  listOrderFiles,
   markPairingSessionConfirmed,
   replaceAgentPrinters,
   revokeActiveAgentTokens,
@@ -19,7 +21,7 @@ import {
   AGENT_POLL_INTERVAL_MS,
   OFFICIAL_BACKEND_URL
 } from '../config/agent.js';
-import { getSupabaseAdminClient } from '../config/supabase.js';
+import { getSupabaseAdminClient, getSupabaseBucketName } from '../config/supabase.js';
 import { createAgentToken as createRawAgentToken, createPairingCode, hashAgentSecret } from '../utils/agentCrypto.js';
 import { generateId } from '../utils/generateCode.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
@@ -84,13 +86,38 @@ async function toAgentJobPayload(job) {
   if (!job) return null;
 
   const signedFileUrl = await resolveDownloadUrl(job.fileUrl);
+  const [order, orderFiles] = await Promise.all([
+    findOrderByIdOrCode(job.orderId),
+    listOrderFiles(job.orderId)
+  ]);
+
+  const files = await Promise.all(orderFiles.map(async (file) => {
+    const storagePath = file.document?.storagePath;
+    const fileUrl = storagePath
+      ? await resolveDownloadUrl(`private://${getSupabaseBucketName()}/${storagePath}`)
+      : null;
+
+    return {
+      documentId: file.documentId,
+      fileUrl,
+      fileSha256: file.document?.fileSha256,
+      fileName: file.document?.fileName,
+      fileType: file.document?.fileType,
+      pageCount: file.originalPageCount,
+      selectedPageCount: file.selectedPageCount,
+      copies: file.copies,
+      printOptions: file.printOptions
+    };
+  }));
 
   return {
     jobId: job.id,
     orderId: job.orderId,
+    orderCode: order?.orderCode || null,
     hubId: job.hubId,
     agentId: job.agentId,
     sourceBackendUrl: OFFICIAL_BACKEND_URL,
+    files,
     fileUrl: signedFileUrl,
     fileSha256: job.fileSha256,
     fileHash: job.fileSha256,

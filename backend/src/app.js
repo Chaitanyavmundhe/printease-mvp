@@ -9,7 +9,9 @@ import centreRoutes from './routes/centreRoutes.js';
 import printerRoutes from './routes/printerRoutes.js';
 import orderRoutes from './routes/orderRoutes.js';
 import paymentRoutes from './routes/paymentRoutes.js';
+import { razorpayWebhook } from './controllers/paymentController.js';
 import uploadRoutes from './routes/uploadRoutes.js';
+import documentRoutes from './routes/documentRoutes.js';
 import agentRoutes from './routes/agentRoutes.js';
 import hubAgentRoutes from './routes/hubAgentRoutes.js';
 import desktopRoutes from './routes/desktopRoutes.js';
@@ -73,6 +75,7 @@ app.use(cors({
   },
   credentials: true
 }));
+app.post('/api/payments/razorpay/webhook', express.raw({ type: 'application/json' }), razorpayWebhook);
 app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
@@ -101,6 +104,7 @@ app.use('/api/printers', printerRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/payments', paymentRoutes);
 app.use('/api/uploads', uploadRoutes);
+app.use('/api/documents', documentRoutes);
 app.use('/api/agent', agentRoutes);
 app.use('/api/hub-agents', hubAgentRoutes);
 app.use('/api/desktop', desktopRoutes);

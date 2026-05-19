@@ -62,7 +62,12 @@ export function mapDocument(row) {
     userId: row.user_id,
     fileName: row.file_name,
     fileType: row.file_type,
-    fileSize: row.file_size,
+    fileSize: row.file_size_bytes === null || row.file_size_bytes === undefined
+      ? row.file_size
+      : Number(row.file_size_bytes),
+    fileSizeBytes: row.file_size_bytes === null || row.file_size_bytes === undefined
+      ? row.file_size
+      : Number(row.file_size_bytes),
     fileUrl: row.file_url,
     storagePath: row.storage_path || null,
     fileSha256: row.file_sha256 || null,
@@ -91,9 +96,52 @@ export function mapOrder(row) {
     sideType: row.side_type,
     watermarkEnabled: row.watermark_enabled,
     amount: number(row.amount),
+    totalAmountPaise: row.total_amount_paise === null || row.total_amount_paise === undefined
+      ? Math.round(Number(row.amount || 0) * 100)
+      : Number(row.total_amount_paise),
     paymentStatus: row.payment_status,
     status: row.status,
     pickupCode: row.pickup_code,
+    createdAt: timestamp(row.created_at)
+  };
+}
+
+export function mapOrderFile(row) {
+  if (!row) return null;
+
+  return {
+    id: row.id,
+    orderId: row.order_id,
+    documentId: row.document_id,
+    originalPageCount: Number(row.original_page_count),
+    selectedPages: row.selected_pages,
+    selectedPageCount: Number(row.selected_page_count),
+    printablePageCount: Number(row.printable_page_count),
+    sheetCount: Number(row.sheet_count),
+    copies: Number(row.copies),
+    printOptions: row.print_options || {},
+    lineAmountPaise: Number(row.line_amount_paise),
+    amountPaise: Number(row.line_amount_paise),
+    printSequence: row.print_sequence === null || row.print_sequence === undefined
+      ? null
+      : Number(row.print_sequence),
+    document: row.document_id
+      ? {
+          id: row.document_id,
+          fileName: row.file_name || null,
+          fileType: row.file_type || null,
+          fileSize: row.file_size_bytes === null || row.file_size_bytes === undefined
+            ? row.file_size || null
+            : Number(row.file_size_bytes),
+          fileSizeBytes: row.file_size_bytes === null || row.file_size_bytes === undefined
+            ? row.file_size || null
+            : Number(row.file_size_bytes),
+          fileSha256: row.file_sha256 || null,
+          storagePath: row.storage_path || null,
+          pageCount: row.page_count === null || row.page_count === undefined ? null : Number(row.page_count),
+          createdAt: timestamp(row.document_created_at)
+        }
+      : null,
     createdAt: timestamp(row.created_at)
   };
 }
@@ -110,6 +158,12 @@ export function mapPayment(row) {
     transactionId: row.transaction_id,
     gatewayOrderId: row.transaction_id,
     gatewayPaymentId: row.transaction_id,
+    razorpayOrderId: row.razorpay_order_id || null,
+    razorpayPaymentId: row.razorpay_payment_id || null,
+    razorpaySignature: row.razorpay_signature || null,
+    paymentLinkId: row.payment_link_id || null,
+    qrId: row.qr_id || null,
+    rawResponse: row.raw_response || null,
     status: row.status,
     createdAt: timestamp(row.created_at),
     verifiedAt: timestamp(row.verified_at)
@@ -394,13 +448,14 @@ export async function createDocument(document) {
        file_name,
        file_type,
        file_size,
+       file_size_bytes,
        file_url,
        storage_path,
        file_sha256,
        page_count,
        created_at
      )
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, coalesce($10, now()))
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, coalesce($11, now()))
      returning *`,
     [
       document.id,
@@ -408,6 +463,7 @@ export async function createDocument(document) {
       document.fileName,
       document.fileType || null,
       document.fileSize || null,
+      document.fileSizeBytes || document.fileSize || null,
       document.fileUrl || null,
       document.storagePath || null,
       document.fileSha256 || null,
@@ -426,13 +482,13 @@ export async function findDocumentById(documentId, client) {
   return mapDocument(result.rows[0]);
 }
 
-export async function createOrder(order) {
-  const result = await query(
+export async function createOrder(order, client) {
+  const result = await executor(client).query(
     `insert into print_orders (
        id, order_code, user_id, hub_id, document_name, document_url, pages, copies,
-       color_type, side_type, watermark_enabled, amount, payment_status, status, pickup_code, created_at
+       color_type, side_type, watermark_enabled, amount, total_amount_paise, payment_status, status, pickup_code, created_at
      )
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, coalesce($16, now()))
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, coalesce($17, now()))
      returning *, hub_id as centre_id`,
     [
       order.id,
@@ -447,6 +503,7 @@ export async function createOrder(order) {
       order.sideType,
       order.watermarkEnabled,
       order.amount,
+      order.totalAmountPaise ?? Math.round(Number(order.amount || 0) * 100),
       order.paymentStatus,
       order.status,
       order.pickupCode,
@@ -455,6 +512,143 @@ export async function createOrder(order) {
   );
 
   return mapOrder(result.rows[0]);
+}
+
+export async function createOrderFile(orderFile, client) {
+  const result = await executor(client).query(
+    `insert into print_order_files (
+       id,
+       order_id,
+       document_id,
+       original_page_count,
+       selected_pages,
+       selected_page_count,
+       printable_page_count,
+       sheet_count,
+      copies,
+      print_options,
+      line_amount_paise,
+      created_at,
+      print_sequence
+     )
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11, coalesce($12, now()), $13)
+     returning *`,
+    [
+      orderFile.id,
+      orderFile.orderId,
+      orderFile.documentId,
+      orderFile.originalPageCount,
+      orderFile.selectedPages || 'all',
+      orderFile.selectedPageCount,
+      orderFile.printablePageCount,
+      orderFile.sheetCount,
+      orderFile.copies,
+      JSON.stringify(orderFile.printOptions || {}),
+      orderFile.lineAmountPaise,
+      orderFile.createdAt || null,
+      orderFile.printSequence || 1
+    ]
+  );
+
+  return mapOrderFile(result.rows[0]);
+}
+
+export async function listOrderFiles(orderId, client) {
+  const result = await executor(client).query(
+    `select
+       pof.*,
+       coalesce(pof.print_sequence, row_number() over (partition by pof.order_id order by pof.created_at, pof.id)) as print_sequence,
+       d.file_name,
+       d.file_type,
+       d.file_size,
+       d.file_size_bytes,
+       d.file_sha256,
+       d.storage_path,
+       d.page_count,
+       d.created_at as document_created_at
+     from print_order_files pof
+     join documents d on d.id = pof.document_id
+     where pof.order_id = $1
+     order by coalesce(pof.print_sequence, 999999), pof.created_at, pof.id`,
+    [orderId]
+  );
+
+  return result.rows.map(mapOrderFile);
+}
+
+export async function findDocumentAccessContext(documentId, user, client) {
+  const result = await executor(client).query(
+    `select
+       pof.*,
+       po.user_id as order_user_id,
+       po.hub_id,
+       po.order_code,
+       d.file_name,
+       d.file_type,
+       d.file_size,
+       d.file_size_bytes,
+       d.file_url,
+       d.file_sha256,
+       d.storage_path,
+       d.page_count,
+       d.created_at as document_created_at
+     from print_order_files pof
+     join print_orders po on po.id = pof.order_id
+     join documents d on d.id = pof.document_id
+     where pof.document_id = $1
+     order by pof.created_at desc
+     limit 1`,
+    [documentId]
+  );
+
+  const row = result.rows[0];
+  if (!row) return null;
+
+  const isAdmin = user?.role === 'admin';
+  const isOwner = user?.role === 'user' && row.order_user_id === user.id;
+  const isHubOwner = user?.role === 'hub' && row.hub_id === (user.centreId || user.hubId);
+
+  return {
+    allowed: Boolean(isAdmin || isOwner || isHubOwner),
+    orderId: row.order_id,
+    hubId: row.hub_id,
+    orderCode: row.order_code,
+    orderUserId: row.order_user_id,
+    orderFile: mapOrderFile(row),
+    document: {
+      id: row.document_id,
+      fileName: row.file_name,
+      fileType: row.file_type,
+      fileSize: row.file_size_bytes === null || row.file_size_bytes === undefined ? row.file_size : Number(row.file_size_bytes),
+      fileSizeBytes: row.file_size_bytes === null || row.file_size_bytes === undefined ? row.file_size : Number(row.file_size_bytes),
+      fileUrl: row.file_url,
+      fileSha256: row.file_sha256,
+      storagePath: row.storage_path,
+      pageCount: row.page_count === null || row.page_count === undefined ? null : Number(row.page_count),
+      createdAt: timestamp(row.document_created_at)
+    }
+  };
+}
+
+export async function createDocumentAccessLog(access, client) {
+  const result = await executor(client).query(
+    `insert into document_access_logs (
+       id, document_id, order_id, user_id, action, ip_address, user_agent, created_at
+     )
+     values ($1, $2, $3, $4, $5, $6, $7, now())
+     returning *`,
+    [
+      access.id,
+      access.documentId,
+      access.orderId || null,
+      access.userId || null,
+      access.action,
+      access.ipAddress || null,
+      access.userAgent || null
+    ]
+  );
+
+  return result.rows[0];
 }
 
 export async function findOrderByIdOrCode(id, client) {
@@ -502,16 +696,24 @@ export async function updateOrderPayment(orderId, paymentStatus, status, client)
 export async function createPayment(payment, client) {
   const result = await executor(client).query(
     `insert into payments (
-       id, order_id, amount, method, transaction_id, status, created_at, verified_at
+       id, order_id, amount, method, transaction_id,
+       razorpay_order_id, razorpay_payment_id, razorpay_signature, payment_link_id, qr_id, raw_response,
+       status, created_at, verified_at
      )
-     values ($1, $2, $3, $4, $5, $6, coalesce($7, now()), $8)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, coalesce($13, now()), $14)
      returning *`,
     [
       payment.id,
       payment.orderId,
       payment.amount,
-      payment.method || payment.gateway || 'DEMO_UPI',
+      payment.method || payment.gateway || 'RAZORPAY',
       payment.transactionId || payment.gatewayPaymentId || payment.gatewayOrderId || null,
+      payment.razorpayOrderId || null,
+      payment.razorpayPaymentId || null,
+      payment.razorpaySignature || null,
+      payment.paymentLinkId || null,
+      payment.qrId || null,
+      JSON.stringify(payment.rawResponse || null),
       payment.status,
       payment.createdAt || null,
       payment.verifiedAt || null
@@ -526,16 +728,43 @@ export async function findPaymentById(id, client) {
   return mapPayment(result.rows[0]);
 }
 
+export async function findPaymentByRazorpayOrderId(razorpayOrderId, client) {
+  const result = await executor(client).query('select * from payments where razorpay_order_id = $1 order by created_at desc limit 1', [razorpayOrderId]);
+  return mapPayment(result.rows[0]);
+}
+
+export async function findPaymentByRazorpayPaymentId(razorpayPaymentId, client) {
+  const result = await executor(client).query('select * from payments where razorpay_payment_id = $1 order by created_at desc limit 1', [razorpayPaymentId]);
+  return mapPayment(result.rows[0]);
+}
+
 export async function updatePayment(paymentId, updates, client) {
   const result = await executor(client).query(
     `update payments
      set
        transaction_id = coalesce($2, transaction_id),
        status = coalesce($3, status),
-       verified_at = coalesce($4, verified_at)
+       verified_at = coalesce($4, verified_at),
+       razorpay_order_id = coalesce($5, razorpay_order_id),
+       razorpay_payment_id = coalesce($6, razorpay_payment_id),
+       razorpay_signature = coalesce($7, razorpay_signature),
+       payment_link_id = coalesce($8, payment_link_id),
+       qr_id = coalesce($9, qr_id),
+       raw_response = coalesce($10::jsonb, raw_response)
      where id = $1
      returning *`,
-    [paymentId, updates.transactionId || updates.gatewayPaymentId, updates.status, updates.verifiedAt]
+    [
+      paymentId,
+      updates.transactionId || updates.gatewayPaymentId || null,
+      updates.status,
+      updates.verifiedAt,
+      updates.razorpayOrderId || null,
+      updates.razorpayPaymentId || null,
+      updates.razorpaySignature || null,
+      updates.paymentLinkId || null,
+      updates.qrId || null,
+      updates.rawResponse === undefined ? null : JSON.stringify(updates.rawResponse)
+    ]
   );
 
   return mapPayment(result.rows[0]);
@@ -1229,20 +1458,23 @@ export async function findNextPrintJobForAgent(agentId, hubId, client) {
      from print_jobs pj
      join agents a on a.id = $1 and a.hub_id = $2
      join print_orders po on po.id = pj.order_id and po.hub_id = pj.hub_id
-     join documents d on d.id::text = po.document_url
      where pj.hub_id = $2
        and (pj.agent_id = $1 or pj.agent_id is null)
        and pj.status in ('queued', 'assigned')
        and a.revoked_at is null
        and a.paused = false
        and lower(coalesce(po.payment_status, '')) = 'collected'
-       and d.storage_path is not null
-       and d.storage_path <> ''
-       and d.file_sha256 is not null
-       and d.file_sha256 <> ''
-       and lower(coalesce(d.file_type, pj.file_type, '')) = 'application/pdf'
-       and pj.file_sha256 is not null
-       and pj.file_sha256 <> ''
+       and exists (
+         select 1
+         from print_order_files pof
+         join documents d on d.id = pof.document_id
+         where pof.order_id = po.id
+           and d.storage_path is not null
+           and d.storage_path <> ''
+           and d.file_sha256 is not null
+           and d.file_sha256 <> ''
+           and lower(coalesce(d.file_type, '')) = 'application/pdf'
+       )
      order by pj.created_at asc
      limit 1
      for update skip locked`,

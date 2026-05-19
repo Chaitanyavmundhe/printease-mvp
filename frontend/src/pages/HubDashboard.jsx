@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { BarChart3, FileText, IndianRupee, Link2, Printer, RefreshCw, Send, Wifi, X } from "lucide-react";
+import { BarChart3, Download, Eye, FileText, IndianRupee, Link2, Printer, RefreshCw, Send, ShieldCheck, Wifi, X } from "lucide-react";
 import Card from "../components/Card";
 import Metric from "../components/Metric";
 import StatusBadge from "../components/StatusBadge";
 import { hubStatusOptions } from "../data/demoData";
-import { collectCashPayment, getHubAgentSummary, pairAgent, sendOrderToAgent } from "../services/api";
+import { collectCashPayment, createDocumentSignedDownload, getHubAgentSummary, getOrderDocuments, pairAgent, sendOrderToAgent } from "../services/api";
 
 function normalizeStatus(status) {
   return String(status || "").toLowerCase().replace(/\s+/g, "_");
@@ -74,6 +74,9 @@ export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus,
   const [pairingMessage, setPairingMessage] = useState("");
   const [sendingOrderId, setSendingOrderId] = useState("");
   const [sendModalOrder, setSendModalOrder] = useState(null);
+  const [documentModalOrder, setDocumentModalOrder] = useState(null);
+  const [orderDocuments, setOrderDocuments] = useState([]);
+  const [documentsLoading, setDocumentsLoading] = useState(false);
   const [selectedAgentId, setSelectedAgentId] = useState("");
   const [selectedPrinterName, setSelectedPrinterName] = useState("");
   const [collectingOrderId, setCollectingOrderId] = useState("");
@@ -230,6 +233,32 @@ export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus,
     }
   }
 
+  async function openDocuments(order) {
+    const orderId = order.backendId || order.id;
+    setDocumentModalOrder(order);
+    setOrderDocuments([]);
+    setDocumentsLoading(true);
+    setAgentError("");
+
+    try {
+      const data = await getOrderDocuments(orderId);
+      setOrderDocuments(Array.isArray(data.documents) ? data.documents : []);
+    } catch (error) {
+      setAgentError(error.message || "Could not load order documents.");
+    } finally {
+      setDocumentsLoading(false);
+    }
+  }
+
+  async function downloadDocument(documentId) {
+    try {
+      const data = await createDocumentSignedDownload(documentId);
+      if (data.signedUrl) window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      setAgentError(error.message || "Could not create signed download link.");
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -344,6 +373,7 @@ export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus,
                 <th>Amount</th>
                 <th>Payment</th>
                 <th>Status</th>
+                <th>Files</th>
                 <th>Update</th>
                 <th>Agent</th>
               </tr>
@@ -372,6 +402,15 @@ export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus,
                     <td>
                       <StatusBadge>{item.status}</StatusBadge>
                       {job?.failureReasonText && <p className="mt-1 text-xs font-semibold text-rose-600">{job.failureReasonText}</p>}
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        onClick={() => openDocuments(item)}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-2 font-semibold"
+                      >
+                        <FileText size={15} /> Documents
+                      </button>
                     </td>
                     <td>
                       <select value={item.status} onChange={(e) => updateOrderStatus(item.id, e.target.value)} className="rounded-xl border px-3 py-2">
@@ -497,6 +536,62 @@ export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus,
                   <Send size={16} /> {sendingOrderId ? "Queueing" : "Queue Print Job"}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {documentModalOrder && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4">
+          <div className="w-full max-w-3xl rounded-3xl bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h3 className="text-xl font-bold">Order Documents</h3>
+                <p className="mt-1 text-sm text-slate-600">{documentModalOrder.id}</p>
+              </div>
+              <button type="button" onClick={() => setDocumentModalOrder(null)} className="rounded-full border p-2" aria-label="Close documents modal">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="mt-5 grid gap-3">
+              {documentsLoading && <p className="text-sm text-slate-500">Loading documents...</p>}
+              {!documentsLoading && orderDocuments.length === 0 && <p className="text-sm text-slate-500">No documents found.</p>}
+              {orderDocuments.map((document) => (
+                <div key={document.documentId} className="rounded-2xl border p-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold">{document.fileName}</p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {document.pageCount} pages · {Math.ceil(Number(document.fileSizeBytes || 0) / 1024)} KB · uploaded {document.uploadedAt ? new Date(document.uploadedAt).toLocaleString("en-IN") : "recently"}
+                      </p>
+                      <p className="mt-2 break-all text-xs text-slate-500">SHA-256: {document.fileSha256 || "Not available"}</p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        Selected {document.selectedPageCount} · printable {document.printablePageCount} · copies {document.copies} · ₹{Number(document.amountPaise || 0) / 100}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => downloadDocument(document.documentId)}
+                        className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white"
+                      >
+                        <Download size={15} /> Download original
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => downloadDocument(document.documentId)}
+                        className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold"
+                      >
+                        <Eye size={15} /> View
+                      </button>
+                      <span className="inline-flex items-center gap-2 rounded-xl bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">
+                        <ShieldCheck size={14} /> Hash shown
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>

@@ -94,6 +94,7 @@ create table if not exists documents (
   file_name text not null,
   file_type text,
   file_size integer,
+  file_size_bytes bigint,
   file_url text not null,
   file_sha256 text,
   storage_path text,
@@ -104,6 +105,12 @@ create table if not exists documents (
 alter table documents add column if not exists file_sha256 text;
 alter table documents add column if not exists storage_path text;
 alter table documents add column if not exists page_count integer;
+alter table documents add column if not exists file_type text;
+alter table documents add column if not exists file_size_bytes bigint;
+
+update documents
+set file_size_bytes = file_size
+where file_size_bytes is null and file_size is not null;
 
 create table if not exists print_orders (
   id text primary key default gen_random_uuid()::text,
@@ -118,9 +125,45 @@ create table if not exists print_orders (
   side_type text not null default 'single',
   watermark_enabled boolean not null default false,
   amount numeric(10, 2) not null,
+  total_amount_paise integer,
   payment_status text not null default 'pending',
   status text not null default 'Payment Pending',
   pickup_code text not null,
+  created_at timestamptz not null default now()
+);
+
+alter table print_orders add column if not exists total_amount_paise integer;
+
+update print_orders
+set total_amount_paise = round(amount * 100)::integer
+where total_amount_paise is null and amount is not null;
+
+create table if not exists print_order_files (
+  id text primary key default gen_random_uuid()::text,
+  order_id text not null references print_orders(id) on delete cascade,
+  document_id text not null references documents(id) on delete restrict,
+  original_page_count integer not null,
+  selected_pages text not null default 'all',
+  selected_page_count integer not null,
+  printable_page_count integer not null,
+  sheet_count integer not null,
+  copies integer not null,
+  print_options jsonb not null default '{}'::jsonb,
+  line_amount_paise integer not null,
+  print_sequence integer not null default 1,
+  created_at timestamptz not null default now()
+);
+
+alter table print_order_files add column if not exists print_sequence integer not null default 1;
+
+create table if not exists document_access_logs (
+  id text primary key default gen_random_uuid()::text,
+  document_id text not null references documents(id) on delete cascade,
+  order_id text references print_orders(id) on delete cascade,
+  user_id text references users(id) on delete set null,
+  action text not null,
+  ip_address text,
+  user_agent text,
   created_at timestamptz not null default now()
 );
 
@@ -175,6 +218,12 @@ create table if not exists payments (
   amount numeric(10, 2) not null,
   method text,
   transaction_id text,
+  razorpay_order_id text,
+  razorpay_payment_id text,
+  razorpay_signature text,
+  payment_link_id text,
+  qr_id text,
+  raw_response jsonb,
   status text not null default 'created',
   created_at timestamptz not null default now(),
   verified_at timestamptz
@@ -182,6 +231,12 @@ create table if not exists payments (
 
 alter table payments add column if not exists method text;
 alter table payments add column if not exists transaction_id text;
+alter table payments add column if not exists razorpay_order_id text;
+alter table payments add column if not exists razorpay_payment_id text;
+alter table payments add column if not exists razorpay_signature text;
+alter table payments add column if not exists payment_link_id text;
+alter table payments add column if not exists qr_id text;
+alter table payments add column if not exists raw_response jsonb;
 do $$
 begin
   if exists (
@@ -330,6 +385,15 @@ create table if not exists print_jobs (
   failed_at timestamptz
 );
 
+alter table print_orders
+  add column if not exists print_options jsonb not null default '{}'::jsonb,
+  add column if not exists selected_page_count integer,
+  add column if not exists printable_page_count integer,
+  add column if not exists sheet_count integer;
+
+alter table print_jobs
+  add column if not exists print_options jsonb not null default '{}'::jsonb;
+
 create table if not exists print_job_events (
   id text primary key default gen_random_uuid()::text,
   print_job_id text not null references print_jobs(id) on delete cascade,
@@ -344,7 +408,13 @@ create table if not exists print_job_events (
 
 create index if not exists idx_print_orders_user_id on print_orders(user_id);
 create index if not exists idx_print_orders_hub_id on print_orders(hub_id);
+create index if not exists idx_print_order_files_order_id on print_order_files(order_id);
+create index if not exists idx_print_order_files_document_id on print_order_files(document_id);
+create index if not exists idx_document_access_logs_document_id on document_access_logs(document_id);
+create index if not exists idx_document_access_logs_user_id on document_access_logs(user_id);
 create index if not exists idx_payments_order_id on payments(order_id);
+create index if not exists idx_payments_razorpay_order_id on payments(razorpay_order_id);
+create index if not exists idx_payments_razorpay_payment_id on payments(razorpay_payment_id);
 create index if not exists idx_printers_hub_id on printers(hub_id);
 create index if not exists idx_agents_hub_id on agents(hub_id);
 create index if not exists idx_agent_tokens_agent_id on agent_tokens(agent_id);
@@ -352,3 +422,19 @@ create index if not exists idx_pairing_sessions_device_id on agent_pairing_sessi
 create index if not exists idx_print_jobs_hub_id on print_jobs(hub_id);
 create index if not exists idx_print_jobs_agent_id on print_jobs(agent_id);
 create index if not exists idx_print_jobs_order_id on print_jobs(order_id);
+
+alter table payments add column if not exists provider text;
+alter table payments add column if not exists provider_order_id text;
+alter table payments add column if not exists provider_payment_id text;
+alter table payments add column if not exists provider_signature text;
+alter table payments add column if not exists provider_status text;
+alter table payments add column if not exists provider_payload jsonb not null default '{}'::jsonb;
+alter table payments add column if not exists payment_link_id text;
+alter table payments add column if not exists qr_code_id text;
+alter table payments add column if not exists qr_image_url text;
+alter table payments add column if not exists short_url text;
+
+create index if not exists idx_payments_provider_order_id on payments(provider_order_id);
+create index if not exists idx_payments_provider_payment_id on payments(provider_payment_id);
+create index if not exists idx_payments_order_provider on payments(order_id, provider);
+

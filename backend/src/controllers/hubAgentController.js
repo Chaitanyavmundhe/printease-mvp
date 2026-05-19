@@ -7,6 +7,7 @@ import {
   findPendingApprovalPairingSessionById,
   findPendingPairingSessionByCodeHash,
   insertPrintJobEvent,
+  listOrderFiles,
   listAgentPrintersByAgent,
   listAgentPrintersByHub,
   listAllAgentsByHub,
@@ -32,7 +33,7 @@ function getHubId(req) {
 }
 
 function isPaymentCollected(order) {
-  return String(order.payment_status || '').toLowerCase() === 'collected';
+  return ['verified', 'collected'].includes(String(order.payment_status || '').toLowerCase());
 }
 
 function isPrintableOrderStatus(status) {
@@ -259,11 +260,13 @@ export const sendOrderToAgent = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: 'Order is not in a printable state' });
   }
 
-  const storagePath = order.document_storage_path;
-  const fileSha256 = order.document_file_sha256;
-  const fileType = order.document_file_type || 'application/pdf';
+  const orderFiles = await listOrderFiles(order.id);
+  const firstFile = orderFiles[0];
+  const storagePath = firstFile?.document?.storagePath || order.document_storage_path;
+  const fileSha256 = firstFile?.document?.fileSha256 || order.document_file_sha256;
+  const fileType = firstFile?.document?.fileType || order.document_file_type || 'application/pdf';
 
-  if (!storagePath || !fileSha256) {
+  if (!orderFiles.length || !storagePath || !fileSha256) {
     return res.status(400).json({
       success: false,
       message: 'Order document is not stored in secure private storage'
@@ -333,7 +336,8 @@ export const sendOrderToAgent = asyncHandler(async (req, res) => {
       rawStatus: {
         orderId: order.id,
         agentId: selectedAgent.id,
-        printerName: selectedPrinter.printerName
+        printerName: printerHint || null,
+        fileCount: orderFiles.length
       }
     }, client);
 

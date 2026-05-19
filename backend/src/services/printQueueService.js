@@ -5,6 +5,7 @@ import {
   findOrderWithDocumentForHub,
   findPreferredPrinterHintForAgent,
   insertPrintJobEvent,
+  listOrderFiles,
   updateOrderStatus
 } from '../db/repository.js';
 import { OFFICIAL_BACKEND_URL } from '../config/agent.js';
@@ -12,7 +13,7 @@ import { getSupabaseBucketName } from '../config/supabase.js';
 import { generateId } from '../utils/generateCode.js';
 import { getAgentLiveStatus, getPrinterCondition } from '../utils/hubAgentAnalytics.js';
 
-const PAYMENT_READY_STATUSES = new Set(['collected']);
+const PAYMENT_READY_STATUSES = new Set(['verified', 'collected']);
 
 function normalize(value) {
   return String(value || '').trim().toLowerCase();
@@ -24,7 +25,7 @@ function isPrintableOrderStatus(status) {
 }
 
 function paymentReadyMessage(paymentStatus, text) {
-  const prefix = normalize(paymentStatus) === 'collected' ? 'Payment collected' : 'Payment pending';
+  const prefix = normalize(paymentStatus) === 'collected' ? 'Payment collected' : 'Payment verified';
   return `${prefix}. ${text}`;
 }
 
@@ -56,11 +57,13 @@ export async function queuePrintJobIfPaymentReady(orderId, hubId, client) {
     };
   }
 
-  const storagePath = orderWithDocument.document_storage_path;
-  const fileSha256 = orderWithDocument.document_file_sha256;
-  const fileType = orderWithDocument.document_file_type || 'application/pdf';
+  const orderFiles = await listOrderFiles(orderId, client);
+  const firstFile = orderFiles[0];
+  const storagePath = firstFile?.document?.storagePath || orderWithDocument.document_storage_path;
+  const fileSha256 = firstFile?.document?.fileSha256 || orderWithDocument.document_file_sha256;
+  const fileType = firstFile?.document?.fileType || orderWithDocument.document_file_type || 'application/pdf';
 
-  if (!storagePath || !fileSha256 || fileType !== 'application/pdf' || !isPrintableOrderStatus(orderWithDocument.status)) {
+  if (!orderFiles.length || !storagePath || !fileSha256 || fileType !== 'application/pdf' || !isPrintableOrderStatus(orderWithDocument.status)) {
     return {
       queued: false,
       message: paymentReadyMessage(paymentStatus, 'Order is not ready for desktop PDF printing; hub can print manually.')

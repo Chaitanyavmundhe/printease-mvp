@@ -4,6 +4,7 @@ import {
   createOrder,
   getCentreOrders,
   getMyOrders,
+  getOrderDocuments,
   getOrderById,
   updateOrderStatus
 } from '../controllers/orderController.js';
@@ -15,6 +16,7 @@ const router = express.Router();
 router.post('/', optionalAuthMiddleware, createOrder);
 router.get('/mine', authMiddleware, roleMiddleware('user'), getMyOrders);
 router.get('/centre/mine', authMiddleware, roleMiddleware('hub'), getCentreOrders);
+router.get('/:orderId/documents', authMiddleware, getOrderDocuments);
 router.get('/:id', getOrderById);
 router.post('/:id/collect-payment', authMiddleware, roleMiddleware('hub'), collectCashPayment);
 router.patch('/:id/status', authMiddleware, roleMiddleware('hub'), updateOrderStatus);

@@ -35,10 +35,10 @@ export const uploadDocument = asyncHandler(async (req, res) => {
 
   try {
     pageCount = await getPdfPageCount(req.file.buffer);
-  } catch {
+  } catch (error) {
     return res.status(400).json({
       success: false,
-      message: 'Could not read PDF page count. Please upload a valid PDF.'
+      message: error.message || 'Could not read PDF page count. Please upload a valid, uncorrupted PDF.'
     });
   }
 
@@ -75,6 +75,7 @@ export const uploadDocument = asyncHandler(async (req, res) => {
     fileName: originalName,
     fileType: req.file.mimetype,
     fileSize: req.file.size,
+    fileSizeBytes: req.file.size,
     fileUrl: `private://${bucket}/${storagePath}`,
     storagePath,
     fileSha256,

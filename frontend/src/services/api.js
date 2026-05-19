@@ -212,6 +212,34 @@ export function collectCashPayment(orderId) {
   });
 }
 
+export function collectManualPayment(orderId, method = "cash", transactionNote = "") {
+  return apiRequest(`/api/orders/${orderId}/collect-payment`, {
+    method: "POST",
+    body: JSON.stringify({ method, transactionNote }),
+  });
+}
+
+export function createRazorpayOrder(printOrderId) {
+  return apiRequest("/api/payments/razorpay/order", {
+    method: "POST",
+    body: JSON.stringify({ printOrderId }),
+  });
+}
+
+export function verifyRazorpayPayment(payload) {
+  return apiRequest("/api/payments/razorpay/verify", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function createRazorpayPaymentLink(printOrderId) {
+  return apiRequest("/api/payments/razorpay/payment-link", {
+    method: "POST",
+    body: JSON.stringify({ printOrderId }),
+  });
+}
+
 export function sendOrderToAgent(orderId, target = {}) {
   return apiRequest(`/api/hub-agents/orders/${orderId}/send-to-agent`, {
     method: "POST",
@@ -219,5 +247,15 @@ export function sendOrderToAgent(orderId, target = {}) {
       agentId: target.agentId,
       printerName: target.printerName,
     }),
+  });
+}
+
+export function getOrderDocuments(orderId) {
+  return apiRequest(`/api/orders/${encodeURIComponent(orderId)}/documents`);
+}
+
+export function createDocumentSignedDownload(documentId) {
+  return apiRequest(`/api/documents/${encodeURIComponent(documentId)}/signed-download`, {
+    method: "POST",
   });
 }

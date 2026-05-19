@@ -1,10 +1,15 @@
 import express from 'express';
-import { createPayment, verifyPayment } from '../controllers/paymentController.js';
+import {
+  createRazorpayOrder,
+  createRazorpayPaymentLink,
+  verifyRazorpayPayment
+} from '../controllers/paymentController.js';
 import { authMiddleware } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
-router.post('/create', authMiddleware, createPayment);
-router.post('/verify-demo', authMiddleware, verifyPayment);
+router.post('/razorpay/order', authMiddleware, createRazorpayOrder);
+router.post('/razorpay/verify', authMiddleware, verifyRazorpayPayment);
+router.post('/razorpay/payment-link', authMiddleware, createRazorpayPaymentLink);
 
 export default router;

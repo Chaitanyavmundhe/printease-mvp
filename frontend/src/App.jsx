@@ -16,9 +16,9 @@ import PaymentPage from "./pages/PaymentPage";
 import TrackPage from "./pages/TrackPage";
 import HistoryPage from "./pages/HistoryPage";
 import { initialCentres, initialOrders } from "./data/demoData";
-import { calculateTotalAmount, getPricePerPage } from "./utils/price";
+import { calculateTotalAmount, countSelectedPages, getPricePerPage } from "./utils/price";
 import { isDesktop, onPrintersUpdated } from "./utils/desktopBridge";
-import { apiRequest } from "./services/api";
+import { apiRequest, createRazorpayOrder, createRazorpayPaymentLink, verifyRazorpayPayment } from "./services/api";
 
 const ROUTES = {
   home: "/",
@@ -206,13 +206,18 @@ export default function App() {
   const [centreLookupError, setCentreLookupError] = useState("");
   const [selectedCentre, setSelectedCentre] = useState(null);
   const [documentFile, setDocumentFile] = useState(null);
+  const [documentFiles, setDocumentFiles] = useState([]);
   const [documentName, setDocumentName] = useState("");
   const [pages, setPages] = useState(1);
+  const [selectedPages, setSelectedPages] = useState("");
   const [copies, setCopies] = useState(1);
   const [colorType, setColorType] = useState("bw");
   const [sideType, setSideType] = useState("single");
+  const [paperSize, setPaperSize] = useState("A4");
+  const [pagesPerSheet, setPagesPerSheet] = useState(1);
   const [watermark, setWatermark] = useState(false);
   const [order, setOrder] = useState(null);
+  const [backendPrice, setBackendPrice] = useState(null);
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [paymentError, setPaymentError] = useState("");
   const [pendingPayment, setPendingPayment] = useState(null);
@@ -334,16 +339,21 @@ export default function App() {
     [selectedCentre, colorType, sideType]
   );
 
+  const estimatedSelectedPageCount = useMemo(
+    () => countSelectedPages(selectedPages, pages) || pages,
+    [selectedPages, pages]
+  );
+
   const totalAmount = useMemo(
     () =>
       calculateTotalAmount({
-        pages,
+        pages: estimatedSelectedPageCount,
         copies,
         pricePerPage,
         watermark,
         watermarkCharge: selectedCentre?.watermarkCharge,
       }),
-    [pages, copies, pricePerPage, watermark, selectedCentre?.watermarkCharge]
+    [estimatedSelectedPageCount, copies, pricePerPage, watermark, selectedCentre?.watermarkCharge]
   );
 
   const currentHub = useMemo(() => {
@@ -598,14 +608,15 @@ export default function App() {
     navigate("upload");
   }
 
-  async function handlePayment() {
+  async function preparePayment() {
     if (!selectedCentre) {
       setPaymentError("Please select a printing centre first.");
       navigate("centre");
       return;
     }
 
-    if (!documentFile) {
+    const filesToUpload = documentFiles.length ? documentFiles : documentFile ? [documentFile] : [];
+    if (!filesToUpload.length) {
       setPaymentError("Please upload a PDF document first.");
       navigate("upload");
       return;
@@ -620,17 +631,23 @@ export default function App() {
 
     setPaymentLoading(true);
     setPaymentError("");
+    setBackendPrice(null);
 
     try {
-      const formData = new FormData();
-      formData.append("document", documentFile);
+      const uploadedDocuments = [];
+      for (const file of filesToUpload) {
+        const formData = new FormData();
+        formData.append("document", file);
 
-      const uploadData = await apiRequest("/api/uploads", {
-        method: "POST",
-        body: formData,
-      });
+        const uploadData = await apiRequest("/api/uploads", {
+          method: "POST",
+          body: formData,
+        });
 
-      const trustedPageCount = Number(uploadData.document?.pageCount) || pages;
+        uploadedDocuments.push(uploadData.document);
+      }
+
+      const trustedPageCount = Number(uploadedDocuments[0]?.pageCount) || pages;
       if (trustedPageCount !== pages) {
         setPages(trustedPageCount);
       }
@@ -639,38 +656,64 @@ export default function App() {
         method: "POST",
         body: JSON.stringify({
           centreCode: selectedCentre.code,
-          documentId: uploadData.document?.id,
-          documentName: uploadData.document?.fileName || documentName || documentFile.name,
+          documentIds: uploadedDocuments.map((document) => document.id),
+          files: uploadedDocuments.map((document) => ({
+            documentId: document.id,
+            documentName: document.fileName,
+            selectedPages,
+            copies,
+            colorType,
+            sideType,
+            paperSize,
+            pagesPerSheet,
+            watermarkEnabled: watermark,
+          })),
+          documentName: uploadedDocuments.length === 1
+            ? uploadedDocuments[0]?.fileName || documentName || filesToUpload[0].name
+            : `${uploadedDocuments.length} uploaded documents`,
           pages: trustedPageCount,
+          selectedPages,
           copies,
           colorType,
           sideType,
+          paperSize,
+          pagesPerSheet,
           watermarkEnabled: watermark,
         }),
-      });
-
-      const paymentData = await apiRequest("/api/payments/create", {
-        method: "POST",
-        body: JSON.stringify({ orderId: orderData.order.id }),
       });
 
       const nextOrder = normalizeOrder(orderData.order, centres);
       setOrder(nextOrder);
       setOrders((prev) => upsertOrder(prev, nextOrder));
       setLastOrdersUpdatedAt(new Date().toISOString());
-      setPendingPayment(paymentData.payment || null);
+      setBackendPrice(orderData.price || null);
       setDocumentFile(null);
-      navigate("track");
+      setDocumentFiles([]);
+      navigate("payment");
     } catch (error) {
-      setPaymentError(error.message || "Could not upload document and create order.");
+      setPaymentError(error.message || "Could not upload document and calculate final price.");
     } finally {
       setPaymentLoading(false);
     }
   }
 
-  async function handleVerifyDemoPayment() {
-    if (!pendingPayment?.id) {
-      setPaymentError("Create a payment record before verifying demo payment.");
+  function loadRazorpayCheckoutScript() {
+    return new Promise((resolve, reject) => {
+      if (window.Razorpay) return resolve(true);
+
+      const script = document.createElement("script");
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.async = true;
+      script.onload = () => resolve(true);
+      script.onerror = () => reject(new Error("Could not load Razorpay Checkout."));
+      document.body.appendChild(script);
+    });
+  }
+
+  async function handleRazorpayCheckout() {
+    if (!order?.backendId) {
+      setPaymentError("Create a backend-priced pending order before payment.");
+      navigate("upload");
       return;
     }
 
@@ -678,19 +721,74 @@ export default function App() {
     setPaymentError("");
 
     try {
-      const verifiedData = await apiRequest("/api/payments/verify-demo", {
-        method: "POST",
-        body: JSON.stringify({ paymentId: pendingPayment.id, demoSuccess: true }),
+      await loadRazorpayCheckoutScript();
+      const paymentData = await createRazorpayOrder(order.backendId);
+
+      const checkout = new window.Razorpay({
+        key: paymentData.keyId || import.meta.env.VITE_RAZORPAY_KEY_ID,
+        amount: paymentData.amount,
+        currency: paymentData.currency || "INR",
+        name: "PrintEase",
+        description: order.id,
+        order_id: paymentData.razorpayOrderId,
+        handler: async (response) => {
+          setPaymentLoading(true);
+          setPaymentError("");
+
+          try {
+            const verifiedData = await verifyRazorpayPayment(response);
+            const nextOrder = normalizeOrder(verifiedData.order || order, centres);
+            setOrder(nextOrder);
+            setOrders((prev) => upsertOrder(prev, nextOrder));
+            setLastOrdersUpdatedAt(new Date().toISOString());
+            navigate("track");
+          } catch (error) {
+            setPaymentError(error.message || "Could not verify Razorpay payment.");
+          } finally {
+            setPaymentLoading(false);
+          }
+        },
+        prefill: {
+          name: currentUser?.name || "",
+          contact: currentUser?.mobile || "",
+        },
+        notes: {
+          printOrderId: order.backendId,
+        },
+        modal: {
+          ondismiss: () => setPaymentLoading(false),
+        },
+        theme: {
+          color: "#0f172a",
+        },
       });
 
-      const nextOrder = normalizeOrder(verifiedData.order || order, centres);
-      setOrder(nextOrder);
-      setOrders((prev) => upsertOrder(prev, nextOrder));
-      setLastOrdersUpdatedAt(new Date().toISOString());
-      setPendingPayment(null);
+      checkout.open();
+    } catch (error) {
+      setPaymentError(error.message || "Could not start Razorpay payment.");
+      setPaymentLoading(false);
+    }
+  }
+
+  async function handleUpiPaymentLink() {
+    if (!order?.backendId) {
+      setPaymentError("Create a backend-priced pending order before payment.");
+      navigate("upload");
+      return;
+    }
+
+    setPaymentLoading(true);
+    setPaymentError("");
+
+    try {
+      const data = await createRazorpayPaymentLink(order.backendId);
+      if (data.shortUrl) {
+        window.open(data.shortUrl, "_blank", "noopener,noreferrer");
+      }
+      setPendingPayment(data.payment || null);
       navigate("track");
     } catch (error) {
-      setPaymentError(error.message || "Could not verify demo payment.");
+      setPaymentError(error.message || "Could not create UPI payment link.");
     } finally {
       setPaymentLoading(false);
     }
@@ -891,12 +989,12 @@ export default function App() {
           />
           <Route path={ROUTES.desktopAgent} element={<DesktopAgentPage />} />
           <Route path={ROUTES.centre} element={<CentreCodePage centreCode={centreCode} setCentreCode={setCentreCode} handleCentreCode={handleCentreCode} centres={centres} selectCentreAndUpload={selectCentreAndUpload} lookupLoading={centreLookupLoading} lookupError={centreLookupError} />} />
-          <Route path={ROUTES.upload} element={<UploadPage selectedCentre={selectedCentre} documentFile={documentFile} setDocumentFile={setDocumentFile} documentName={documentName} setDocumentName={setDocumentName} pages={pages} setPages={setPages} copies={copies} setCopies={setCopies} colorType={colorType} setColorType={setColorType} sideType={sideType} setSideType={setSideType} watermark={watermark} setWatermark={setWatermark} totalAmount={totalAmount} paymentError={paymentError} navigate={navigate} />} />
+          <Route path={ROUTES.upload} element={<UploadPage selectedCentre={selectedCentre} documentFile={documentFile} setDocumentFile={setDocumentFile} documentFiles={documentFiles} setDocumentFiles={setDocumentFiles} documentName={documentName} setDocumentName={setDocumentName} pages={pages} setPages={setPages} selectedPages={selectedPages} setSelectedPages={setSelectedPages} copies={copies} setCopies={setCopies} colorType={colorType} setColorType={setColorType} sideType={sideType} setSideType={setSideType} paperSize={paperSize} setPaperSize={setPaperSize} pagesPerSheet={pagesPerSheet} setPagesPerSheet={setPagesPerSheet} watermark={watermark} setWatermark={setWatermark} pricePerPage={pricePerPage} estimatedSelectedPageCount={estimatedSelectedPageCount} totalAmount={totalAmount} backendPrice={backendPrice} preparePayment={preparePayment} paymentLoading={paymentLoading} paymentError={paymentError} navigate={navigate} />} />
           <Route
             path={ROUTES.payment}
             element={
-              selectedCentre && documentFile ? (
-                <PaymentPage selectedCentre={selectedCentre} documentName={documentName} pages={pages} copies={copies} totalAmount={totalAmount} handlePayment={handlePayment} paymentLoading={paymentLoading} paymentError={paymentError} />
+              selectedCentre && order ? (
+                <PaymentPage selectedCentre={selectedCentre} documentName={documentName} pages={pages} copies={copies} backendPrice={backendPrice} order={order} handlePayment={handlePayment} paymentLoading={paymentLoading} paymentError={paymentError} />
               ) : (
                 <RouteNotice title="Payment Not Ready" message="Please select a centre and upload a document first." actionLabel="Select Centre" onAction={() => navigate("centre")} />
               )
