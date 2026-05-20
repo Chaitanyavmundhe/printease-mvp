@@ -25,7 +25,12 @@ function isPrintableOrderStatus(status) {
 }
 
 function paymentReadyMessage(paymentStatus, text) {
-  const prefix = normalize(paymentStatus) === 'collected' ? 'Payment collected' : 'Payment verified';
+  const normalized = normalize(paymentStatus);
+  const prefix = normalized === 'collected'
+    ? 'Payment collected'
+    : normalized === 'verified'
+      ? 'Payment verified'
+      : 'Payment pending';
   return `${prefix}. ${text}`;
 }
 

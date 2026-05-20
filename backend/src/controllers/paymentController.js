@@ -1,22 +1,26 @@
-import crypto from 'crypto';
+import crypto from 'node:crypto';
 import {
   createPayment as savePayment,
   findOrderByIdOrCode,
-  findPaymentByRazorpayOrderId,
-  findPaymentByRazorpayPaymentId,
+  findPaymentById,
+  findPaymentByProviderOrderId,
   updateOrderPayment,
   updatePayment,
   withTransaction
 } from '../db/repository.js';
-import {
-  getRazorpayClient,
-  getRazorpayKeyId,
-  getRazorpayKeySecret,
-  getRazorpayWebhookSecret
-} from '../config/razorpay.js';
 import { queuePrintJobIfPaymentReady } from '../services/printQueueService.js';
 import { generateId } from '../utils/generateCode.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
+import {
+  amountToPaise,
+  getPublicRazorpayConfig,
+  getRazorpayClient,
+  RAZORPAY_CURRENCY,
+  RAZORPAY_ENABLED,
+  RAZORPAY_KEY_ID,
+  RAZORPAY_KEY_SECRET,
+  RAZORPAY_WEBHOOK_SECRET
+} from '../config/razorpay.js';
 
 function canAccessOrder(user, order) {
   if (!user || !order) return false;
@@ -26,151 +30,238 @@ function canAccessOrder(user, order) {
   return false;
 }
 
-function amountPaise(order) {
-  return order.totalAmountPaise || Math.round(Number(order.amount || 0) * 100);
+function assertRazorpayConfigured() {
+  if (!RAZORPAY_ENABLED) {
+    const error = new Error('Razorpay is not enabled on this backend.');
+    error.statusCode = 503;
+    throw error;
+  }
+
+  if (!RAZORPAY_KEY_ID || !RAZORPAY_KEY_SECRET) {
+    const error = new Error('Razorpay credentials are missing.');
+    error.statusCode = 500;
+    throw error;
+  }
 }
 
-function verifyRazorpaySignature({ razorpayOrderId, razorpayPaymentId, razorpaySignature }) {
+function verifyRazorpayCheckoutSignature({ razorpayOrderId, razorpayPaymentId, razorpaySignature }) {
+  const body = `${razorpayOrderId}|${razorpayPaymentId}`;
   const expectedSignature = crypto
-    .createHmac('sha256', getRazorpayKeySecret())
-    .update(`${razorpayOrderId}|${razorpayPaymentId}`)
+    .createHmac('sha256', RAZORPAY_KEY_SECRET)
+    .update(body)
     .digest('hex');
 
-  const received = Buffer.from(String(razorpaySignature || ''));
-  const expected = Buffer.from(expectedSignature);
-  return received.length === expected.length && crypto.timingSafeEqual(expected, received);
+  return crypto.timingSafeEqual(
+    Buffer.from(expectedSignature),
+    Buffer.from(String(razorpaySignature || ''))
+  );
 }
 
 function verifyWebhookSignature(rawBody, signature) {
-  const secret = getRazorpayWebhookSecret();
-  if (!secret) throw new Error('Razorpay webhook secret is not configured');
+  if (!RAZORPAY_WEBHOOK_SECRET) return false;
 
   const expectedSignature = crypto
-    .createHmac('sha256', secret)
+    .createHmac('sha256', RAZORPAY_WEBHOOK_SECRET)
     .update(rawBody)
     .digest('hex');
 
-  const received = Buffer.from(String(signature || ''));
-  const expected = Buffer.from(expectedSignature);
-  return received.length === expected.length && crypto.timingSafeEqual(expected, received);
+  return crypto.timingSafeEqual(
+    Buffer.from(expectedSignature),
+    Buffer.from(String(signature || ''))
+  );
 }
 
-async function markVerifiedAndQueue({ payment, razorpayPaymentId, razorpaySignature, rawResponse }, client) {
-  if (['verified', 'captured', 'collected'].includes(String(payment.status || '').toLowerCase())) {
-    const order = await findOrderByIdOrCode(payment.orderId, client);
-    return { payment, order, autoQueue: { queued: false, message: 'Payment was already processed.' } };
-  }
-
-  const now = new Date().toISOString();
-  const verifiedPayment = await updatePayment(payment.id, {
+async function markOrderPaidAndQueue({ orderId, paymentId, providerPaymentId, providerSignature, providerStatus, providerPayload, client }) {
+  const payment = await updatePayment(paymentId, {
     status: 'verified',
-    transactionId: razorpayPaymentId,
-    razorpayPaymentId,
-    razorpaySignature,
-    rawResponse,
-    verifiedAt: now
+    transactionId: providerPaymentId,
+    providerPaymentId,
+    providerSignature,
+    providerStatus,
+    providerPayload,
+    verifiedAt: new Date().toISOString()
   }, client);
 
-  const verifiedOrder = await updateOrderPayment(payment.orderId, 'verified', 'Payment Verified', client);
-  const autoQueue = await queuePrintJobIfPaymentReady(verifiedOrder.id, verifiedOrder.centreId, client);
+  const paidOrder = await updateOrderPayment(orderId, 'verified', 'Payment Verified', client);
+  const autoQueue = await queuePrintJobIfPaymentReady(paidOrder.id, paidOrder.centreId, client);
 
   return {
-    payment: verifiedPayment,
-    order: autoQueue.order || verifiedOrder,
+    payment,
+    order: autoQueue.order || paidOrder,
     autoQueue,
     printJob: autoQueue.printJob || autoQueue.existingPrintJob || null
   };
 }
 
-export const createRazorpayOrder = asyncHandler(async (req, res) => {
-  const { printOrderId, orderId } = req.body;
-  const id = printOrderId || orderId;
+export const getPaymentConfig = asyncHandler(async (_req, res) => {
+  res.json({
+    success: true,
+    razorpay: getPublicRazorpayConfig()
+  });
+});
 
-  if (!id) {
-    return res.status(400).json({ success: false, message: 'Print order ID is required' });
+export const createRazorpayOrder = asyncHandler(async (req, res) => {
+  assertRazorpayConfigured();
+
+  const { orderId } = req.body;
+
+  if (!orderId) {
+    return res.status(400).json({ success: false, message: 'Order ID is required' });
   }
 
-  const order = await findOrderByIdOrCode(id);
+  const order = await findOrderByIdOrCode(orderId);
 
   if (!order) {
     return res.status(404).json({ success: false, message: 'Order not found' });
   }
 
   if (!canAccessOrder(req.user, order)) {
-    return res.status(403).json({ success: false, message: 'You are not allowed to pay for this order' });
+    return res.status(403).json({ success: false, message: 'You are not allowed to create payment for this order' });
   }
 
-  const amount = amountPaise(order);
-  if (!Number.isInteger(amount) || amount <= 0) {
-    return res.status(400).json({ success: false, message: 'Order amount is invalid' });
+  const paymentStatus = String(order.paymentStatus || '').toLowerCase();
+  if (['verified', 'collected'].includes(paymentStatus)) {
+    return res.status(409).json({ success: false, message: 'Payment is already completed for this order' });
   }
 
+  const amountPaise = amountToPaise(order.amount);
   const razorpay = getRazorpayClient();
+
   const razorpayOrder = await razorpay.orders.create({
-    amount,
-    currency: 'INR',
+    amount: amountPaise,
+    currency: RAZORPAY_CURRENCY,
     receipt: order.orderCode || order.id,
     notes: {
-      printOrderId: order.id,
-      orderCode: order.orderCode
+      printEaseOrderId: order.id,
+      orderCode: order.orderCode || '',
+      hubId: order.centreId || ''
     }
   });
 
   const payment = await savePayment({
     id: generateId(),
     orderId: order.id,
-    amount: amount / 100,
+    amount: order.amount,
     method: 'RAZORPAY_CHECKOUT',
+    provider: 'RAZORPAY',
+    providerOrderId: razorpayOrder.id,
+    providerStatus: razorpayOrder.status,
+    providerPayload: razorpayOrder,
     transactionId: razorpayOrder.id,
-    razorpayOrderId: razorpayOrder.id,
     status: 'created',
-    rawResponse: razorpayOrder,
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+    verifiedAt: null
   });
 
   res.status(201).json({
     success: true,
-    keyId: getRazorpayKeyId(),
-    razorpayOrderId: razorpayOrder.id,
-    amount,
-    currency: razorpayOrder.currency || 'INR',
-    payment
+    message: 'Razorpay order created',
+    payment,
+    razorpay: {
+      enabled: true,
+      keyId: RAZORPAY_KEY_ID,
+      orderId: razorpayOrder.id,
+      amount: razorpayOrder.amount,
+      currency: razorpayOrder.currency,
+      name: 'PrintEase',
+      description: `Print order ${order.orderCode || order.id}`,
+      prefill: {
+        name: req.user?.name || '',
+        contact: req.user?.mobile || ''
+      },
+      notes: razorpayOrder.notes || {}
+    }
   });
 });
 
 export const verifyRazorpayPayment = asyncHandler(async (req, res) => {
-  const { razorpay_payment_id: razorpayPaymentId, razorpay_order_id: razorpayOrderId, razorpay_signature: razorpaySignature } = req.body;
+  assertRazorpayConfigured();
 
-  if (!razorpayPaymentId || !razorpayOrderId || !razorpaySignature) {
-    return res.status(400).json({ success: false, message: 'Razorpay payment ID, order ID, and signature are required' });
+  const {
+    paymentId,
+    razorpay_order_id,
+    razorpay_payment_id,
+    razorpay_signature
+  } = req.body;
+
+  if (!paymentId || !razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+    return res.status(400).json({
+      success: false,
+      message: 'paymentId, razorpay_order_id, razorpay_payment_id and razorpay_signature are required'
+    });
   }
 
-  const payment = await findPaymentByRazorpayOrderId(razorpayOrderId);
+  const payment = await findPaymentById(paymentId);
+
   if (!payment) {
-    return res.status(404).json({ success: false, message: 'Payment order not found' });
+    return res.status(404).json({ success: false, message: 'Payment not found' });
+  }
+
+  if (payment.providerOrderId !== razorpay_order_id) {
+    return res.status(400).json({ success: false, message: 'Razorpay order ID does not match payment record' });
   }
 
   const order = await findOrderByIdOrCode(payment.orderId);
+
+  if (!order) {
+    return res.status(404).json({ success: false, message: 'Linked order not found' });
+  }
+
   if (!canAccessOrder(req.user, order)) {
     return res.status(403).json({ success: false, message: 'You are not allowed to verify this payment' });
   }
 
-  if (!verifyRazorpaySignature({ razorpayOrderId, razorpayPaymentId, razorpaySignature })) {
-    await updatePayment(payment.id, {
-      status: 'failed',
-      razorpayPaymentId,
-      razorpaySignature,
-      rawResponse: { reason: 'signature_mismatch' }
+  let validSignature = false;
+
+  try {
+    validSignature = verifyRazorpayCheckoutSignature({
+      razorpayOrderId: razorpay_order_id,
+      razorpayPaymentId: razorpay_payment_id,
+      razorpaySignature: razorpay_signature
     });
-    return res.status(400).json({ success: false, message: 'Invalid Razorpay signature' });
+  } catch {
+    validSignature = false;
   }
 
-  const result = await withTransaction(async (client) => markVerifiedAndQueue({
-    payment,
-    razorpayPaymentId,
-    razorpaySignature,
-    rawResponse: req.body
-  }, client));
+  if (!validSignature) {
+    const failed = await updatePayment(payment.id, {
+      status: 'failed',
+      providerPaymentId: razorpay_payment_id,
+      providerSignature: razorpay_signature,
+      providerStatus: 'signature_failed',
+      providerPayload: { reason: 'signature_failed' }
+    });
+
+    return res.status(400).json({
+      success: false,
+      message: 'Invalid Razorpay signature',
+      payment: failed
+    });
+  }
+
+  const result = await withTransaction(async (client) => {
+    const latestOrder = await findOrderByIdOrCode(order.id, client);
+    const latestPaymentStatus = String(latestOrder?.paymentStatus || '').toLowerCase();
+
+    if (['verified', 'collected'].includes(latestPaymentStatus)) {
+      return {
+        payment,
+        order: latestOrder,
+        autoQueue: { queued: false, message: 'Payment already processed.' },
+        printJob: null
+      };
+    }
+
+    return markOrderPaidAndQueue({
+      orderId: order.id,
+      paymentId: payment.id,
+      providerPaymentId: razorpay_payment_id,
+      providerSignature: razorpay_signature,
+      providerStatus: 'verified_by_signature',
+      providerPayload: req.body,
+      client
+    });
+  });
 
   res.json({
     success: true,
@@ -179,107 +270,212 @@ export const verifyRazorpayPayment = asyncHandler(async (req, res) => {
   });
 });
 
-export const createRazorpayPaymentLink = asyncHandler(async (req, res) => {
-  const { printOrderId, orderId } = req.body;
-  const id = printOrderId || orderId;
+export const createRazorpayUpiQr = asyncHandler(async (req, res) => {
+  assertRazorpayConfigured();
 
-  if (!id) {
-    return res.status(400).json({ success: false, message: 'Print order ID is required' });
+  const { orderId } = req.body;
+
+  if (!orderId) {
+    return res.status(400).json({ success: false, message: 'Order ID is required' });
   }
 
-  const order = await findOrderByIdOrCode(id);
+  const order = await findOrderByIdOrCode(orderId);
+
   if (!order) {
     return res.status(404).json({ success: false, message: 'Order not found' });
   }
 
   if (!canAccessOrder(req.user, order)) {
-    return res.status(403).json({ success: false, message: 'You are not allowed to pay for this order' });
+    return res.status(403).json({ success: false, message: 'You are not allowed to create QR payment for this order' });
   }
 
-  const amount = amountPaise(order);
+  const amountPaise = amountToPaise(order.amount);
   const razorpay = getRazorpayClient();
-  const paymentLink = await razorpay.paymentLink.create({
-    amount,
-    currency: 'INR',
-    description: `PrintEase order ${order.orderCode}`,
-    reference_id: order.id,
-    notes: {
-      printOrderId: order.id,
-      orderCode: order.orderCode
-    },
-    notify: {
-      sms: false,
-      email: false
-    }
-  });
+
+  let qr;
+  try {
+    qr = await razorpay.qrCode.create({
+      type: 'upi_qr',
+      name: `PrintEase ${order.orderCode || order.id}`,
+      usage: 'single_use',
+      fixed_amount: true,
+      payment_amount: amountPaise,
+      description: `PrintEase order ${order.orderCode || order.id}`,
+      notes: {
+        printEaseOrderId: order.id,
+        orderCode: order.orderCode || '',
+        hubId: order.centreId || ''
+      }
+    });
+  } catch (error) {
+    error.statusCode = error.statusCode || 502;
+    throw error;
+  }
 
   const payment = await savePayment({
     id: generateId(),
     orderId: order.id,
-    amount: amount / 100,
-    method: 'RAZORPAY_PAYMENT_LINK',
-    transactionId: paymentLink.id,
-    paymentLinkId: paymentLink.id,
+    amount: order.amount,
+    method: 'RAZORPAY_UPI_QR',
+    provider: 'RAZORPAY',
+    providerOrderId: qr.id,
+    providerStatus: qr.status,
+    providerPayload: qr,
+    transactionId: qr.id,
+    qrCodeId: qr.id,
+    qrImageUrl: qr.image_url || null,
+    shortUrl: qr.image_url || null,
     status: 'created',
-    rawResponse: paymentLink,
-    createdAt: new Date().toISOString()
+    createdAt: new Date().toISOString(),
+    verifiedAt: null
   });
 
   res.status(201).json({
     success: true,
-    paymentLinkId: paymentLink.id,
-    shortUrl: paymentLink.short_url,
-    amount,
-    currency: paymentLink.currency || 'INR',
-    payment
+    message: 'UPI QR created',
+    payment,
+    qr: {
+      id: qr.id,
+      imageUrl: qr.image_url || null,
+      status: qr.status,
+      amount: amountPaise,
+      currency: RAZORPAY_CURRENCY
+    }
   });
 });
 
 export const razorpayWebhook = asyncHandler(async (req, res) => {
-  const rawBody = Buffer.isBuffer(req.body) ? req.body.toString('utf8') : String(req.body || '');
   const signature = req.headers['x-razorpay-signature'];
+  const rawBody = req.rawBody || JSON.stringify(req.body || {});
 
   if (!verifyWebhookSignature(rawBody, signature)) {
     return res.status(400).json({ success: false, message: 'Invalid webhook signature' });
   }
 
-  const event = JSON.parse(rawBody);
-  const paymentEntity = event.payload?.payment?.entity;
+  const event = req.body;
+  const eventName = event?.event;
+  const paymentEntity = event?.payload?.payment?.entity || null;
+  const orderId = paymentEntity?.order_id || null;
+  const paymentId = paymentEntity?.id || null;
 
-  if (!paymentEntity?.id) {
-    return res.json({ success: true, ignored: true });
+  if (!paymentEntity || !paymentId) {
+    return res.json({ success: true, ignored: true, message: 'No payment entity in webhook' });
   }
 
-  const existingByPayment = await findPaymentByRazorpayPaymentId(paymentEntity.id);
-  if (existingByPayment && ['verified', 'captured', 'collected'].includes(String(existingByPayment.status || '').toLowerCase())) {
-    return res.json({ success: true, idempotent: true });
+  if (!['payment.captured', 'payment.authorized', 'payment.failed'].includes(eventName)) {
+    return res.json({ success: true, ignored: true, event: eventName });
   }
 
-  const razorpayOrderId = paymentEntity.order_id;
-  const payment = razorpayOrderId ? await findPaymentByRazorpayOrderId(razorpayOrderId) : null;
+  const result = await withTransaction(async (client) => {
+    const payment = orderId
+      ? await findPaymentByProviderOrderId(orderId, client)
+      : null;
 
-  if (!payment) {
-    return res.json({ success: true, ignored: true, message: 'No matching PrintEase payment found' });
-  }
+    if (!payment) {
+      return { ignored: true, message: 'Payment record not found for webhook' };
+    }
 
-  if (event.event === 'payment.captured') {
-    const result = await withTransaction(async (client) => markVerifiedAndQueue({
-      payment,
-      razorpayPaymentId: paymentEntity.id,
-      rawResponse: event
-    }, client));
+    const order = await findOrderByIdOrCode(payment.orderId, client);
+    if (!order) {
+      return { ignored: true, message: 'Order not found for webhook payment' };
+    }
 
-    return res.json({ success: true, ...result });
-  }
+    if (eventName === 'payment.failed') {
+      const failedPayment = await updatePayment(payment.id, {
+        status: 'failed',
+        providerPaymentId: paymentId,
+        providerStatus: paymentEntity.status || 'failed',
+        providerPayload: event
+      }, client);
 
-  if (event.event === 'payment.failed') {
-    await updatePayment(payment.id, {
-      status: 'failed',
-      razorpayPaymentId: paymentEntity.id,
-      rawResponse: event
+      const failedOrder = await updateOrderPayment(order.id, 'failed', 'Payment Failed', client);
+      return { payment: failedPayment, order: failedOrder, failed: true };
+    }
+
+    const currentOrderStatus = String(order.paymentStatus || '').toLowerCase();
+    if (['verified', 'collected'].includes(currentOrderStatus)) {
+      return { payment, order, alreadyProcessed: true };
+    }
+
+    return markOrderPaidAndQueue({
+      orderId: order.id,
+      paymentId: payment.id,
+      providerPaymentId: paymentId,
+      providerSignature: null,
+      providerStatus: paymentEntity.status || eventName,
+      providerPayload: event,
+      client
     });
-    return res.json({ success: true, failed: true });
+  });
+
+  res.json({
+    success: true,
+    event: eventName,
+    result
+  });
+});
+
+/**
+ * Temporary compatibility endpoint:
+ * Do not allow demo verification in production unless DEMO_PAYMENT_ENABLED=true.
+ */
+export const verifyDemoPayment = asyncHandler(async (req, res) => {
+  if (String(process.env.DEMO_PAYMENT_ENABLED || 'false').toLowerCase() !== 'true') {
+    return res.status(403).json({
+      success: false,
+      message: 'Demo payment verification is disabled.'
+    });
   }
 
-  res.json({ success: true, ignored: true });
+  const { paymentId, demoSuccess = true } = req.body;
+
+  if (!paymentId) {
+    return res.status(400).json({ success: false, message: 'Payment ID is required' });
+  }
+
+  const payment = await findPaymentById(paymentId);
+  if (!payment) {
+    return res.status(404).json({ success: false, message: 'Payment not found' });
+  }
+
+  const order = await findOrderByIdOrCode(payment.orderId);
+  if (!order) {
+    return res.status(404).json({ success: false, message: 'Linked order not found' });
+  }
+
+  if (!canAccessOrder(req.user, order)) {
+    return res.status(403).json({ success: false, message: 'You are not allowed to verify this payment' });
+  }
+
+  if (!demoSuccess) {
+    const result = await withTransaction(async (client) => {
+      const failedPayment = await updatePayment(payment.id, { status: 'failed' }, client);
+      const failedOrder = await updateOrderPayment(order.id, 'failed', 'Payment Failed', client);
+      return { payment: failedPayment, order: failedOrder };
+    });
+
+    return res.json({ success: true, message: 'Payment marked failed in demo', ...result });
+  }
+
+  const result = await withTransaction(async (client) => {
+    const collectedPayment = await updatePayment(payment.id, {
+      status: 'collected',
+      transactionId: `demo_payment_${Date.now()}`,
+      verifiedAt: new Date().toISOString()
+    }, client);
+    const collectedOrder = await updateOrderPayment(order.id, 'collected', 'Payment Collected', client);
+    const autoQueue = await queuePrintJobIfPaymentReady(collectedOrder.id, collectedOrder.centreId, client);
+    return {
+      payment: collectedPayment,
+      order: autoQueue.order || collectedOrder,
+      autoQueue,
+      printJob: autoQueue.printJob || autoQueue.existingPrintJob || null
+    };
+  });
+
+  res.json({
+    success: true,
+    message: result.autoQueue?.message || 'Payment collected in demo mode',
+    ...result
+  });
 });

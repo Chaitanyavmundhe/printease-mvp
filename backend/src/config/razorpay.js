@@ -1,44 +1,48 @@
 import Razorpay from 'razorpay';
 
-export function getRazorpayConfigStatus() {
+export const RAZORPAY_ENABLED = String(process.env.RAZORPAY_ENABLED || 'false').toLowerCase() === 'true';
+export const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || '';
+export const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || '';
+export const RAZORPAY_WEBHOOK_SECRET = process.env.RAZORPAY_WEBHOOK_SECRET || '';
+export const RAZORPAY_CURRENCY = process.env.RAZORPAY_CURRENCY || 'INR';
+
+let cachedClient = null;
+
+export function getRazorpayClient() {
+  if (!RAZORPAY_ENABLED) {
+    const error = new Error('Razorpay is not enabled.');
+    error.statusCode = 503;
+    throw error;
+  }
+
+  if (!RAZORPAY_KEY_ID || !RAZORPAY_KEY_SECRET) {
+    const error = new Error('Razorpay credentials are not configured.');
+    error.statusCode = 500;
+    throw error;
+  }
+
+  if (!cachedClient) {
+    cachedClient = new Razorpay({
+      key_id: RAZORPAY_KEY_ID,
+      key_secret: RAZORPAY_KEY_SECRET
+    });
+  }
+
+  return cachedClient;
+}
+
+export function getPublicRazorpayConfig() {
   return {
-    enabled: process.env.RAZORPAY_ENABLED === 'true',
-    keyIdConfigured: Boolean(process.env.RAZORPAY_KEY_ID),
-    keySecretConfigured: Boolean(process.env.RAZORPAY_KEY_SECRET),
-    webhookSecretConfigured: Boolean(process.env.RAZORPAY_WEBHOOK_SECRET)
+    enabled: RAZORPAY_ENABLED,
+    keyId: RAZORPAY_ENABLED ? RAZORPAY_KEY_ID : '',
+    currency: RAZORPAY_CURRENCY
   };
 }
 
-export function isRazorpayEnabled() {
-  return process.env.RAZORPAY_ENABLED === 'true';
-}
-
-export function getRazorpayKeyId() {
-  return process.env.RAZORPAY_KEY_ID;
-}
-
-export function getRazorpayWebhookSecret() {
-  return process.env.RAZORPAY_WEBHOOK_SECRET;
-}
-
-export function getRazorpayKeySecret() {
-  return process.env.RAZORPAY_KEY_SECRET;
-}
-
-export function getRazorpayClient() {
-  if (!isRazorpayEnabled()) {
-    throw new Error('Razorpay is disabled. Set RAZORPAY_ENABLED=true to use online payments.');
+export function amountToPaise(amount) {
+  const paise = Math.round(Number(amount || 0) * 100);
+  if (!Number.isFinite(paise) || paise <= 0) {
+    throw new Error('Invalid payment amount.');
   }
-
-  const keyId = getRazorpayKeyId();
-  const keySecret = getRazorpayKeySecret();
-
-  if (!keyId || !keySecret) {
-    throw new Error('Razorpay is not configured. Missing RAZORPAY_KEY_ID or RAZORPAY_KEY_SECRET.');
-  }
-
-  return new Razorpay({
-    key_id: keyId,
-    key_secret: keySecret
-  });
+  return paise;
 }

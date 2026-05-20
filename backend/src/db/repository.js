@@ -154,16 +154,20 @@ export function mapPayment(row) {
     orderId: row.order_id,
     amount: number(row.amount),
     method: row.method,
-    gateway: row.method,
+    gateway: row.provider || row.method,
+    provider: row.provider || null,
     transactionId: row.transaction_id,
-    gatewayOrderId: row.transaction_id,
-    gatewayPaymentId: row.transaction_id,
-    razorpayOrderId: row.razorpay_order_id || null,
-    razorpayPaymentId: row.razorpay_payment_id || null,
-    razorpaySignature: row.razorpay_signature || null,
+    gatewayOrderId: row.provider_order_id || row.transaction_id,
+    gatewayPaymentId: row.provider_payment_id || null,
+    providerOrderId: row.provider_order_id || null,
+    providerPaymentId: row.provider_payment_id || null,
+    providerSignature: row.provider_signature || null,
+    providerStatus: row.provider_status || null,
+    providerPayload: row.provider_payload || {},
     paymentLinkId: row.payment_link_id || null,
-    qrId: row.qr_id || null,
-    rawResponse: row.raw_response || null,
+    qrCodeId: row.qr_code_id || null,
+    qrImageUrl: row.qr_image_url || null,
+    shortUrl: row.short_url || null,
     status: row.status,
     createdAt: timestamp(row.created_at),
     verifiedAt: timestamp(row.verified_at)
@@ -696,11 +700,15 @@ export async function updateOrderPayment(orderId, paymentStatus, status, client)
 export async function createPayment(payment, client) {
   const result = await executor(client).query(
     `insert into payments (
-       id, order_id, amount, method, transaction_id,
-       razorpay_order_id, razorpay_payment_id, razorpay_signature, payment_link_id, qr_id, raw_response,
-       status, created_at, verified_at
+       id, order_id, amount, method, transaction_id, status, created_at, verified_at,
+       provider, provider_order_id, provider_payment_id, provider_signature,
+       provider_status, provider_payload, payment_link_id, qr_code_id, qr_image_url, short_url
      )
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12, coalesce($13, now()), $14)
+     values (
+       $1, $2, $3, $4, $5, $6, coalesce($7, now()), $8,
+       $9, $10, $11, $12,
+       $13, coalesce($14::jsonb, '{}'::jsonb), $15, $16, $17, $18
+     )
      returning *`,
     [
       payment.id,
@@ -708,15 +716,19 @@ export async function createPayment(payment, client) {
       payment.amount,
       payment.method || payment.gateway || 'RAZORPAY',
       payment.transactionId || payment.gatewayPaymentId || payment.gatewayOrderId || null,
-      payment.razorpayOrderId || null,
-      payment.razorpayPaymentId || null,
-      payment.razorpaySignature || null,
-      payment.paymentLinkId || null,
-      payment.qrId || null,
-      JSON.stringify(payment.rawResponse || null),
       payment.status,
       payment.createdAt || null,
-      payment.verifiedAt || null
+      payment.verifiedAt || null,
+      payment.provider || null,
+      payment.providerOrderId || payment.gatewayOrderId || null,
+      payment.providerPaymentId || payment.gatewayPaymentId || null,
+      payment.providerSignature || null,
+      payment.providerStatus || null,
+      payment.providerPayload ? JSON.stringify(payment.providerPayload) : null,
+      payment.paymentLinkId || null,
+      payment.qrCodeId || null,
+      payment.qrImageUrl || null,
+      payment.shortUrl || null
     ]
   );
 
@@ -728,13 +740,19 @@ export async function findPaymentById(id, client) {
   return mapPayment(result.rows[0]);
 }
 
-export async function findPaymentByRazorpayOrderId(razorpayOrderId, client) {
-  const result = await executor(client).query('select * from payments where razorpay_order_id = $1 order by created_at desc limit 1', [razorpayOrderId]);
+export async function findPaymentByProviderOrderId(providerOrderId, client) {
+  const result = await executor(client).query(
+    'select * from payments where provider_order_id = $1 order by created_at desc limit 1',
+    [providerOrderId]
+  );
   return mapPayment(result.rows[0]);
 }
 
-export async function findPaymentByRazorpayPaymentId(razorpayPaymentId, client) {
-  const result = await executor(client).query('select * from payments where razorpay_payment_id = $1 order by created_at desc limit 1', [razorpayPaymentId]);
+export async function findPaymentByProviderPaymentId(providerPaymentId, client) {
+  const result = await executor(client).query(
+    'select * from payments where provider_payment_id = $1 order by created_at desc limit 1',
+    [providerPaymentId]
+  );
   return mapPayment(result.rows[0]);
 }
 
@@ -745,25 +763,32 @@ export async function updatePayment(paymentId, updates, client) {
        transaction_id = coalesce($2, transaction_id),
        status = coalesce($3, status),
        verified_at = coalesce($4, verified_at),
-       razorpay_order_id = coalesce($5, razorpay_order_id),
-       razorpay_payment_id = coalesce($6, razorpay_payment_id),
-       razorpay_signature = coalesce($7, razorpay_signature),
-       payment_link_id = coalesce($8, payment_link_id),
-       qr_id = coalesce($9, qr_id),
-       raw_response = coalesce($10::jsonb, raw_response)
+       provider_payment_id = coalesce($5, provider_payment_id),
+       provider_signature = coalesce($6, provider_signature),
+       provider_status = coalesce($7, provider_status),
+       provider_payload = case
+         when $8::jsonb is null then provider_payload
+         else provider_payload || $8::jsonb
+       end,
+       payment_link_id = coalesce($9, payment_link_id),
+       qr_code_id = coalesce($10, qr_code_id),
+       qr_image_url = coalesce($11, qr_image_url),
+       short_url = coalesce($12, short_url)
      where id = $1
      returning *`,
     [
       paymentId,
-      updates.transactionId || updates.gatewayPaymentId || null,
-      updates.status,
-      updates.verifiedAt,
-      updates.razorpayOrderId || null,
-      updates.razorpayPaymentId || null,
-      updates.razorpaySignature || null,
+      updates.transactionId || updates.gatewayPaymentId || updates.providerPaymentId || null,
+      updates.status || null,
+      updates.verifiedAt || null,
+      updates.providerPaymentId || updates.gatewayPaymentId || null,
+      updates.providerSignature || null,
+      updates.providerStatus || null,
+      updates.providerPayload ? JSON.stringify(updates.providerPayload) : null,
       updates.paymentLinkId || null,
-      updates.qrId || null,
-      updates.rawResponse === undefined ? null : JSON.stringify(updates.rawResponse)
+      updates.qrCodeId || null,
+      updates.qrImageUrl || null,
+      updates.shortUrl || null
     ]
   );
 

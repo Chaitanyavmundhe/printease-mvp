@@ -18,7 +18,8 @@ import HistoryPage from "./pages/HistoryPage";
 import { initialCentres, initialOrders } from "./data/demoData";
 import { calculateTotalAmount, countSelectedPages, getPricePerPage } from "./utils/price";
 import { isDesktop, onPrintersUpdated } from "./utils/desktopBridge";
-import { apiRequest, createRazorpayOrder, createRazorpayPaymentLink, verifyRazorpayPayment } from "./services/api";
+import { apiRequest } from "./services/api";
+import { loadRazorpayCheckout } from "./utils/razorpay";
 
 const ROUTES = {
   home: "/",
@@ -221,6 +222,9 @@ export default function App() {
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [paymentError, setPaymentError] = useState("");
   const [pendingPayment, setPendingPayment] = useState(null);
+  const [paymentMethod, setPaymentMethod] = useState("razorpay");
+  const [upiQr, setUpiQr] = useState(null);
+  const demoPaymentEnabled = import.meta.env.VITE_DEMO_PAYMENT_ENABLED === "true";
 
   const [centres, setCentres] = useState(initialCentres);
   const [orders, setOrders] = useState(initialOrders);
@@ -697,22 +701,9 @@ export default function App() {
     }
   }
 
-  function loadRazorpayCheckoutScript() {
-    return new Promise((resolve, reject) => {
-      if (window.Razorpay) return resolve(true);
-
-      const script = document.createElement("script");
-      script.src = "https://checkout.razorpay.com/v1/checkout.js";
-      script.async = true;
-      script.onload = () => resolve(true);
-      script.onerror = () => reject(new Error("Could not load Razorpay Checkout."));
-      document.body.appendChild(script);
-    });
-  }
-
-  async function handleRazorpayCheckout() {
+  async function handlePayment() {
     if (!order?.backendId) {
-      setPaymentError("Create a backend-priced pending order before payment.");
+      setPaymentError("Create a pending order before payment.");
       navigate("upload");
       return;
     }
@@ -721,59 +712,148 @@ export default function App() {
     setPaymentError("");
 
     try {
-      await loadRazorpayCheckoutScript();
-      const paymentData = await createRazorpayOrder(order.backendId);
+      let paymentData = null;
 
-      const checkout = new window.Razorpay({
-        key: paymentData.keyId || import.meta.env.VITE_RAZORPAY_KEY_ID,
-        amount: paymentData.amount,
-        currency: paymentData.currency || "INR",
-        name: "PrintEase",
-        description: order.id,
-        order_id: paymentData.razorpayOrderId,
-        handler: async (response) => {
-          setPaymentLoading(true);
-          setPaymentError("");
+      if (paymentMethod === "upi_qr") {
+        paymentData = await apiRequest("/api/payments/razorpay/upi-qr", {
+          method: "POST",
+          body: JSON.stringify({ orderId: order.backendId }),
+        });
+      } else {
+        paymentData = await apiRequest("/api/payments/razorpay/order", {
+          method: "POST",
+          body: JSON.stringify({ orderId: order.backendId }),
+        });
+      }
 
+      setPendingPayment(paymentData.payment || null);
+      setUpiQr(paymentData.qr || null);
+
+      if (paymentMethod === "razorpay" && paymentData.razorpay?.orderId) {
+        await loadRazorpayCheckout();
+
+        const options = {
+          key: paymentData.razorpay.keyId,
+          amount: paymentData.razorpay.amount,
+          currency: paymentData.razorpay.currency,
+          name: paymentData.razorpay.name || "PrintEase",
+          description: paymentData.razorpay.description || "PrintEase order payment",
+          order_id: paymentData.razorpay.orderId,
+          prefill: paymentData.razorpay.prefill || {},
+          notes: paymentData.razorpay.notes || {},
+          handler: async function (response) {
+            try {
+              setPaymentLoading(true);
+              setPaymentError("");
+
+              const verifiedData = await apiRequest("/api/payments/razorpay/verify", {
+                method: "POST",
+                body: JSON.stringify({
+                  paymentId: paymentData.payment.id,
+                  razorpay_order_id: response.razorpay_order_id,
+                  razorpay_payment_id: response.razorpay_payment_id,
+                  razorpay_signature: response.razorpay_signature,
+                }),
+              });
+
+              const verifiedOrder = normalizeOrder(verifiedData.order || order, centres);
+              setOrder(verifiedOrder);
+              setOrders((prev) => upsertOrder(prev, verifiedOrder));
+              setLastOrdersUpdatedAt(new Date().toISOString());
+              setPendingPayment(null);
+              setUpiQr(null);
+              navigate("track");
+            } catch (error) {
+              setPaymentError(error.message || "Payment verification failed.");
+            } finally {
+              setPaymentLoading(false);
+            }
+          },
+          modal: {
+            ondismiss: function () {
+              setPaymentError("Payment was not completed. You can retry from tracking page or pay at the shop.");
+            },
+          },
+        };
+
+        const razorpay = new window.Razorpay(options);
+        razorpay.open();
+      } else if (paymentMethod === "upi_qr") {
+        navigate("track");
+      }
+    } catch (error) {
+      setPaymentError(error.message || "Could not initialize payment.");
+    } finally {
+      if (paymentMethod !== "razorpay") {
+        setPaymentLoading(false);
+      }
+    }
+  }
+
+  async function startRazorpayForExistingOrder(existingOrder = order) {
+    if (!existingOrder?.backendId) {
+      setPaymentError("No backend order available for payment.");
+      return;
+    }
+
+    setPaymentLoading(true);
+    setPaymentError("");
+
+    try {
+      const paymentData = await apiRequest("/api/payments/razorpay/order", {
+        method: "POST",
+        body: JSON.stringify({ orderId: existingOrder.backendId }),
+      });
+
+      setPendingPayment(paymentData.payment || null);
+      await loadRazorpayCheckout();
+
+      const razorpay = new window.Razorpay({
+        key: paymentData.razorpay.keyId,
+        amount: paymentData.razorpay.amount,
+        currency: paymentData.razorpay.currency,
+        name: paymentData.razorpay.name || "PrintEase",
+        description: paymentData.razorpay.description || "PrintEase order payment",
+        order_id: paymentData.razorpay.orderId,
+        prefill: paymentData.razorpay.prefill || {},
+        notes: paymentData.razorpay.notes || {},
+        handler: async function (response) {
           try {
-            const verifiedData = await verifyRazorpayPayment(response);
-            const nextOrder = normalizeOrder(verifiedData.order || order, centres);
+            setPaymentLoading(true);
+            const verifiedData = await apiRequest("/api/payments/razorpay/verify", {
+              method: "POST",
+              body: JSON.stringify({
+                paymentId: paymentData.payment.id,
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+              }),
+            });
+
+            const nextOrder = normalizeOrder(verifiedData.order || existingOrder, centres);
             setOrder(nextOrder);
             setOrders((prev) => upsertOrder(prev, nextOrder));
             setLastOrdersUpdatedAt(new Date().toISOString());
-            navigate("track");
+            setPendingPayment(null);
+            setUpiQr(null);
           } catch (error) {
-            setPaymentError(error.message || "Could not verify Razorpay payment.");
+             setPaymentError(error.message || "Payment verification failed.");
           } finally {
-            setPaymentLoading(false);
+             setPaymentLoading(false);
           }
-        },
-        prefill: {
-          name: currentUser?.name || "",
-          contact: currentUser?.mobile || "",
-        },
-        notes: {
-          printOrderId: order.backendId,
-        },
-        modal: {
-          ondismiss: () => setPaymentLoading(false),
-        },
-        theme: {
-          color: "#0f172a",
         },
       });
 
-      checkout.open();
+      razorpay.open();
     } catch (error) {
       setPaymentError(error.message || "Could not start Razorpay payment.");
       setPaymentLoading(false);
     }
   }
 
-  async function handleUpiPaymentLink() {
-    if (!order?.backendId) {
-      setPaymentError("Create a backend-priced pending order before payment.");
-      navigate("upload");
+  async function createUpiQrForExistingOrder(existingOrder = order) {
+    if (!existingOrder?.backendId) {
+      setPaymentError("No backend order available for UPI QR.");
       return;
     }
 
@@ -781,14 +861,37 @@ export default function App() {
     setPaymentError("");
 
     try {
-      const data = await createRazorpayPaymentLink(order.backendId);
-      if (data.shortUrl) {
-        window.open(data.shortUrl, "_blank", "noopener,noreferrer");
-      }
-      setPendingPayment(data.payment || null);
-      navigate("track");
+      const paymentData = await apiRequest("/api/payments/razorpay/upi-qr", {
+        method: "POST",
+        body: JSON.stringify({ orderId: existingOrder.backendId }),
+      });
+
+      setPendingPayment(paymentData.payment || null);
+      setUpiQr(paymentData.qr || null);
     } catch (error) {
-      setPaymentError(error.message || "Could not create UPI payment link.");
+      setPaymentError(error.message || "Could not create UPI QR.");
+    } finally {
+      setPaymentLoading(false);
+    }
+  }
+
+  async function handleVerifyDemoPayment() {
+    if (!pendingPayment?.id) return;
+    setPaymentLoading(true);
+    setPaymentError("");
+    try {
+      const data = await apiRequest("/api/payments/verify-demo", {
+        method: "POST",
+        body: JSON.stringify({ paymentId: pendingPayment.id, demoSuccess: true })
+      });
+      const verifiedOrder = normalizeOrder(data.order || order, centres);
+      setOrder(verifiedOrder);
+      setOrders(prev => upsertOrder(prev, verifiedOrder));
+      setLastOrdersUpdatedAt(new Date().toISOString());
+      setPendingPayment(null);
+      setUpiQr(null);
+    } catch (error) {
+      setPaymentError(error.message || "Demo verification failed");
     } finally {
       setPaymentLoading(false);
     }
