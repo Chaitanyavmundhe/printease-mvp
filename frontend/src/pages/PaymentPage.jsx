@@ -2,7 +2,7 @@ import { CreditCard, ExternalLink, QrCode } from "lucide-react";
 import Card from "../components/Card";
 import Row from "../components/Row";
 
-export default function PaymentPage({ selectedCentre, documentName, pages, copies, backendPrice, order, handleRazorpayCheckout, handleUpiPaymentLink, paymentLoading, paymentError }) {
+export default function PaymentPage({ selectedCentre, documentName, pages, copies, backendPrice, order, handlePayment, createUpiQr, paymentLoading, paymentError }) {
   const amount = backendPrice?.totalAmount ?? order?.amount ?? 0;
   const rate = backendPrice?.pricePerPage ?? backendPrice?.files?.[0]?.pricePerPage ?? 0;
 
@@ -44,10 +44,10 @@ export default function PaymentPage({ selectedCentre, documentName, pages, copie
           {paymentError}
         </p>
       )}
-      <button disabled={paymentLoading} onClick={handleRazorpayCheckout} className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-400">
+      <button disabled={paymentLoading} onClick={handlePayment} className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-400">
         <CreditCard size={18} /> {paymentLoading ? "Opening Razorpay..." : "Pay Online"}
       </button>
-      <button disabled={paymentLoading} onClick={handleUpiPaymentLink} className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border px-4 py-3 font-semibold disabled:cursor-not-allowed disabled:opacity-50">
+      <button disabled={paymentLoading} onClick={createUpiQr} className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border px-4 py-3 font-semibold disabled:cursor-not-allowed disabled:opacity-50">
         <ExternalLink size={18} /> Create UPI Payment Link
       </button>
     </Card>

@@ -1097,7 +1097,7 @@ export default function App() {
             path={ROUTES.payment}
             element={
               selectedCentre && order ? (
-                <PaymentPage selectedCentre={selectedCentre} documentName={documentName} pages={pages} copies={copies} backendPrice={backendPrice} order={order} handlePayment={handlePayment} paymentLoading={paymentLoading} paymentError={paymentError} />
+                <PaymentPage selectedCentre={selectedCentre} documentName={documentName} pages={pages} copies={copies} backendPrice={backendPrice} order={order} handlePayment={handlePayment} createUpiQr={createUpiQrForExistingOrder} paymentLoading={paymentLoading} paymentError={paymentError} />
               ) : (
                 <RouteNotice title="Payment Not Ready" message="Please select a centre and upload a document first." actionLabel="Select Centre" onAction={() => navigate("centre")} />
               )
@@ -1110,6 +1110,9 @@ export default function App() {
                 order={order}
                 lastUpdatedAt={lastOrdersUpdatedAt}
                 pendingPayment={pendingPayment}
+                upiQr={upiQr}
+                onPayOnline={startRazorpayForExistingOrder}
+                onCreateUpiQr={createUpiQrForExistingOrder}
                 onSimulateVerifiedPayment={handleVerifyDemoPayment}
                 paymentLoading={paymentLoading}
                 paymentError={paymentError}

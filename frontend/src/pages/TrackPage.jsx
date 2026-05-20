@@ -41,7 +41,7 @@ function isPaymentPending(order) {
   return value === "pending" || value === "unpaid" || !value;
 }
 
-export default function TrackPage({ order, lastUpdatedAt, pendingPayment, onSimulateVerifiedPayment, paymentLoading, paymentError }) {
+export default function TrackPage({ order, lastUpdatedAt, pendingPayment, upiQr, onPayOnline, onCreateUpiQr, onSimulateVerifiedPayment, paymentLoading, paymentError }) {
   if (!order) return <Card>No active order found.</Card>;
 
   const currentStatus = normalizeStatus(order.status);
@@ -65,16 +65,45 @@ export default function TrackPage({ order, lastUpdatedAt, pendingPayment, onSimu
       {paymentPending && (
         <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
           <p className="font-semibold">Document stored securely. Printer agent will receive it only after payment is collected or verified.</p>
-          {pendingPayment?.id && (
+
+          <div className="mt-4 flex flex-wrap gap-3">
             <button
               type="button"
-              onClick={onSimulateVerifiedPayment}
+              onClick={() => onPayOnline && onPayOnline()}
               disabled={paymentLoading}
-              className="mt-4 inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 font-semibold text-white disabled:bg-slate-400"
+              className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 font-semibold text-white disabled:bg-slate-400"
             >
-              <CreditCard size={16} /> {paymentLoading ? "Verifying..." : "Simulate Verified Payment"}
+              <CreditCard size={16} /> {paymentLoading ? "Starting..." : "Pay Online"}
             </button>
-          )}
+
+            <button
+              type="button"
+              onClick={() => onCreateUpiQr && onCreateUpiQr()}
+              disabled={paymentLoading}
+              className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-2 font-semibold text-slate-900 disabled:opacity-50"
+            >
+              Generate UPI QR
+            </button>
+
+            {onSimulateVerifiedPayment && pendingPayment?.id && (
+              <button
+                type="button"
+                onClick={onSimulateVerifiedPayment}
+                disabled={paymentLoading}
+                className="inline-flex items-center gap-2 rounded-xl border border-dashed bg-white px-4 py-2 font-semibold text-slate-700 disabled:opacity-50"
+              >
+                Dev Only: Simulate Verified Payment
+              </button>
+            )}
+          </div>
+
+          {upiQr?.imageUrl || upiQr?.image_url ? (
+            <div className="mt-4 rounded-2xl border bg-white p-4 text-center">
+              <img src={upiQr?.imageUrl || upiQr?.image_url} alt="Razorpay UPI QR" className="mx-auto h-48 w-48 object-contain" />
+              <p className="mt-2 text-xs text-slate-500">Scan this QR to pay. Status updates after Razorpay confirms payment or hub marks payment collected.</p>
+            </div>
+          ) : null}
+
           {paymentError && <p className="mt-3 font-semibold text-rose-700">{paymentError}</p>}
         </div>
       )}

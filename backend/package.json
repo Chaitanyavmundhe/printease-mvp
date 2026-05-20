@@ -7,6 +7,7 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
+    "test": "vitest --run",
     "db:setup": "node src/db/setup.js",
     "db:schema": "node src/db/setup.js --schema-only",
     "db:seed": "node src/db/setup.js --seed-only"
@@ -33,5 +34,9 @@
     "pdf-lib": "^1.17.1",
     "pg": "^8.20.0",
     "razorpay": "^2.9.6"
+  }
+  ,
+  "devDependencies": {
+    "vitest": "^1.0.0"
   }
 }
