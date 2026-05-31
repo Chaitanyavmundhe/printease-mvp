@@ -62,6 +62,62 @@ function formatStatus(status) {
   return status.charAt(0).toUpperCase() + status.slice(1).toLowerCase();
 }
 
+function buildPrintOptions({
+  selectedPages,
+  copies,
+  colorType,
+  sideType,
+  paperSize,
+  pagesPerSheet,
+  watermark,
+  watermarkType = "order_code",
+  watermarkText = "",
+  watermarkPosition = "bottom_right",
+  watermarkOpacity = 0.18,
+  watermarkFontSize = 18,
+  watermarkRotation = 0,
+}) {
+  const range = String(selectedPages || "").trim();
+  const hasCustomRange = range && range.toLowerCase() !== "all";
+
+  return {
+    destination: {
+      selectedHubId: null,
+      preferredAgentId: null,
+      preferredPrinterName: null,
+    },
+    pages: {
+      mode: hasCustomRange ? "custom" : "all",
+      range: hasCustomRange ? range : "",
+    },
+    copies: Number(copies) || 1,
+    orientation: "auto",
+    colorMode: colorType === "color" ? "color" : "black_white",
+    paperSize: paperSize || "A4",
+    sides: sideType === "double" ? "two_sided_long_edge" : "one_sided",
+    scale: {
+      mode: "original",
+      percent: null,
+    },
+    pagesPerSheet: Number(pagesPerSheet) || 1,
+    margins: {
+      mode: "default",
+    },
+    format: "original",
+    headersFooters: false,
+    backgrounds: true,
+    watermark: {
+      enabled: Boolean(watermark),
+      type: watermarkType || "order_code",
+      text: watermarkText || "",
+      position: watermarkPosition || "bottom_right",
+      opacity: Number(watermarkOpacity) || 0.18,
+      fontSize: Number(watermarkFontSize) || 18,
+      rotation: Number(watermarkRotation) || 0,
+    },
+  };
+}
+
 function normalizeCentre(centre) {
   const pricing = centre.pricing || {};
 
@@ -217,6 +273,12 @@ export default function App() {
   const [paperSize, setPaperSize] = useState("A4");
   const [pagesPerSheet, setPagesPerSheet] = useState(1);
   const [watermark, setWatermark] = useState(false);
+  const [watermarkType, setWatermarkType] = useState("order_code");
+  const [watermarkText, setWatermarkText] = useState("");
+  const [watermarkPosition, setWatermarkPosition] = useState("bottom_right");
+  const [watermarkOpacity, setWatermarkOpacity] = useState(0.18);
+  const [watermarkFontSize, setWatermarkFontSize] = useState(18);
+  const [watermarkRotation, setWatermarkRotation] = useState(0);
   const [order, setOrder] = useState(null);
   const [backendPrice, setBackendPrice] = useState(null);
   const [paymentLoading, setPaymentLoading] = useState(false);
@@ -656,6 +718,22 @@ export default function App() {
         setPages(trustedPageCount);
       }
 
+      const printOptions = buildPrintOptions({
+        selectedPages,
+        copies,
+        colorType,
+        sideType,
+        paperSize,
+        pagesPerSheet,
+        watermark,
+        watermarkType,
+        watermarkText,
+        watermarkPosition,
+        watermarkOpacity,
+        watermarkFontSize,
+        watermarkRotation,
+      });
+
       const orderData = await apiRequest("/api/orders", {
         method: "POST",
         body: JSON.stringify({
@@ -671,6 +749,7 @@ export default function App() {
             paperSize,
             pagesPerSheet,
             watermarkEnabled: watermark,
+            printOptions,
           })),
           documentName: uploadedDocuments.length === 1
             ? uploadedDocuments[0]?.fileName || documentName || filesToUpload[0].name
@@ -683,6 +762,7 @@ export default function App() {
           paperSize,
           pagesPerSheet,
           watermarkEnabled: watermark,
+          printOptions,
         }),
       });
 
@@ -1092,7 +1172,7 @@ export default function App() {
           />
           <Route path={ROUTES.desktopAgent} element={<DesktopAgentPage />} />
           <Route path={ROUTES.centre} element={<CentreCodePage centreCode={centreCode} setCentreCode={setCentreCode} handleCentreCode={handleCentreCode} centres={centres} selectCentreAndUpload={selectCentreAndUpload} lookupLoading={centreLookupLoading} lookupError={centreLookupError} />} />
-          <Route path={ROUTES.upload} element={<UploadPage selectedCentre={selectedCentre} documentFile={documentFile} setDocumentFile={setDocumentFile} documentFiles={documentFiles} setDocumentFiles={setDocumentFiles} documentName={documentName} setDocumentName={setDocumentName} pages={pages} setPages={setPages} selectedPages={selectedPages} setSelectedPages={setSelectedPages} copies={copies} setCopies={setCopies} colorType={colorType} setColorType={setColorType} sideType={sideType} setSideType={setSideType} paperSize={paperSize} setPaperSize={setPaperSize} pagesPerSheet={pagesPerSheet} setPagesPerSheet={setPagesPerSheet} watermark={watermark} setWatermark={setWatermark} pricePerPage={pricePerPage} estimatedSelectedPageCount={estimatedSelectedPageCount} totalAmount={totalAmount} backendPrice={backendPrice} preparePayment={preparePayment} paymentLoading={paymentLoading} paymentError={paymentError} navigate={navigate} />} />
+          <Route path={ROUTES.upload} element={<UploadPage selectedCentre={selectedCentre} documentFile={documentFile} setDocumentFile={setDocumentFile} documentFiles={documentFiles} setDocumentFiles={setDocumentFiles} documentName={documentName} setDocumentName={setDocumentName} pages={pages} setPages={setPages} selectedPages={selectedPages} setSelectedPages={setSelectedPages} copies={copies} setCopies={setCopies} colorType={colorType} setColorType={setColorType} sideType={sideType} setSideType={setSideType} paperSize={paperSize} setPaperSize={setPaperSize} pagesPerSheet={pagesPerSheet} setPagesPerSheet={setPagesPerSheet} watermark={watermark} setWatermark={setWatermark} watermarkType={watermarkType} setWatermarkType={setWatermarkType} watermarkText={watermarkText} setWatermarkText={setWatermarkText} watermarkPosition={watermarkPosition} setWatermarkPosition={setWatermarkPosition} watermarkOpacity={watermarkOpacity} setWatermarkOpacity={setWatermarkOpacity} watermarkFontSize={watermarkFontSize} setWatermarkFontSize={setWatermarkFontSize} watermarkRotation={watermarkRotation} setWatermarkRotation={setWatermarkRotation} pricePerPage={pricePerPage} estimatedSelectedPageCount={estimatedSelectedPageCount} totalAmount={totalAmount} backendPrice={backendPrice} preparePayment={preparePayment} paymentLoading={paymentLoading} paymentError={paymentError} navigate={navigate} />} />
           <Route
             path={ROUTES.payment}
             element={
@@ -1113,7 +1193,7 @@ export default function App() {
                 upiQr={upiQr}
                 onPayOnline={startRazorpayForExistingOrder}
                 onCreateUpiQr={createUpiQrForExistingOrder}
-                onSimulateVerifiedPayment={handleVerifyDemoPayment}
+                onSimulateVerifiedPayment={demoPaymentEnabled ? handleVerifyDemoPayment : null}
                 paymentLoading={paymentLoading}
                 paymentError={paymentError}
               />

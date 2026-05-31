@@ -77,8 +77,10 @@ function extensionForJob(job) {
   return ".bin";
 }
 
-function fileNameForJob(job) {
-  return String(job?.jobId || "job").replace(/[^a-z0-9._-]/gi, "_");
+function fileNameForJob(job, index = 0) {
+  const rawName = job?.fileName || job?.jobId || "job";
+  const baseName = String(rawName).replace(/[^a-z0-9._-]/gi, "_");
+  return index > 0 ? `${index + 1}-${baseName}` : baseName;
 }
 
 async function calculateSha256(filePath) {
@@ -86,7 +88,7 @@ async function calculateSha256(filePath) {
   return createHash("sha256").update(buffer).digest("hex");
 }
 
-export async function downloadJobFile(job) {
+export async function downloadJobFile(job, { tempDir, index = 0 } = {}) {
   if (!job?.fileUrl) {
     return {
       success: false,
@@ -102,8 +104,8 @@ export async function downloadJobFile(job) {
     };
   }
 
-  const tempDir = await mkdtemp(path.join(os.tmpdir(), "printease-job-"));
-  const filePath = path.join(tempDir, `${fileNameForJob(job)}${extensionForJob(job)}`);
+  const ownTempDir = tempDir || await mkdtemp(path.join(os.tmpdir(), "printease-job-"));
+  const filePath = path.join(ownTempDir, `${fileNameForJob(job, index)}${extensionForJob(job)}`);
 
   try {
     await pipeline(Readable.fromWeb(response.body), createWriteStream(filePath));
@@ -112,7 +114,7 @@ export async function downloadJobFile(job) {
     if (expectedHash) {
       const actualHash = await calculateSha256(filePath);
       if (actualHash !== expectedHash) {
-        await rm(tempDir, { recursive: true, force: true }).catch(() => {});
+        if (!tempDir) await rm(ownTempDir, { recursive: true, force: true }).catch(() => {});
         return {
           success: false,
           message: "Downloaded print file failed SHA-256 verification.",
@@ -123,10 +125,10 @@ export async function downloadJobFile(job) {
     return {
       success: true,
       filePath,
-      tempDir,
+      tempDir: ownTempDir,
     };
   } catch (error) {
-    await rm(tempDir, { recursive: true, force: true }).catch(() => {});
+    if (!tempDir) await rm(ownTempDir, { recursive: true, force: true }).catch(() => {});
 
     return {
       success: false,
@@ -135,33 +137,76 @@ export async function downloadJobFile(job) {
   }
 }
 
+function filesForJob(job) {
+  const files = Array.isArray(job?.files)
+    ? job.files.filter((file) => file?.fileUrl)
+    : [];
+
+  if (files.length) {
+    return files.map((file, index) => ({
+      ...file,
+      jobId: `${job.jobId}-${index + 1}`,
+      fileHash: file.fileHash || file.fileSha256,
+      fileType: file.fileType || job.fileType,
+      printOptions: file.printOptions || job.printOptions || {},
+      copies: file.copies || file.printOptions?.copies || job.copies || 1,
+    }));
+  }
+
+  return [{
+    ...job,
+    printOptions: job.printOptions || {
+      paperSize: job.paperSize,
+      colorMode: job.colorMode,
+    },
+    copies: job.copies || job.printOptions?.copies || 1,
+  }];
+}
+
 export async function processNextJob({ agentToken, printerName } = {}) {
   const nextJob = await getNextJob({ agentToken });
   if (!nextJob.success || !nextJob.job) return nextJob;
 
   const job = nextJob.job;
   const selectedPrinterName = printerName || job.printerName;
-  let download = null;
+  let tempDir = null;
 
   try {
     await markJobStatus({ agentToken, jobId: job.jobId, status: "accepted" });
     await markJobStatus({ agentToken, jobId: job.jobId, status: "downloading" });
 
-    download = await downloadJobFile(job);
-    if (!download.success) throw new Error(download.message);
+    tempDir = await mkdtemp(path.join(os.tmpdir(), "printease-job-"));
+    const files = filesForJob(job);
+    const downloads = [];
+
+    for (const [index, file] of files.entries()) {
+      const download = await downloadJobFile(file, { tempDir, index });
+      if (!download.success) throw new Error(download.message);
+      downloads.push({ file, download });
+    }
 
     await markJobStatus({ agentToken, jobId: job.jobId, status: "printing" });
 
-    const printResult = await printFile({
-      printerName: selectedPrinterName,
-      filePath: download.filePath,
-      copies: job.copies || 1,
-    });
+    const printResults = [];
+    for (const { file, download } of downloads) {
+      const printResult = await printFile({
+        printerName: selectedPrinterName,
+        filePath: download.filePath,
+        copies: file.copies || file.printOptions?.copies || 1,
+        printOptions: file.printOptions || {},
+      });
 
-    if (!printResult.success) {
-      const error = new Error(printResult.message || printResult.error || "Local print command failed.");
-      error.reasonCode = printResult.reasonCode || printResult.errorCode || "LOCAL_PRINT_FAILED";
-      throw error;
+      printResults.push({
+        documentId: file.documentId || null,
+        fileName: file.fileName || null,
+        ...printResult,
+      });
+
+      if (!printResult.success) {
+        const error = new Error(printResult.message || printResult.error || "Local print command failed.");
+        error.reasonCode = printResult.reasonCode || printResult.errorCode || "LOCAL_PRINT_FAILED";
+        throw error;
+      }
     }
 
     await markJobStatus({ agentToken, jobId: job.jobId, status: "completed" });
@@ -170,7 +215,8 @@ export async function processNextJob({ agentToken, printerName } = {}) {
       success: true,
       message: "Print job completed.",
       job,
-      printResult,
+      printResult: printResults[0],
+      printResults,
     };
   } catch (error) {
     const reasonCode = error.reasonCode || error.code || "LOCAL_PRINT_FAILED";
@@ -188,8 +234,8 @@ export async function processNextJob({ agentToken, printerName } = {}) {
       job,
     };
   } finally {
-    if (download?.tempDir) {
-      await rm(download.tempDir, { recursive: true, force: true }).catch(() => {});
+    if (tempDir) {
+      await rm(tempDir, { recursive: true, force: true }).catch(() => {});
     }
   }
 }

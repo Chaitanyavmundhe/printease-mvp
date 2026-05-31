@@ -21,10 +21,11 @@ import {
   AGENT_POLL_INTERVAL_MS,
   OFFICIAL_BACKEND_URL
 } from '../config/agent.js';
-import { getSupabaseAdminClient, getSupabaseBucketName } from '../config/supabase.js';
+import { getSupabaseAdminClient } from '../config/supabase.js';
 import { createAgentToken as createRawAgentToken, createPairingCode, hashAgentSecret } from '../utils/agentCrypto.js';
 import { generateId } from '../utils/generateCode.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
+import { getPrintReadyFile } from '../utils/printReadyPdf.js';
 
 const JOB_STATUS_TO_ORDER_STATUS = {
   accepted: 'Sent to Agent',
@@ -60,6 +61,22 @@ function parsePrivateStorageReference(fileUrl) {
   };
 }
 
+function optionsForDeliveredPdf(printOptions, transformed) {
+  if (!transformed) return printOptions || {};
+
+  return {
+    ...(printOptions || {}),
+    pages: {
+      mode: 'all',
+      range: ''
+    },
+    watermark: {
+      ...((printOptions || {}).watermark || {}),
+      enabled: false
+    }
+  };
+}
+
 async function resolveDownloadUrl(fileUrl) {
   const privateReference = parsePrivateStorageReference(fileUrl);
 
@@ -92,23 +109,25 @@ async function toAgentJobPayload(job) {
   ]);
 
   const files = await Promise.all(orderFiles.map(async (file) => {
-    const storagePath = file.document?.storagePath;
-    const fileUrl = storagePath
-      ? await resolveDownloadUrl(`private://${getSupabaseBucketName()}/${storagePath}`)
+    const printReadyFile = await getPrintReadyFile(order, file);
+    const fileUrl = printReadyFile?.fileUrl
+      ? await resolveDownloadUrl(printReadyFile.fileUrl)
       : null;
 
     return {
       documentId: file.documentId,
       fileUrl,
-      fileSha256: file.document?.fileSha256,
+      fileSha256: printReadyFile?.fileSha256 || file.document?.fileSha256,
       fileName: file.document?.fileName,
-      fileType: file.document?.fileType,
+      fileType: printReadyFile?.fileType || file.document?.fileType,
       pageCount: file.originalPageCount,
+      selectedPages: file.selectedPages,
       selectedPageCount: file.selectedPageCount,
       copies: file.copies,
-      printOptions: file.printOptions
+      printOptions: optionsForDeliveredPdf(file.printOptions, printReadyFile?.transformed),
+      printReady: Boolean(printReadyFile?.transformed)
     };
-  }));
+  })).then((items) => items.filter((file) => file.fileUrl));
 
   return {
     jobId: job.id,
@@ -125,6 +144,7 @@ async function toAgentJobPayload(job) {
     copies: job.copies,
     paperSize: job.paperSize,
     colorMode: job.colorMode,
+    printOptions: job.printOptions || files[0]?.printOptions || {},
     paymentVerified: true,
     approvedForPrint: true,
     printable: true,

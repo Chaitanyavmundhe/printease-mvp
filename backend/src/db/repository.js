@@ -95,6 +95,16 @@ export function mapOrder(row) {
     colorType: row.color_type,
     sideType: row.side_type,
     watermarkEnabled: row.watermark_enabled,
+    printOptions: row.print_options || {},
+    selectedPageCount: row.selected_page_count === null || row.selected_page_count === undefined
+      ? null
+      : Number(row.selected_page_count),
+    printablePageCount: row.printable_page_count === null || row.printable_page_count === undefined
+      ? null
+      : Number(row.printable_page_count),
+    sheetCount: row.sheet_count === null || row.sheet_count === undefined
+      ? null
+      : Number(row.sheet_count),
     amount: number(row.amount),
     totalAmountPaise: row.total_amount_paise === null || row.total_amount_paise === undefined
       ? Math.round(Number(row.amount || 0) * 100)
@@ -272,6 +282,7 @@ export function mapPrintJob(row) {
     copies: row.copies,
     paperSize: row.paper_size,
     colorMode: row.color_mode,
+    printOptions: row.print_options || {},
     sourceBackendUrl: row.source_backend_url,
     failureReasonCode: row.failure_reason_code,
     failureReasonText: row.failure_reason_text,
@@ -490,9 +501,11 @@ export async function createOrder(order, client) {
   const result = await executor(client).query(
     `insert into print_orders (
        id, order_code, user_id, hub_id, document_name, document_url, pages, copies,
-       color_type, side_type, watermark_enabled, amount, total_amount_paise, payment_status, status, pickup_code, created_at
+       color_type, side_type, watermark_enabled, print_options, selected_page_count,
+       printable_page_count, sheet_count, amount, total_amount_paise, payment_status,
+       status, pickup_code, created_at
      )
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, coalesce($17, now()))
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13, $14, $15, $16, $17, $18, $19, $20, coalesce($21, now()))
      returning *, hub_id as centre_id`,
     [
       order.id,
@@ -506,6 +519,10 @@ export async function createOrder(order, client) {
       order.colorType,
       order.sideType,
       order.watermarkEnabled,
+      JSON.stringify(order.printOptions || {}),
+      order.selectedPageCount ?? null,
+      order.printablePageCount ?? null,
+      order.sheetCount ?? null,
       order.amount,
       order.totalAmountPaise ?? Math.round(Number(order.amount || 0) * 100),
       order.paymentStatus,
@@ -1240,9 +1257,9 @@ export async function createPrintJob(job, client) {
   const result = await executor(client).query(
     `insert into print_jobs (
        id, order_id, hub_id, agent_id, printer_name, status, file_url, file_sha256,
-       file_type, copies, paper_size, color_mode, source_backend_url, created_at
+       file_type, copies, paper_size, color_mode, print_options, source_backend_url, created_at
      )
-     values ($1, $2, $3, $4, $5, 'queued', $6, $7, $8, $9, $10, $11, $12, now())
+     values ($1, $2, $3, $4, $5, 'queued', $6, $7, $8, $9, $10, $11, $12::jsonb, $13, now())
      returning *`,
     [
       job.id,
@@ -1256,6 +1273,7 @@ export async function createPrintJob(job, client) {
       job.copies || 1,
       job.paperSize || 'A4',
       job.colorMode || 'bw',
+      JSON.stringify(job.printOptions || {}),
       job.sourceBackendUrl
     ]
   );

@@ -12,6 +12,7 @@ import { OFFICIAL_BACKEND_URL } from '../config/agent.js';
 import { getSupabaseBucketName } from '../config/supabase.js';
 import { generateId } from '../utils/generateCode.js';
 import { getAgentLiveStatus, getPrinterCondition } from '../utils/hubAgentAnalytics.js';
+import { getPrintReadyFile } from '../utils/printReadyPdf.js';
 
 const PAYMENT_READY_STATUSES = new Set(['verified', 'collected']);
 
@@ -32,6 +33,22 @@ function paymentReadyMessage(paymentStatus, text) {
       ? 'Payment verified'
       : 'Payment pending';
   return `${prefix}. ${text}`;
+}
+
+function optionsForDeliveredPdf(printOptions, transformed) {
+  if (!transformed) return printOptions || {};
+
+  return {
+    ...(printOptions || {}),
+    pages: {
+      mode: 'all',
+      range: ''
+    },
+    watermark: {
+      ...((printOptions || {}).watermark || {}),
+      enabled: false
+    }
+  };
 }
 
 export async function queuePrintJobIfPaymentReady(orderId, hubId, client) {
@@ -67,8 +84,13 @@ export async function queuePrintJobIfPaymentReady(orderId, hubId, client) {
   const storagePath = firstFile?.document?.storagePath || orderWithDocument.document_storage_path;
   const fileSha256 = firstFile?.document?.fileSha256 || orderWithDocument.document_file_sha256;
   const fileType = firstFile?.document?.fileType || orderWithDocument.document_file_type || 'application/pdf';
+  const allFilesPrintable = orderFiles.every((file) => (
+    file.document?.storagePath &&
+    file.document?.fileSha256 &&
+    (file.document?.fileType || 'application/pdf') === 'application/pdf'
+  ));
 
-  if (!orderFiles.length || !storagePath || !fileSha256 || fileType !== 'application/pdf' || !isPrintableOrderStatus(orderWithDocument.status)) {
+  if (!orderFiles.length || !storagePath || !fileSha256 || fileType !== 'application/pdf' || !allFilesPrintable || !isPrintableOrderStatus(orderWithDocument.status)) {
     return {
       queued: false,
       message: paymentReadyMessage(paymentStatus, 'Order is not ready for desktop PDF printing; hub can print manually.')
@@ -79,6 +101,11 @@ export async function queuePrintJobIfPaymentReady(orderId, hubId, client) {
   const printerHint = targetAgent
     ? await findPreferredPrinterHintForAgent(targetAgent.id, client)
     : null;
+  const firstPrintReadyFile = await getPrintReadyFile({
+    id: orderId,
+    orderCode: orderWithDocument.order_code,
+    pickupCode: orderWithDocument.pickup_code
+  }, firstFile);
 
   const printJob = await createPrintJob({
     id: generateId(),
@@ -86,12 +113,13 @@ export async function queuePrintJobIfPaymentReady(orderId, hubId, client) {
     hubId,
     agentId: targetAgent?.id || null,
     printerName: printerHint || null,
-    fileUrl: `private://${getSupabaseBucketName()}/${storagePath}`,
-    fileSha256,
-    fileType,
-    copies: orderWithDocument.copies,
-    paperSize: 'A4',
-    colorMode: orderWithDocument.color_type || 'bw',
+    fileUrl: firstPrintReadyFile?.fileUrl || `private://${getSupabaseBucketName()}/${storagePath}`,
+    fileSha256: firstPrintReadyFile?.fileSha256 || fileSha256,
+    fileType: firstPrintReadyFile?.fileType || fileType,
+    copies: firstFile.copies || orderWithDocument.copies,
+    paperSize: firstFile.printOptions?.paperSize || 'A4',
+    colorMode: firstFile.printOptions?.colorMode || orderWithDocument.color_type || 'bw',
+    printOptions: optionsForDeliveredPdf(firstFile.printOptions || orderWithDocument.print_options || {}, firstPrintReadyFile?.transformed),
     sourceBackendUrl: OFFICIAL_BACKEND_URL
   }, client);
 

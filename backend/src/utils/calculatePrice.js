@@ -6,7 +6,7 @@ function positiveInteger(value, fallback = 1) {
 
 function normalizePagesPerSheet(value) {
   const pagesPerSheet = positiveInteger(value, 1);
-  return [1, 2, 4].includes(pagesPerSheet) ? pagesPerSheet : 1;
+  return [1, 2, 4, 6, 9, 16].includes(pagesPerSheet) ? pagesPerSheet : 1;
 }
 
 export function countSelectedPages(selectedPages, originalPageCount) {

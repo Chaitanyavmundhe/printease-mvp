@@ -17,6 +17,54 @@ import { calculatePrintPricing } from '../utils/calculatePrice.js';
 import { generateId, generateOrderCode, generateShortCode } from '../utils/generateCode.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { queuePrintJobIfPaymentReady } from '../services/printQueueService.js';
+import {
+  mapLegacyFieldsToPrintOptions,
+  normalizePrintOptions,
+  toLegacyColorType,
+  toLegacySideType
+} from '../utils/printOptions.js';
+
+function legacySelectedPagesToPrintOptionsRange(selectedPages) {
+  const value = String(selectedPages || '').trim();
+  if (!value || value.toLowerCase() === 'all') {
+    return { mode: 'all', range: '' };
+  }
+
+  return { mode: 'custom', range: value };
+}
+
+function buildSubmittedPrintOptions(file, fallback) {
+  if (file.printOptions && typeof file.printOptions === 'object') {
+    return file.printOptions;
+  }
+
+  const pages = legacySelectedPagesToPrintOptionsRange(file.selectedPages ?? fallback.selectedPages);
+
+  return {
+    ...mapLegacyFieldsToPrintOptions({
+      copies: file.copies ?? fallback.copies,
+      colorType: file.colorType ?? fallback.colorType,
+      sideType: file.sideType ?? fallback.sideType,
+      watermarkEnabled: file.watermarkEnabled ?? fallback.watermarkEnabled
+    }),
+    pages,
+    paperSize: file.paperSize ?? fallback.paperSize,
+    pagesPerSheet: file.pagesPerSheet ?? fallback.pagesPerSheet
+  };
+}
+
+function pricingMetadata(price) {
+  return {
+    physicalSheetCount: price.physicalSheetCount,
+    chargeBy: price.chargeBy,
+    pricePerPage: price.pricePerPage,
+    pricePerSheet: price.pricePerSheet,
+    watermarkFee: price.watermarkCharge,
+    serviceFee: price.serviceFee,
+    totalAmount: price.totalAmount,
+    totalAmountPaise: price.totalAmountPaise
+  };
+}
 
 export const createOrder = asyncHandler(async (req, res) => {
   const {
@@ -37,12 +85,9 @@ export const createOrder = asyncHandler(async (req, res) => {
   } = req.body;
 
   const trimmedCentreCode = typeof centreCode === 'string' ? centreCode.trim() : '';
-  const submittedPageCount = Number(pages);
   const copyCount = Number(copies);
-  const normalizedPagesPerSheet = Number(pagesPerSheet);
   const allowedColorTypes = ['bw', 'color'];
   const allowedSideTypes = ['single', 'double'];
-  const allowedPagesPerSheet = [1, 2, 4];
 
   if (!trimmedCentreCode && !hubId) {
     return res.status(400).json({ success: false, message: 'Centre code or hub ID is required' });
@@ -71,6 +116,14 @@ export const createOrder = asyncHandler(async (req, res) => {
       }
 
       if (
+        !document.userId &&
+        req.user?.role !== 'hub' &&
+        req.user?.role !== 'admin'
+      ) {
+        return res.status(403).json({ success: false, message: 'Guest uploaded documents cannot be attached to an order. Please upload again while logged in.' });
+      }
+
+      if (
         document.userId &&
         req.user?.role !== 'hub' &&
         req.user?.role !== 'admin' &&
@@ -87,7 +140,7 @@ export const createOrder = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: 'Pages and copies must be positive numbers' });
   }
 
-  if (!allowedColorTypes.includes(colorType) || !allowedSideTypes.includes(sideType) || !allowedPagesPerSheet.includes(normalizedPagesPerSheet)) {
+  if (!allowedColorTypes.includes(colorType) || !allowedSideTypes.includes(sideType)) {
     return res.status(400).json({ success: false, message: 'Invalid print options' });
   }
 
@@ -99,35 +152,54 @@ export const createOrder = asyncHandler(async (req, res) => {
   const pricedFiles = [];
   try {
     for (const file of resolvedFiles) {
-      const fileCopies = Number(file.copies ?? copies);
-      const filePagesPerSheet = Number(file.pagesPerSheet ?? pagesPerSheet);
-      const fileColorType = file.colorType ?? colorType;
-      const fileSideType = file.sideType ?? sideType;
-      const filePaperSize = file.paperSize ?? paperSize;
-      const fileWatermark = file.watermarkEnabled ?? watermarkEnabled;
       const trustedPageCount = file.document?.pageCount || Number(file.pages ?? pages);
 
       if (!Number.isFinite(trustedPageCount) || trustedPageCount <= 0) {
         throw new Error('Each file must have a valid PDF page count');
       }
 
-      if (!allowedColorTypes.includes(fileColorType) || !allowedSideTypes.includes(fileSideType) || !allowedPagesPerSheet.includes(filePagesPerSheet)) {
+      const normalizedOptions = normalizePrintOptions(
+        buildSubmittedPrintOptions(file, {
+          selectedPages,
+          copies,
+          colorType,
+          sideType,
+          paperSize,
+          pagesPerSheet,
+          watermarkEnabled
+        }),
+        trustedPageCount
+      );
+      const fileColorType = toLegacyColorType(normalizedOptions.colorMode);
+      const fileSideType = toLegacySideType(normalizedOptions.sides);
+      const pricedSelectedPages = normalizedOptions.pages.mode === 'custom'
+        ? normalizedOptions.pages.range
+        : 'all';
+
+      if (!allowedColorTypes.includes(fileColorType) || !allowedSideTypes.includes(fileSideType)) {
         throw new Error('Invalid print options');
       }
 
       const price = calculatePrintPricing({
         centre,
         originalPageCount: trustedPageCount,
-        selectedPages: file.selectedPages ?? selectedPages,
-        copies: fileCopies,
+        selectedPages: pricedSelectedPages,
+        copies: normalizedOptions.copies,
         colorType: fileColorType,
         sideType: fileSideType,
-        paperSize: filePaperSize,
-        pagesPerSheet: filePagesPerSheet,
-        watermarkEnabled: fileWatermark
+        paperSize: normalizedOptions.paperSize,
+        pagesPerSheet: normalizedOptions.pagesPerSheet,
+        watermarkEnabled: normalizedOptions.watermark.enabled
       });
 
-      pricedFiles.push({ ...file, price });
+      pricedFiles.push({
+        ...file,
+        price,
+        normalizedPrintOptions: {
+          ...normalizedOptions,
+          pricing: pricingMetadata(price)
+        }
+      });
     }
   } catch (error) {
     return res.status(400).json({ success: false, message: error.message || 'Invalid page selection' });
@@ -139,9 +211,19 @@ export const createOrder = asyncHandler(async (req, res) => {
   const firstFile = pricedFiles[0];
   const totalSelectedPages = pricedFiles.reduce((sum, file) => sum + file.price.selectedPageCount, 0);
   const totalPrintablePages = pricedFiles.reduce((sum, file) => sum + file.price.printablePageCount, 0);
+  const totalSheetCount = pricedFiles.reduce((sum, file) => sum + file.price.sheetCount, 0);
   const documentLabel = pricedFiles.length === 1
     ? documentName || firstFile.document?.fileName || 'Uploaded Document'
     : `${pricedFiles.length} uploaded documents`;
+  const orderPrintOptions = pricedFiles.length === 1
+    ? firstFile.normalizedPrintOptions
+    : {
+        files: pricedFiles.map((file) => ({
+          documentId: file.document?.id || null,
+          printSequence: file.index + 1,
+          printOptions: file.normalizedPrintOptions
+        }))
+      };
 
   const createdAt = new Date().toISOString();
 
@@ -157,7 +239,11 @@ export const createOrder = asyncHandler(async (req, res) => {
       copies: pricedFiles.length === 1 ? firstFile.price.copies : 1,
       colorType: pricedFiles.length === 1 ? firstFile.price.colorMode : colorType,
       sideType: pricedFiles.length === 1 ? firstFile.price.sides : sideType,
-      watermarkEnabled: Boolean(watermarkEnabled),
+      watermarkEnabled: pricedFiles.some((file) => file.normalizedPrintOptions.watermark.enabled),
+      printOptions: orderPrintOptions,
+      selectedPageCount: totalSelectedPages,
+      printablePageCount: totalPrintablePages,
+      sheetCount: totalSheetCount,
       amount: totalAmount,
       totalAmountPaise,
       paymentStatus: 'pending',
@@ -180,20 +266,7 @@ export const createOrder = asyncHandler(async (req, res) => {
           printablePageCount: price.printablePageCount,
           sheetCount: price.sheetCount,
           copies: price.copies,
-          printOptions: {
-            color_mode: price.colorMode,
-            paper_size: price.paperSize,
-            sides: price.sides,
-            pages_per_sheet: price.pagesPerSheet,
-            physical_sheet_count: price.physicalSheetCount,
-            charge_by: price.chargeBy,
-            price_per_page: price.pricePerPage,
-            price_per_sheet: price.pricePerSheet,
-            watermark_enabled: Boolean(watermarkEnabled),
-            watermark_fee: price.watermarkCharge,
-            service_fee: price.serviceFee,
-            total_amount: price.totalAmount
-          },
+          printOptions: file.normalizedPrintOptions,
           lineAmountPaise: price.totalAmountPaise,
           printSequence: file.index + 1,
           createdAt

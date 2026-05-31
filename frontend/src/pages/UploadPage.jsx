@@ -26,6 +26,18 @@ export default function UploadPage({
   setPagesPerSheet,
   watermark,
   setWatermark,
+  watermarkType,
+  setWatermarkType,
+  watermarkText,
+  setWatermarkText,
+  watermarkPosition,
+  setWatermarkPosition,
+  watermarkOpacity,
+  setWatermarkOpacity,
+  watermarkFontSize,
+  setWatermarkFontSize,
+  watermarkRotation,
+  setWatermarkRotation,
   pricePerPage,
   estimatedSelectedPageCount,
   totalAmount,
@@ -114,8 +126,39 @@ export default function UploadPage({
           </select>
           <label className="flex items-center gap-3 rounded-2xl border px-4 py-3 md:col-span-2">
             <input type="checkbox" checked={watermark} onChange={(e) => setWatermark(e.target.checked)} />
-            Add small order ID watermark on first and last page
+            Add watermark to printable PDF
           </label>
+          {watermark && (
+            <div className="grid gap-3 rounded-2xl border bg-slate-50 p-4 md:col-span-2 md:grid-cols-2">
+              <select value={watermarkType} onChange={(e) => setWatermarkType(e.target.value)} className="rounded-2xl border px-4 py-3">
+                <option value="order_code">Order code</option>
+                <option value="pickup_code">Pickup code</option>
+                <option value="date_time">Date/time</option>
+                <option value="custom_text">Custom text</option>
+              </select>
+              <select value={watermarkPosition} onChange={(e) => setWatermarkPosition(e.target.value)} className="rounded-2xl border px-4 py-3">
+                <option value="bottom_right">Bottom right</option>
+                <option value="bottom_center">Bottom center</option>
+                <option value="bottom_left">Bottom left</option>
+                <option value="center">Center</option>
+                <option value="top_left">Top left</option>
+                <option value="top_center">Top center</option>
+                <option value="top_right">Top right</option>
+              </select>
+              {watermarkType === "custom_text" && (
+                <input value={watermarkText} onChange={(e) => setWatermarkText(e.target.value)} placeholder="Watermark text" className="rounded-2xl border px-4 py-3 outline-none focus:ring-2 focus:ring-slate-300 md:col-span-2" />
+              )}
+              <label className="grid gap-2 text-sm font-semibold text-slate-600">
+                Opacity
+                <input type="range" min="0.05" max="0.6" step="0.01" value={watermarkOpacity} onChange={(e) => setWatermarkOpacity(Number(e.target.value))} />
+              </label>
+              <label className="grid gap-2 text-sm font-semibold text-slate-600">
+                Rotation
+                <input type="range" min="-90" max="90" step="5" value={watermarkRotation} onChange={(e) => setWatermarkRotation(Number(e.target.value))} />
+              </label>
+              <input type="number" min="8" max="72" value={watermarkFontSize} onChange={(e) => setWatermarkFontSize(Number(e.target.value))} placeholder="Font size" className="rounded-2xl border px-4 py-3 outline-none focus:ring-2 focus:ring-slate-300" />
+            </div>
+          )}
         </div>
       </Card>
 

@@ -256,6 +256,81 @@ async function validatePrinter(printerName) {
   };
 }
 
+function buildCupsOptions(printOptions = {}) {
+  const args = [];
+  const warnings = [];
+
+  const paperSize = printOptions.paperSize || "A4";
+  const allowedPaperSizes = new Set(["A4", "A3", "Letter", "Legal"]);
+  if (allowedPaperSizes.has(paperSize)) {
+    args.push("-o", `media=${paperSize}`);
+  }
+
+  const sidesMap = {
+    one_sided: "one-sided",
+    two_sided_long_edge: "two-sided-long-edge",
+    two_sided_short_edge: "two-sided-short-edge",
+    single: "one-sided",
+    double: "two-sided-long-edge",
+  };
+
+  if (printOptions.sides && sidesMap[printOptions.sides]) {
+    args.push("-o", `sides=${sidesMap[printOptions.sides]}`);
+  }
+
+  if (printOptions.pages?.mode === "custom" && printOptions.pages.range) {
+    args.push("-o", `page-ranges=${String(printOptions.pages.range).replace(/\s+/g, "")}`);
+  }
+
+  const pagesPerSheet = Number(printOptions.pagesPerSheet || 1);
+  if ([1, 2, 4, 6, 9, 16].includes(pagesPerSheet) && pagesPerSheet > 1) {
+    args.push("-o", `number-up=${pagesPerSheet}`);
+  }
+
+  if (printOptions.scale?.mode === "fit_to_page") {
+    args.push("-o", "fit-to-page");
+  } else if (printOptions.scale?.mode === "custom_percent" && printOptions.scale.percent) {
+    const percent = Math.max(10, Math.min(Number(printOptions.scale.percent) || 100, 400));
+    args.push("-o", `scaling=${percent}`);
+  } else if (printOptions.scale?.mode === "fit_to_page_width") {
+    warnings.push("FIT_TO_PAGE_WIDTH_UNSUPPORTED_BY_CUPS_MAPPING");
+  }
+
+  if (printOptions.orientation === "landscape") {
+    args.push("-o", "landscape");
+  } else if (printOptions.orientation === "portrait") {
+    args.push("-o", "portrait");
+  }
+
+  if (printOptions.colorMode === "black_white" || printOptions.colorMode === "grayscale" || printOptions.colorMode === "bw") {
+    args.push("-o", "ColorModel=Gray");
+  } else if (printOptions.colorMode === "color") {
+    args.push("-o", "ColorModel=RGB");
+  }
+
+  if (printOptions.margins?.mode && printOptions.margins.mode !== "default") {
+    warnings.push("MARGINS_REQUIRE_PRINT_READY_PDF_TRANSFORM");
+  }
+
+  if (printOptions.headersFooters) {
+    warnings.push("HEADERS_FOOTERS_UNSUPPORTED_FOR_PDF_CUPS");
+  }
+
+  if (printOptions.backgrounds === false) {
+    warnings.push("BACKGROUND_TOGGLE_UNSUPPORTED_FOR_UPLOADED_PDF");
+  }
+
+  if (printOptions.format === "simplified") {
+    warnings.push("SIMPLIFIED_FORMAT_UNSUPPORTED_FOR_UPLOADED_PDF");
+  }
+
+  if (printOptions.watermark?.enabled) {
+    warnings.push("WATERMARK_REQUIRES_BACKEND_PDF_TRANSFORM_NOT_AGENT_OPTION");
+  }
+
+  return { args, warnings };
+}
+
 export async function testPrint(printerName) {
   const validation = await validatePrinter(printerName);
   if (!validation.success) return validation;
@@ -303,7 +378,7 @@ export async function testPrint(printerName) {
   }
 }
 
-export async function printFile({ printerName, filePath, copies = 1 } = {}) {
+export async function printFile({ printerName, filePath, copies = 1, printOptions = {} } = {}) {
   const validation = await validatePrinter(printerName);
   if (!validation.success) return validation;
 
@@ -316,6 +391,7 @@ export async function printFile({ printerName, filePath, copies = 1 } = {}) {
   }
 
   const safeCopies = Math.max(1, Math.min(Number(copies) || 1, 99));
+  const cupsOptions = buildCupsOptions(printOptions);
 
   try {
     const { stdout, stderr } = await runCommand("lp", [
@@ -323,6 +399,7 @@ export async function printFile({ printerName, filePath, copies = 1 } = {}) {
       validation.printer.printerName,
       "-n",
       String(safeCopies),
+      ...cupsOptions.args,
       filePath,
     ]);
 
@@ -332,6 +409,8 @@ export async function printFile({ printerName, filePath, copies = 1 } = {}) {
       printerName: validation.printer.printerName,
       stdout: stdout?.trim() || "",
       stderr: stderr?.trim() || "",
+      warnings: cupsOptions.warnings,
+      printOptions,
     };
   } catch (error) {
     const result = cupsFailure(error, "Could not send print job.");

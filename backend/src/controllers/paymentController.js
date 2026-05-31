@@ -50,11 +50,10 @@ function verifyRazorpayCheckoutSignature({ razorpayOrderId, razorpayPaymentId, r
     .createHmac('sha256', RAZORPAY_KEY_SECRET)
     .update(body)
     .digest('hex');
+  const expected = Buffer.from(expectedSignature);
+  const received = Buffer.from(String(razorpaySignature || ''));
 
-  return crypto.timingSafeEqual(
-    Buffer.from(expectedSignature),
-    Buffer.from(String(razorpaySignature || ''))
-  );
+  return expected.length === received.length && crypto.timingSafeEqual(expected, received);
 }
 
 function verifyWebhookSignature(rawBody, signature) {
@@ -64,11 +63,10 @@ function verifyWebhookSignature(rawBody, signature) {
     .createHmac('sha256', RAZORPAY_WEBHOOK_SECRET)
     .update(rawBody)
     .digest('hex');
+  const expected = Buffer.from(expectedSignature);
+  const received = Buffer.from(String(signature || ''));
 
-  return crypto.timingSafeEqual(
-    Buffer.from(expectedSignature),
-    Buffer.from(String(signature || ''))
-  );
+  return expected.length === received.length && crypto.timingSafeEqual(expected, received);
 }
 
 async function markOrderPaidAndQueue({ orderId, paymentId, providerPaymentId, providerSignature, providerStatus, providerPayload, client }) {
