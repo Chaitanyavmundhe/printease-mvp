@@ -12,6 +12,7 @@ import {
   revokeHubAgent,
   sendOrderToAgent
 } from '../controllers/hubAgentController.js';
+import { registerDesktopDevice } from '../controllers/desktopController.js';
 import { authMiddleware } from '../middleware/authMiddleware.js';
 import { roleMiddleware } from '../middleware/roleMiddleware.js';
 
@@ -23,6 +24,7 @@ router.get('/summary', getHubAgentSummary);
 router.get('/print-jobs', listHubPrintJobs);
 router.get('/', listHubAgents);
 router.get('/pair/session/:sessionId', getPairingSessionDetails);
+router.post('/desktop/register', registerDesktopDevice);
 router.post('/pair', pairAgentToHub);
 router.post('/pair/approve', approveAgentPairing);
 router.post('/pair/reject', rejectAgentPairing);

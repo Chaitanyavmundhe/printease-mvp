@@ -93,7 +93,7 @@ function toDesktopPrintJob(job) {
 
 export const registerDesktopDevice = asyncHandler(async (req, res) => {
   const hubId = getHubId(req);
-  const { deviceId, deviceName, platform, version } = req.body;
+  const { deviceId, deviceName, platform, version, appVersion } = req.body;
 
   if (!hubId) {
     return res.status(400).json({ success: false, message: 'Logged in hub user is not linked to a hub' });
@@ -110,7 +110,7 @@ export const registerDesktopDevice = asyncHandler(async (req, res) => {
       deviceId,
       deviceName,
       platform,
-      version
+      version: version || appVersion
     }, hubId, client);
 
     await revokeActiveAgentTokens(savedAgent.id, client);
@@ -127,6 +127,11 @@ export const registerDesktopDevice = asyncHandler(async (req, res) => {
     agentId: agent.id,
     hubId: agent.hubId,
     shopId: agent.hubId,
+    linkedHubUserId: req.user?.id || null,
+    linkedHubCentreId: req.user?.centreId || req.user?.hubId || null,
+    deviceId: agent.deviceId,
+    deviceName: agent.agentName,
+    status: agent.status,
     agentToken,
     mode: 'login'
   });
