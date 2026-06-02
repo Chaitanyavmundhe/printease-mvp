@@ -1,53 +1,51 @@
+# Dependencies
 node_modules/
-frontend/node_modules/
-backend/node_modules/
+**/node_modules/
 
+# Env / secrets
 .env
+.env.*
+!.env.example
 frontend/.env
+frontend/.env.*
+!frontend/.env.example
 backend/.env
+backend/.env.*
+!backend/.env.example
+desktop-shell/.env
+desktop-shell/.env.*
+!desktop-shell/.env.example
 
-dist/
-frontend/dist/
-backend/dist/
-
-.DS_Store
-npm-debug.log*
-
-# dependencies
-node_modules/
-frontend/node_modules/
-backend/node_modules/
-desktop-shell/node_modules/
-
-# builds / generated
+# Builds / generated output
 dist/
 frontend/dist/
 backend/dist/
 desktop-shell/dist/
+desktop-shell/release/
 release/
 out/
 build/
+.cache/
+.vite/
+.pnpm-store/
 
-# env / secrets
-.env
-.env.*
-!.env.example
-backend/.env
-frontend/.env.local
-desktop-shell/.env
-
-# local archives / accidental files
+# Logs / local archives / accidental files
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 *.zip
 printease-mvp-main.zip
 dev:desktop
 npm
 
-# logs / cache
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-store/
-.cache/
-.vite/
+# Temp/backups
+*.tmp
+*.temp
+*.bak
+*.save
+
+# OS/editor
 .DS_Store
+Thumbs.db
+desktop.ini

@@ -62,8 +62,20 @@ function localPrinterMessage(count) {
   return `Detected ${count} local printer${count === 1 ? "" : "s"}.`;
 }
 
+function getStoredUserRole() {
+  if (typeof window === "undefined") return "";
+
+  try {
+    const storedUser = JSON.parse(window.localStorage.getItem("printease_user") || "null");
+    return storedUser?.role || "";
+  } catch {
+    return "";
+  }
+}
+
 export default function DesktopAgentPage() {
   const [desktopAvailable, setDesktopAvailable] = useState(() => isDesktop());
+  const [currentUserRole, setCurrentUserRole] = useState(() => getStoredUserRole());
   const [status, setStatus] = useState(null);
   const [printers, setPrinters] = useState([]);
   const [selectedPrinterName, setSelectedPrinterName] = useState("");
@@ -83,6 +95,7 @@ export default function DesktopAgentPage() {
   const [approvalPolling, setApprovalPolling] = useState(false);
   const [approvalMessage, setApprovalMessage] = useState("");
   const [manualPairingVisible, setManualPairingVisible] = useState(false);
+  const [advancedDiagnosticsVisible, setAdvancedDiagnosticsVisible] = useState(false);
   const approvalTimerRef = useRef(null);
   const approvalSessionIdRef = useRef("");
 
@@ -108,6 +121,7 @@ export default function DesktopAgentPage() {
 
   useEffect(() => {
     setDesktopAvailable(isDesktop());
+    setCurrentUserRole(getStoredUserRole());
     const unsubscribePrinters = onPrintersUpdated((result) => {
       setDesktopAvailable(true);
       applyPrinterResult(result);
@@ -273,6 +287,7 @@ export default function DesktopAgentPage() {
   }
 
   async function runPrinterDiagnostics() {
+    setAdvancedDiagnosticsVisible(true);
     setError("");
     setErrorDetail("");
     setHelpCommands([]);
@@ -290,6 +305,7 @@ export default function DesktopAgentPage() {
   }
 
   async function checkWindowsPrintHelper() {
+    setAdvancedDiagnosticsVisible(true);
     setError("");
     setErrorDetail("");
     setHelpCommands([]);
@@ -599,20 +615,6 @@ export default function DesktopAgentPage() {
             >
               <RefreshCw size={16} /> {loadingPrinters ? "Refreshing" : "Refresh Printers"}
             </button>
-            <button
-              type="button"
-              onClick={runPrinterDiagnostics}
-              className="inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-3 font-semibold"
-            >
-              <Printer size={16} /> Diagnose
-            </button>
-            <button
-              type="button"
-              onClick={checkWindowsPrintHelper}
-              className="inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-3 font-semibold"
-            >
-              <Printer size={16} /> Check Windows Print Helper
-            </button>
           </div>
         </div>
       </Card>
@@ -648,7 +650,7 @@ export default function DesktopAgentPage() {
                 Checking saved desktop agent...
               </p>
             )}
-            {agentStatusLoaded && !agentSession?.paired && (
+            {agentStatusLoaded && !agentSession?.paired && currentUserRole === "hub" && (
               <button
                 type="button"
                 disabled={agentBusy}
@@ -658,6 +660,11 @@ export default function DesktopAgentPage() {
                 {agentBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck size={16} />}
                 Register This Desktop
               </button>
+            )}
+            {agentStatusLoaded && !agentSession?.paired && currentUserRole !== "hub" && (
+              <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
+                Login as hub account to register this desktop.
+              </p>
             )}
             <button
               type="button"
@@ -708,14 +715,6 @@ export default function DesktopAgentPage() {
               className="rounded-xl border px-4 py-2 font-semibold disabled:opacity-50"
             >
               Send Heartbeat
-            </button>
-            <button
-              type="button"
-              disabled={agentBusy}
-              onClick={clearLocalAgentAndReconnect}
-              className="rounded-xl border border-amber-200 px-4 py-2 font-semibold text-amber-700 disabled:opacity-50"
-            >
-              Clear Local Agent
             </button>
             <button
               type="button"
@@ -843,7 +842,52 @@ export default function DesktopAgentPage() {
           </div>
         )}
 
-        {printerDiagnostics?.probes?.length > 0 && (
+        <div className="mt-5 rounded-2xl border bg-slate-50 p-4">
+          <button
+            type="button"
+            onClick={() => setAdvancedDiagnosticsVisible((visible) => !visible)}
+            className="text-sm font-semibold text-slate-800"
+          >
+            Advanced diagnostics
+          </button>
+
+          {advancedDiagnosticsVisible && (
+            <div className="mt-4 grid gap-3">
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={runPrinterDiagnostics}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border bg-white px-4 py-3 font-semibold"
+                >
+                  <Printer size={16} /> Diagnose printers
+                </button>
+                <button
+                  type="button"
+                  onClick={checkWindowsPrintHelper}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl border bg-white px-4 py-3 font-semibold"
+                >
+                  <Printer size={16} /> Check Windows Print Helper
+                </button>
+                <button
+                  type="button"
+                  disabled={agentBusy}
+                  onClick={clearLocalAgentAndReconnect}
+                  className="inline-flex items-center justify-center rounded-xl border border-amber-200 bg-white px-4 py-3 font-semibold text-amber-700 disabled:opacity-50"
+                >
+                  Clear local agent and reconnect
+                </button>
+              </div>
+
+              {backendHealth?.success === false && (
+                <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
+                  Backend unreachable. Saved agent was not cleared. Retrying is safe.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {advancedDiagnosticsVisible && printerDiagnostics?.probes?.length > 0 && (
           <div className="mt-5 rounded-2xl border bg-slate-50 p-4 text-sm">
             <p className="font-semibold text-slate-900">Desktop printer diagnostics</p>
             <div className="mt-3 grid gap-3">
@@ -859,7 +903,7 @@ export default function DesktopAgentPage() {
           </div>
         )}
 
-        {windowsHelperDiagnostics && (
+        {advancedDiagnosticsVisible && windowsHelperDiagnostics && (
           <div className="mt-5 rounded-2xl border bg-slate-50 p-4 text-sm">
             <p className="font-semibold text-slate-900">Windows print helper</p>
             <div className="mt-3 grid gap-2 text-slate-700">
