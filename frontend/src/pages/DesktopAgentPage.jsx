@@ -62,20 +62,71 @@ function localPrinterMessage(count) {
   return `Detected ${count} local printer${count === 1 ? "" : "s"}.`;
 }
 
-function getStoredUserRole() {
-  if (typeof window === "undefined") return "";
+function normalizeRole(value) {
+  return String(value || "").trim().toLowerCase().replace(/[_\s]+/g, "-");
+}
+
+function getUserRoleInfo(user) {
+  const roleValues = [
+    user?.role,
+    user?.userRole,
+    user?.accountType,
+    user?.type,
+    user?.profile?.role,
+    user?.profile?.accountType,
+  ].filter(Boolean);
+
+  const normalizedRoles = roleValues.map(normalizeRole);
+  const hubRoleValues = new Set([
+    "hub",
+    "centre",
+    "center",
+    "shop",
+    "print-hub",
+    "print-centre",
+    "print-center",
+    "printer",
+    "owner",
+    "admin",
+  ]);
+  const hasHubRole = normalizedRoles.some((role) => hubRoleValues.has(role));
+  const hasHubIdentity = Boolean(
+    user?.centreId ||
+      user?.centerId ||
+      user?.hubId ||
+      user?.shopId ||
+      user?.centre?.id ||
+      user?.hub?.id ||
+      user?.shop?.id
+  );
+
+  return {
+    roleValues,
+    normalizedRoles,
+    hasHubRole,
+    hasHubIdentity,
+    isHubAccount: Boolean(hasHubRole || hasHubIdentity),
+    reason: hasHubRole
+      ? "Matched hub-like role"
+      : hasHubIdentity
+        ? "Matched hub/centre/shop id"
+        : "No hub-like role or hub identity found",
+  };
+}
+
+function getStoredUser() {
+  if (typeof window === "undefined") return null;
 
   try {
-    const storedUser = JSON.parse(window.localStorage.getItem("printease_user") || "null");
-    return storedUser?.role || "";
+    return JSON.parse(window.localStorage.getItem("printease_user") || "null");
   } catch {
-    return "";
+    return null;
   }
 }
 
-export default function DesktopAgentPage() {
+export default function DesktopAgentPage({ currentUser = null }) {
   const [desktopAvailable, setDesktopAvailable] = useState(() => isDesktop());
-  const [currentUserRole, setCurrentUserRole] = useState(() => getStoredUserRole());
+  const [storedUser, setStoredUser] = useState(() => getStoredUser());
   const [status, setStatus] = useState(null);
   const [printers, setPrinters] = useState([]);
   const [selectedPrinterName, setSelectedPrinterName] = useState("");
@@ -101,6 +152,11 @@ export default function DesktopAgentPage() {
 
   const defaultPrinter = useMemo(() => printers.find((printer) => printer.isDefault) || printers[0] || null, [printers]);
   const localPrinterNames = printers.map((printer) => printer.displayName || printer.printerName).filter(Boolean).join(", ");
+  const activeUser = currentUser || storedUser;
+  const roleInfo = useMemo(() => getUserRoleInfo(activeUser), [activeUser]);
+  const isLoggedIn = Boolean(activeUser);
+  const isHubAccount = roleInfo.isHubAccount;
+  const hiddenReason = !isLoggedIn ? "No logged-in user found" : roleInfo.reason;
 
   function applyPrinterResult(result) {
     const normalized = normalizePrinterResult(result);
@@ -121,7 +177,7 @@ export default function DesktopAgentPage() {
 
   useEffect(() => {
     setDesktopAvailable(isDesktop());
-    setCurrentUserRole(getStoredUserRole());
+    setStoredUser(getStoredUser());
     const unsubscribePrinters = onPrintersUpdated((result) => {
       setDesktopAvailable(true);
       applyPrinterResult(result);
@@ -650,7 +706,7 @@ export default function DesktopAgentPage() {
                 Checking saved desktop agent...
               </p>
             )}
-            {agentStatusLoaded && !agentSession?.paired && currentUserRole === "hub" && (
+            {agentStatusLoaded && !agentSession?.paired && isLoggedIn && isHubAccount && (
               <button
                 type="button"
                 disabled={agentBusy}
@@ -661,7 +717,7 @@ export default function DesktopAgentPage() {
                 Register This Desktop
               </button>
             )}
-            {agentStatusLoaded && !agentSession?.paired && currentUserRole !== "hub" && (
+            {agentStatusLoaded && !agentSession?.paired && (!isLoggedIn || !isHubAccount) && (
               <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
                 Login as hub account to register this desktop.
               </p>
@@ -883,6 +939,13 @@ export default function DesktopAgentPage() {
                   Backend unreachable. Saved agent was not cleared. Retrying is safe.
                 </p>
               )}
+              <div className="rounded-xl bg-white p-3 text-xs text-slate-700">
+                <p className="font-semibold text-slate-900">Account detection</p>
+                <p>Detected role: {roleInfo.normalizedRoles.join(", ") || "none"}</p>
+                <p>Detected account type: {roleInfo.roleValues.join(", ") || "none"}</p>
+                <p>isHubAccount: {String(isHubAccount)}</p>
+                <p>Reason button hidden: {isHubAccount ? "Button is available for this account." : hiddenReason}</p>
+              </div>
             </div>
           )}
         </div>
