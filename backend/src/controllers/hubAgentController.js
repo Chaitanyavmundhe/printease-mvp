@@ -38,7 +38,15 @@ function isPaymentCollected(order) {
 
 function isPrintableOrderStatus(status) {
   const normalized = String(status || '').toLowerCase();
-  return !['printing', 'ready for pickup', 'collected', 'printing failed'].includes(normalized);
+  return ![
+    'printing',
+    'ready for pickup',
+    'collected',
+    'printing failed',
+    'paused',
+    'cancelled',
+    'refund requested'
+  ].includes(normalized);
 }
 
 function httpError(message, statusCode) {

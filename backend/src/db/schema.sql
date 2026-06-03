@@ -36,6 +36,7 @@ create table if not exists print_hubs (
   mobile text not null,
   status text not null default 'available',
   upi_id text,
+  upi_qr_image_url text,
   bw_single numeric(10, 2) not null default 1,
   bw_double numeric(10, 2) not null default 1.5,
   color_single numeric(10, 2) not null default 2,
@@ -49,6 +50,7 @@ alter table print_hubs add column if not exists bw_double numeric(10, 2) not nul
 alter table print_hubs add column if not exists color_single numeric(10, 2) not null default 2;
 alter table print_hubs add column if not exists color_double numeric(10, 2) not null default 3;
 alter table print_hubs add column if not exists watermark_charge numeric(10, 2) not null default 2;
+alter table print_hubs add column if not exists upi_qr_image_url text;
 
 do $$
 begin
@@ -437,4 +439,3 @@ alter table payments add column if not exists short_url text;
 create index if not exists idx_payments_provider_order_id on payments(provider_order_id);
 create index if not exists idx_payments_provider_payment_id on payments(provider_payment_id);
 create index if not exists idx_payments_order_provider on payments(order_id, provider);
-

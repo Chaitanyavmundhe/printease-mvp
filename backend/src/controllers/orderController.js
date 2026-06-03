@@ -49,7 +49,18 @@ function buildSubmittedPrintOptions(file, fallback) {
     }),
     pages,
     paperSize: file.paperSize ?? fallback.paperSize,
-    pagesPerSheet: file.pagesPerSheet ?? fallback.pagesPerSheet
+    pagesPerSheet: file.pagesPerSheet ?? fallback.pagesPerSheet,
+    orientation: file.orientation ?? fallback.orientation,
+    scale: {
+      mode: file.scaleMode ?? fallback.scaleMode ?? 'original',
+      percent: null
+    },
+    margins: {
+      mode: file.marginMode ?? fallback.marginMode ?? 'default'
+    },
+    quality: {
+      dpi: file.printDpi ?? fallback.printDpi ?? 300
+    }
   };
 }
 
@@ -81,6 +92,10 @@ export const createOrder = asyncHandler(async (req, res) => {
     sideType = 'single',
     paperSize = 'A4',
     pagesPerSheet = 1,
+    orientation = 'auto',
+    printDpi = 300,
+    scaleMode = 'original',
+    marginMode = 'default',
     watermarkEnabled = false
   } = req.body;
 
@@ -97,7 +112,7 @@ export const createOrder = asyncHandler(async (req, res) => {
     ? files
     : Array.isArray(documentIds) && documentIds.length
       ? documentIds.map((id) => ({ documentId: id }))
-      : [{ documentId, documentName, pages, selectedPages, copies, colorType, sideType, paperSize, pagesPerSheet, watermarkEnabled }];
+      : [{ documentId, documentName, pages, selectedPages, copies, colorType, sideType, paperSize, pagesPerSheet, orientation, printDpi, scaleMode, marginMode, watermarkEnabled }];
 
   if (!submittedFiles.length) {
     return res.status(400).json({ success: false, message: 'At least one document and copies are required' });
@@ -166,6 +181,10 @@ export const createOrder = asyncHandler(async (req, res) => {
           sideType,
           paperSize,
           pagesPerSheet,
+          orientation,
+          printDpi,
+          scaleMode,
+          marginMode,
           watermarkEnabled
         }),
         trustedPageCount

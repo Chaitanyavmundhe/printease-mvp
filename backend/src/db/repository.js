@@ -43,6 +43,7 @@ export function mapCentre(row) {
     mobile: row.mobile,
     status: row.status,
     upiId: row.upi_id,
+    upiQrImageUrl: row.upi_qr_image_url || null,
     pricing: {
       bwSingle: number(row.bw_single) ?? 1,
       bwDouble: number(row.bw_double) ?? 1.5,
@@ -307,6 +308,7 @@ const centreSelect = `
     c.mobile,
     c.status,
     c.upi_id,
+    c.upi_qr_image_url,
     c.bw_single,
     c.bw_double,
     c.color_single,
@@ -397,10 +399,10 @@ export async function createCentre(centre, client) {
   const pricing = centre.pricing || {};
   const result = await executor(client).query(
     `insert into print_hubs (
-       id, owner_id, hub_name, centre_code, mobile, status, upi_id,
+       id, owner_id, hub_name, centre_code, mobile, status, upi_id, upi_qr_image_url,
        bw_single, bw_double, color_single, color_double, watermark_charge, created_at
      )
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, coalesce($13, now()))
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, coalesce($14, now()))
      returning *`,
     [
       centre.id,
@@ -410,6 +412,7 @@ export async function createCentre(centre, client) {
       centre.mobile,
       centre.status || 'available',
       centre.upiId || null,
+      centre.upiQrImageUrl || null,
       pricing.bwSingle ?? centre.bwSingle ?? 1,
       pricing.bwDouble ?? centre.bwDouble ?? 1.5,
       pricing.colorSingle ?? centre.colorSingle ?? 2,
@@ -448,9 +451,11 @@ export async function updateCentrePricing(centreId, pricing) {
 }
 
 export async function updateCentrePaymentMethod(centreId, upiId) {
+  const nextUpiId = typeof upiId === 'object' ? upiId.upiId : upiId;
+  const nextQrImageUrl = typeof upiId === 'object' ? upiId.upiQrImageUrl : undefined;
   const result = await query(
-    'update print_hubs set upi_id = coalesce($2, upi_id) where id = $1 returning id',
-    [centreId, upiId]
+    'update print_hubs set upi_id = coalesce($2, upi_id), upi_qr_image_url = coalesce($3, upi_qr_image_url) where id = $1 returning id',
+    [centreId, nextUpiId, nextQrImageUrl]
   );
 
   if (!result.rows[0]) return null;

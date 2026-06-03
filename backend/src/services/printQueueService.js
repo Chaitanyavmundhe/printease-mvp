@@ -22,7 +22,15 @@ function normalize(value) {
 
 function isPrintableOrderStatus(status) {
   const normalized = normalize(status);
-  return !['printing', 'ready for pickup', 'collected', 'printing failed'].includes(normalized);
+  return ![
+    'printing',
+    'ready for pickup',
+    'collected',
+    'printing failed',
+    'paused',
+    'cancelled',
+    'refund requested'
+  ].includes(normalized);
 }
 
 function paymentReadyMessage(paymentStatus, text) {

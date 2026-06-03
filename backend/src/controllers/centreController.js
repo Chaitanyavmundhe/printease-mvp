@@ -41,7 +41,10 @@ export const updatePaymentMethod = asyncHandler(async (req, res) => {
     return res.status(404).json({ success: false, message: 'Centre not found for logged in owner' });
   }
 
-  const centre = await updateCentrePaymentMethod(req.user.centreId, req.body.upiId);
+  const centre = await updateCentrePaymentMethod(req.user.centreId, {
+    upiId: typeof req.body.upiId === 'string' ? req.body.upiId.trim().slice(0, 100) : undefined,
+    upiQrImageUrl: typeof req.body.upiQrImageUrl === 'string' ? req.body.upiQrImageUrl.trim().slice(0, 500) : undefined
+  });
 
   res.json({ success: true, message: 'Payment method updated', centre });
 });

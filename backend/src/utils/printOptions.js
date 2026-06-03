@@ -24,6 +24,9 @@ export const DEFAULT_PRINT_OPTIONS = Object.freeze({
   format: 'original',
   headersFooters: false,
   backgrounds: true,
+  quality: {
+    dpi: 300
+  },
   watermark: {
     enabled: false,
     type: 'order_code',
@@ -171,6 +174,9 @@ export function normalizePrintOptions(input = {}, totalPages = 1) {
     format: pick(source.format, ALLOWED_FORMATS, defaults.format),
     headersFooters: bool(source.headersFooters, defaults.headersFooters),
     backgrounds: bool(source.backgrounds, defaults.backgrounds),
+    quality: {
+      dpi: Math.max(72, Math.min(positiveInt(source.quality?.dpi, defaults.quality.dpi, 2400), 2400))
+    },
     watermark: {
       enabled: watermarkEnabled,
       type: pick(source.watermark?.type, ALLOWED_WATERMARK_TYPES, defaults.watermark.type),
