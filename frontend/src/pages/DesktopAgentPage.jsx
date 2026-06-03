@@ -594,7 +594,7 @@ export default function DesktopAgentPage({ currentUser = null }) {
       }
 
       if (stored?.session) setAgentSession(stored.session);
-      setAgentMessage("Desktop registered for this hub. It will reconnect automatically after restart.");
+      setAgentMessage("Desktop registered and auto-print is running.");
     } catch (registrationError) {
       setError(registrationError.message || "Could not register desktop agent for this hub.");
     } finally {
@@ -639,13 +639,16 @@ export default function DesktopAgentPage({ currentUser = null }) {
               <h2 className="text-3xl font-bold">Desktop Agent</h2>
               <p className="mt-1 font-semibold text-emerald-700">Desktop mode detected</p>
               <p className="mt-1 text-sm font-semibold text-emerald-700">Desktop bridge connected</p>
+              <p className="mt-2 max-w-2xl text-sm text-slate-600">
+                Keep this app open on the shop PC. It will sync printers and automatically print assigned paid/collected jobs.
+              </p>
               <p className="mt-2 text-sm text-slate-600">Platform: {status?.platform || window.printeaseDesktop?.platform || "unknown"}</p>
               <p className="text-sm text-slate-600">Backend: {status?.backendUrl || "https://printease-backend-byex.onrender.com"}</p>
               <p className={`mt-2 text-sm font-semibold ${printers.length > 0 ? "text-emerald-700" : "text-amber-700"}`}>
                 Local printers: {printers.length > 0 ? localPrinterNames : "checking"}
               </p>
               <p className={`mt-1 text-sm font-semibold ${selectedPrinterName ? "text-emerald-700" : "text-amber-700"}`}>
-                Selected printer: {selectedPrinterName || "Not selected"}
+                Selected printer for auto-print: {selectedPrinterName || "Not selected"}
               </p>
               {backendHealth && (
                 <p className={`mt-1 text-sm font-semibold ${backendHealth.success ? "text-emerald-700" : "text-rose-700"}`}>
@@ -671,6 +674,20 @@ export default function DesktopAgentPage({ currentUser = null }) {
             >
               <RefreshCw size={16} /> {loadingPrinters ? "Refreshing" : "Refresh Printers"}
             </button>
+            <button
+              type="button"
+              onClick={runPrinterDiagnostics}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-3 font-semibold"
+            >
+              <Printer size={16} /> Diagnose
+            </button>
+            <button
+              type="button"
+              onClick={checkWindowsPrintHelper}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-3 font-semibold"
+            >
+              <Printer size={16} /> Check Windows Print Helper
+            </button>
           </div>
         </div>
       </Card>
@@ -692,11 +709,18 @@ export default function DesktopAgentPage({ currentUser = null }) {
               )}
               {agentSession?.expiresAt && <p>Expires: {new Date(agentSession.expiresAt).toLocaleString()}</p>}
               <p>Polling: {agentSession?.polling ? "Running" : "Stopped"}</p>
+              <p className={`font-semibold ${agentSession?.autoPrintRunning ? "text-emerald-700" : agentSession?.lastJobPollError ? "text-amber-700" : "text-slate-600"}`}>
+                Auto-print: {agentSession?.autoPrintRunning ? "Running" : agentSession?.lastJobPollError ? "Error" : "Stopped"}
+              </p>
+              <p>Auto-print runs in the background after this desktop is registered.</p>
               <p>Heartbeat loop: {agentSession?.heartbeatRunning ? "Running" : "Stopped"}</p>
               {agentSession?.lastHeartbeatAt && <p>Last heartbeat: {new Date(agentSession.lastHeartbeatAt).toLocaleString()}</p>}
               {agentSession?.lastHeartbeatError && <p className="font-semibold text-amber-700">Heartbeat warning: {agentSession.lastHeartbeatError}</p>}
               {agentSession?.lastPrinterSyncAt && <p>Last printer sync: {new Date(agentSession.lastPrinterSyncAt).toLocaleString()}</p>}
               {agentSession?.lastPrinterSyncError && <p className="font-semibold text-amber-700">Printer sync warning: {agentSession.lastPrinterSyncError}</p>}
+              {agentSession?.lastJobPollAt && <p>Last poll: {new Date(agentSession.lastJobPollAt).toLocaleString()}</p>}
+              {agentSession?.lastJobPollMessage && <p>Last poll result: {agentSession.lastJobPollMessage}</p>}
+              {agentSession?.lastJobPollError && <p className="font-semibold text-amber-700">Auto-print warning: {agentSession.lastJobPollError}</p>}
             </div>
           </div>
 
@@ -742,10 +766,13 @@ export default function DesktopAgentPage({ currentUser = null }) {
               onClick={() => setManualPairingVisible((visible) => !visible)}
               className="rounded-xl border px-4 py-2 font-semibold"
             >
-              Use manual pairing code
+              Manual pairing fallback
             </button>
             {manualPairingVisible && (
               <div className="grid gap-2 rounded-2xl border bg-slate-50 p-3">
+                <p className="text-sm text-slate-600">
+                  Use this only if account-based registration is not working.
+                </p>
                 <button
                   type="button"
                   disabled={agentBusy}
@@ -767,10 +794,26 @@ export default function DesktopAgentPage({ currentUser = null }) {
             <button
               type="button"
               disabled={agentBusy || !agentSession?.paired}
+              onClick={() => runAgentAction(() => startJobPolling({ printerName: selectedPrinterName || undefined }))}
+              className="rounded-xl bg-emerald-700 px-4 py-2 font-semibold text-white disabled:bg-slate-300"
+            >
+              Restart Auto Print
+            </button>
+            <button
+              type="button"
+              disabled={agentBusy || !agentSession?.paired}
               onClick={() => runAgentAction(sendHeartbeat)}
               className="rounded-xl border px-4 py-2 font-semibold disabled:opacity-50"
             >
               Send Heartbeat
+            </button>
+            <button
+              type="button"
+              disabled={agentBusy}
+              onClick={clearLocalAgentAndReconnect}
+              className="rounded-xl border border-amber-200 px-4 py-2 font-semibold text-amber-700 disabled:opacity-50"
+            >
+              Clear Local Agent
             </button>
             <button
               type="button"
@@ -786,7 +829,7 @@ export default function DesktopAgentPage({ currentUser = null }) {
               onClick={() => runAgentAction(() => pollPrintJobs({ printerName: selectedPrinterName }))}
               className="rounded-xl border px-4 py-2 font-semibold disabled:opacity-50"
             >
-              Poll Once
+              Poll Now
             </button>
             <div className="flex gap-2">
               <button
@@ -906,34 +949,10 @@ export default function DesktopAgentPage({ currentUser = null }) {
           >
             Advanced diagnostics
           </button>
+          <p className="mt-2 text-xs text-slate-500">Use these tools only for troubleshooting.</p>
 
           {advancedDiagnosticsVisible && (
             <div className="mt-4 grid gap-3">
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={runPrinterDiagnostics}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border bg-white px-4 py-3 font-semibold"
-                >
-                  <Printer size={16} /> Diagnose printers
-                </button>
-                <button
-                  type="button"
-                  onClick={checkWindowsPrintHelper}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl border bg-white px-4 py-3 font-semibold"
-                >
-                  <Printer size={16} /> Check Windows Print Helper
-                </button>
-                <button
-                  type="button"
-                  disabled={agentBusy}
-                  onClick={clearLocalAgentAndReconnect}
-                  className="inline-flex items-center justify-center rounded-xl border border-amber-200 bg-white px-4 py-3 font-semibold text-amber-700 disabled:opacity-50"
-                >
-                  Clear local agent and reconnect
-                </button>
-              </div>
-
               {backendHealth?.success === false && (
                 <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
                   Backend unreachable. Saved agent was not cleared. Retrying is safe.

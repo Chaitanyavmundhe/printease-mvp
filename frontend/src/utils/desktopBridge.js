@@ -13,7 +13,8 @@ function desktopFallback() {
 }
 
 export function isDesktop() {
-  return Boolean(getBridge()?.isDesktop);
+  if (typeof window === "undefined") return false;
+  return Boolean(getBridge()?.isDesktop || window.location.protocol === "file:" || window.location.protocol === "app:");
 }
 
 export async function listPrinters() {
@@ -221,6 +222,18 @@ export function startJobPolling(payload = {}) {
 
 export function stopJobPolling() {
   return callDesktop("stopJobPolling", "Could not stop print job polling.");
+}
+
+export function getStoredAuth() {
+  return callDesktop("getStoredAuth", "Could not load desktop auth storage.");
+}
+
+export function saveStoredAuth(payload = {}) {
+  return callDesktop("saveStoredAuth", "Could not save desktop auth storage.", payload);
+}
+
+export function clearStoredAuth() {
+  return callDesktop("clearStoredAuth", "Could not clear desktop auth storage.");
 }
 
 export function getStoredAgent() {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { Component, useEffect, useMemo, useState } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import Navbar from "./components/Navbar";
 import BackendStatus from "./components/BackendStatus";
@@ -17,7 +17,7 @@ import TrackPage from "./pages/TrackPage";
 import HistoryPage from "./pages/HistoryPage";
 import { initialCentres, initialOrders } from "./data/demoData";
 import { calculateTotalAmount, countSelectedPages, getPricePerPage } from "./utils/price";
-import { isDesktop, onPrintersUpdated } from "./utils/desktopBridge";
+import { clearStoredAuth, getStoredAuth, isDesktop, onPrintersUpdated, saveStoredAuth } from "./utils/desktopBridge";
 import { apiRequest } from "./services/api";
 import { loadRazorpayCheckout } from "./utils/razorpay";
 
@@ -55,6 +55,44 @@ function RouteNotice({ title, message, actionLabel, onAction }) {
       )}
     </section>
   );
+}
+
+class RouteErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error("[PrintEase route render failed]", error, errorInfo);
+  }
+
+  render() {
+    if (!this.state.error) return this.props.children;
+
+    const showDetail =
+      typeof window !== "undefined" &&
+      (window.location.protocol === "file:" ||
+        window.location.protocol === "app:" ||
+        window.printeaseDesktop?.isDesktop ||
+        import.meta.env.DEV);
+
+    return (
+      <section className="mx-auto max-w-xl rounded-2xl border border-rose-200 bg-white p-6 shadow-sm">
+        <h2 className="text-2xl font-bold text-rose-700">Page failed to load</h2>
+        <p className="mt-2 text-slate-600">PrintEase hit a renderer error while opening this page.</p>
+        {showDetail && (
+          <pre className="mt-4 overflow-x-auto rounded-xl bg-rose-50 p-4 text-xs text-rose-800">
+            {this.state.error?.message || String(this.state.error)}
+          </pre>
+        )}
+      </section>
+    );
+  }
 }
 
 function formatStatus(status) {
@@ -197,6 +235,40 @@ function formatOrderDate(value) {
   });
 }
 
+function extractCustomerName(order) {
+  if (!order) return null;
+  // common direct fields
+  if (order.customerName) return order.customerName;
+  if (order.customer_name) return order.customer_name;
+  if (order.userName) return order.userName;
+  if (order.user_name) return order.user_name;
+  if (order.name) return order.name;
+
+  const customer = order.customer || {};
+  const user = order.user || {};
+
+  const candidates = [
+    customer.name,
+    customer.full_name,
+    customer.fullName,
+    customer.displayName,
+    customer.username,
+    user.name,
+    user.full_name,
+    user.fullName,
+    user.displayName,
+    user.username,
+  ];
+
+  // try first/last name combinations
+  if (customer.firstName && customer.lastName) candidates.unshift(`${customer.firstName} ${customer.lastName}`);
+  if (customer.first_name && customer.last_name) candidates.unshift(`${customer.first_name} ${customer.last_name}`);
+  if (user.firstName && user.lastName) candidates.unshift(`${user.firstName} ${user.lastName}`);
+  if (user.first_name && user.last_name) candidates.unshift(`${user.first_name} ${user.last_name}`);
+
+  return candidates.find((v) => v && String(v).trim()) || null;
+}
+
 function normalizeOrder(order, centreList = []) {
   const centreId = order.centreId || order.centre_id;
   const centreCodeFromOrder = order.centreCode || order.centre_code;
@@ -209,6 +281,8 @@ function normalizeOrder(order, centreList = []) {
     centreId: centreId || centre?.id,
     centreCode: centreCodeFromOrder || centre?.code || "",
     centre: order.centre || centre?.name || "Selected centre",
+    customerName: extractCustomerName(order) || "Customer",
+    customerMobile: order.customerMobile || order.customer_mobile || order.userMobile || order.user_mobile || order.customer?.mobile || order.user?.mobile || order.mobile || "",
     document: order.documentName || order.document_name || order.document || "Uploaded Document",
     pages: Number(order.pages || 1),
     copies: Number(order.copies || 1),
@@ -226,6 +300,27 @@ function upsertOrder(orderList, nextOrder) {
   if (existingIndex === -1) return [nextOrder, ...orderList];
 
   return orderList.map((item, index) => (index === existingIndex ? nextOrder : item));
+}
+
+async function persistAuthSession(token, user) {
+  localStorage.setItem("printease_token", token);
+  localStorage.setItem("printease_user", JSON.stringify(user));
+
+  const result = await saveStoredAuth({ token, user });
+  if (result?.success === false && isDesktop()) {
+    console.warn("[PrintEase desktop auth save failed]", result.error || result.message);
+  }
+}
+
+function clearAuthSession() {
+  localStorage.removeItem("printease_token");
+  localStorage.removeItem("printease_user");
+
+  clearStoredAuth().then((result) => {
+    if (result?.success === false && isDesktop()) {
+      console.warn("[PrintEase desktop auth clear failed]", result.error || result.message);
+    }
+  });
 }
 
 export default function App() {
@@ -329,7 +424,19 @@ export default function App() {
 
   useEffect(() => {
     async function restoreSession() {
-      const token = localStorage.getItem("printease_token");
+      let token = localStorage.getItem("printease_token");
+
+      if (!token && isDesktop()) {
+        const stored = await getStoredAuth();
+        const storedAuth = stored?.auth;
+
+        if (stored?.success && storedAuth?.token && storedAuth?.user) {
+          token = storedAuth.token;
+          localStorage.setItem("printease_token", storedAuth.token);
+          localStorage.setItem("printease_user", JSON.stringify(storedAuth.user));
+          setCurrentUser(storedAuth.user);
+        }
+      }
 
       if (!token) return;
 
@@ -360,8 +467,7 @@ export default function App() {
 
         if (restoredUser?.role === "hub" && !signedInCentre) {
           // If a hub user isn't linked to a centre, invalidate session
-          localStorage.removeItem("printease_token");
-          localStorage.removeItem("printease_user");
+          clearAuthSession();
           setCurrentUser(null);
           return;
         }
@@ -378,7 +484,7 @@ export default function App() {
             : {}),
         };
 
-        localStorage.setItem("printease_user", JSON.stringify(finalUser));
+        await persistAuthSession(token, finalUser);
         setCurrentUser(finalUser);
 
         if (signedInCentre) {
@@ -391,8 +497,7 @@ export default function App() {
       } catch (error) {
         console.error("Session restore failed:", error?.message || error);
 
-        localStorage.removeItem("printease_token");
-        localStorage.removeItem("printease_user");
+        clearAuthSession();
         setCurrentUser(null);
       }
     }
@@ -536,8 +641,7 @@ export default function App() {
         });
 
         const nextUser = toCurrentUser(data.user);
-        localStorage.setItem("printease_token", data.token);
-        localStorage.setItem("printease_user", JSON.stringify(nextUser));
+        await persistAuthSession(data.token, nextUser);
         setCurrentUser(nextUser);
         await loadOrdersForSession(nextUser);
         navigate("userDashboard", { replace: true });
@@ -569,8 +673,7 @@ export default function App() {
         const centre = normalizeCentre(data.centre);
         const nextUser = toCurrentUser(data.user, centre);
         const nextCentres = upsertCentre(centres, centre);
-        localStorage.setItem("printease_token", data.token);
-        localStorage.setItem("printease_user", JSON.stringify(nextUser));
+        await persistAuthSession(data.token, nextUser);
         setCentres((prev) => upsertCentre(prev, centre));
         setCurrentUser(nextUser);
         await loadOrdersForSession(nextUser, nextCentres);
@@ -601,9 +704,8 @@ export default function App() {
         return;
       }
 
-      localStorage.setItem("printease_token", data.token);
       const nextUser = toCurrentUser(data.user, signedInCentre);
-      localStorage.setItem("printease_user", JSON.stringify(nextUser));
+      await persistAuthSession(data.token, nextUser);
       const nextCentres = signedInCentre ? upsertCentre(centres, signedInCentre) : centres;
       if (signedInCentre) setCentres((prev) => upsertCentre(prev, signedInCentre));
       setCurrentUser(nextUser);
@@ -620,8 +722,7 @@ export default function App() {
   }
 
   function logout() {
-    localStorage.removeItem("printease_token");
-    localStorage.removeItem("printease_user");
+    clearAuthSession();
     setCurrentUser(null);
     setPostAuthRedirect(null);
     setDocumentFile(null);
@@ -1072,20 +1173,22 @@ export default function App() {
       <main className="mx-auto max-w-6xl px-4 py-8">
         <BackendStatus />
 
-        <Routes>
-          <Route
-            path={ROUTES.home}
-            element={
-              <HomePage
-                navigate={navigate}
-                centres={centres}
-                startLogin={startLogin}
-                startRegister={startRegister}
-                startDirectUpload={startDirectUpload}
-                selectCentreAndUpload={selectCentreAndUpload}
-              />
-            }
-          />
+        <RouteErrorBoundary>
+          <Routes>
+            <Route
+              path={ROUTES.home}
+              element={
+                <HomePage
+                  currentUser={currentUser}
+                  navigate={navigate}
+                  centres={centres}
+                  startLogin={startLogin}
+                  startRegister={startRegister}
+                  startDirectUpload={startDirectUpload}
+                  selectCentreAndUpload={selectCentreAndUpload}
+                />
+              }
+            />
 
           <Route
             path={ROUTES.auth}
@@ -1199,9 +1302,10 @@ export default function App() {
               />
             }
           />
-          <Route path={ROUTES.history} element={<HistoryPage orders={orders} currentUser={currentUser} lastUpdatedAt={lastOrdersUpdatedAt} />} />
-          <Route path="*" element={<Navigate to={ROUTES.home} replace />} />
-        </Routes>
+            <Route path={ROUTES.history} element={<HistoryPage orders={orders} currentUser={currentUser} lastUpdatedAt={lastOrdersUpdatedAt} />} />
+            <Route path="*" element={<Navigate to={ROUTES.home} replace />} />
+          </Routes>
+        </RouteErrorBoundary>
       </main>
     </div>
   );

@@ -109,6 +109,8 @@ export function mapOrder(row) {
     totalAmountPaise: row.total_amount_paise === null || row.total_amount_paise === undefined
       ? Math.round(Number(row.amount || 0) * 100)
       : Number(row.total_amount_paise),
+    customerName: row.customer_name || row.user_name || null,
+    customerMobile: row.customer_mobile || row.user_mobile || null,
     paymentStatus: row.payment_status,
     status: row.status,
     pickupCode: row.pickup_code,
@@ -694,7 +696,18 @@ export async function listOrdersByUser(userId) {
 }
 
 export async function listOrdersByCentre(centreId) {
-  const result = await query('select *, hub_id as centre_id from print_orders where hub_id = $1 order by created_at desc', [centreId]);
+  const result = await query(
+    `select
+       po.*,
+       po.hub_id as centre_id,
+       u.name as customer_name,
+       u.mobile as customer_mobile
+     from print_orders po
+     left join users u on u.id = po.user_id
+     where po.hub_id = $1
+     order by po.created_at desc`,
+    [centreId]
+  );
   return result.rows.map(mapOrder);
 }
 
