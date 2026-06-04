@@ -1718,13 +1718,21 @@ export async function getGlobalPlatformStats(client) {
   const visitsResult = await executor(client).query(
     `select 
        count(*) as total_visits,
-       count(case when last_active_at > now() - interval '5 minutes' then 1 end) as live_users
+       count(case when last_active_at > now() - interval '5 minutes' then 1 end) as live_users,
+       count(case when created_at >= date_trunc('day', now()) then 1 end) as visits_today,
+       count(case when created_at >= date_trunc('month', now()) then 1 end) as visits_this_month
      from platform_visits`
+  );
+
+  // Registered Users
+  const usersResult = await executor(client).query(
+    `select count(id) as total_users from users`
   );
 
   const orders = ordersResult.rows[0];
   const hubs = hubsResult.rows[0];
   const visits = visitsResult.rows[0];
+  const users = usersResult.rows[0];
 
   return {
     totalOrders: parseInt(orders.total_orders || 0, 10),
@@ -1732,7 +1740,10 @@ export async function getGlobalPlatformStats(client) {
     totalRevenue: parseFloat(orders.total_revenue || 0),
     totalPrinters: parseInt(hubs.total_printers || 0, 10),
     totalVisits: parseInt(visits.total_visits || 0, 10),
-    liveUsers: parseInt(visits.live_users || 0, 10)
+    liveUsers: parseInt(visits.live_users || 0, 10),
+    visitsToday: parseInt(visits.visits_today || 0, 10),
+    visitsThisMonth: parseInt(visits.visits_this_month || 0, 10),
+    registeredUsers: parseInt(users.total_users || 0, 10)
   };
 }
 
