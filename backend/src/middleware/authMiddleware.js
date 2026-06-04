@@ -1,29 +1,76 @@
 import jwt from 'jsonwebtoken';
 import { findUserById } from '../db/repository.js';
+import { getSupabaseAdminClient } from '../config/supabase.js';
 
-export async function authMiddleware(req, res, next) {
+function getBearerToken(req) {
   const header = req.headers.authorization;
   if (!header || !header.startsWith('Bearer ')) {
+    return null;
+  }
+
+  return header.split(' ')[1];
+}
+
+async function findLegacyJwtUser(token) {
+  if (!process.env.JWT_SECRET) return null;
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    return findUserById(decoded.id);
+  } catch (error) {
+    return null;
+  }
+}
+
+async function getSupabaseSessionUser(token) {
+  try {
+    const supabase = getSupabaseAdminClient();
+    const { data, error } = await supabase.auth.getUser(token);
+    if (error || !data?.user) return null;
+    return data.user;
+  } catch (error) {
+    return null;
+  }
+}
+
+async function resolveUserFromBearer(token) {
+  const legacyUser = await findLegacyJwtUser(token);
+  if (legacyUser) return { user: legacyUser, supabaseUser: null, profileRequired: false };
+
+  const supabaseUser = await getSupabaseSessionUser(token);
+  if (!supabaseUser) return null;
+
+  const profileUser = await findUserById(supabaseUser.id);
+  return {
+    user: profileUser,
+    supabaseUser,
+    profileRequired: !profileUser
+  };
+}
+
+export async function authMiddleware(req, res, next) {
+  const token = getBearerToken(req);
+  if (!token) {
     return res.status(401).json({ success: false, message: 'Authorization token missing' });
   }
 
-  let decoded;
-
   try {
-    const token = header.split(' ')[1];
-    decoded = jwt.verify(token, process.env.JWT_SECRET);
-  } catch (error) {
-    return res.status(401).json({ success: false, message: 'Invalid or expired token' });
-  }
+    const resolved = await resolveUserFromBearer(token);
 
-  try {
-    const user = await findUserById(decoded.id);
-
-    if (!user) {
-      return res.status(401).json({ success: false, message: 'Invalid user token' });
+    if (!resolved) {
+      return res.status(401).json({ success: false, message: 'Invalid or expired token' });
     }
 
-    req.user = user;
+    if (resolved.profileRequired) {
+      return res.status(428).json({
+        success: false,
+        profileRequired: true,
+        message: 'Complete your PrintEase profile before using this route'
+      });
+    }
+
+    req.user = resolved.user;
+    req.supabaseUser = resolved.supabaseUser;
     next();
   } catch (error) {
     next(error);
@@ -31,30 +78,51 @@ export async function authMiddleware(req, res, next) {
 }
 
 export async function optionalAuthMiddleware(req, res, next) {
-  const header = req.headers.authorization;
-  if (!header || !header.startsWith('Bearer ')) {
+  const token = getBearerToken(req);
+  if (!token) {
     next();
     return;
   }
 
-  let decoded;
-
   try {
-    const token = header.split(' ')[1];
-    decoded = jwt.verify(token, process.env.JWT_SECRET);
-  } catch (error) {
-    return res.status(401).json({ success: false, message: 'Invalid or expired token' });
-  }
+    const resolved = await resolveUserFromBearer(token);
 
-  try {
-    req.user = await findUserById(decoded.id);
-
-    if (!req.user) {
-      return res.status(401).json({ success: false, message: 'Invalid user token' });
+    if (!resolved) {
+      return res.status(401).json({ success: false, message: 'Invalid or expired token' });
     }
 
+    req.user = resolved.user || null;
+    req.supabaseUser = resolved.supabaseUser || null;
     next();
   } catch (error) {
     next(error);
+  }
+}
+
+export async function supabaseSessionMiddleware(req, res, next) {
+  const token = getBearerToken(req);
+  if (!token) {
+    return res.status(401).json({ success: false, message: 'Authorization token missing' });
+  }
+
+  try {
+    const supabaseUser = await getSupabaseSessionUser(token);
+    if (!supabaseUser) {
+      const legacyUser = await findLegacyJwtUser(token);
+      if (legacyUser) {
+        req.user = legacyUser;
+        req.supabaseUser = null;
+        next();
+        return;
+      }
+
+      return res.status(401).json({ success: false, message: 'Invalid or expired token' });
+    }
+
+    req.supabaseUser = supabaseUser;
+    req.user = await findUserById(supabaseUser.id);
+    next();
+  } catch (error) {
+    return res.status(401).json({ success: false, message: 'Invalid or expired token' });
   }
 }
