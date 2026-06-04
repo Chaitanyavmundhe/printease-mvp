@@ -106,9 +106,20 @@ function privateOrder(order) {
   };
 }
 
+function isCancelledOrder(order) {
+  return String(order?.status || '').trim().toLowerCase() === 'cancelled';
+}
+
+function isPaymentComplete(order) {
+  const value = String(order?.paymentStatus || '').trim().toLowerCase();
+  return value === 'verified' || value === 'collected' || value === 'paid';
+}
+
 const ALLOWED_HUB_ORDER_STATUSES = new Set([
   'Payment Pending',
+  'Payment Verified',
   'Payment Collected',
+  'Accepted by Centre',
   'Queued for Printing',
   'Sent to Agent',
   'Printing',
@@ -306,8 +317,8 @@ export const createOrder = asyncHandler(async (req, res) => {
       sheetCount: totalSheetCount,
       amount: totalAmount,
       totalAmountPaise,
-      paymentStatus: 'pending',
-      status: 'Payment Pending',
+      paymentStatus: 'draft',
+      status: 'Draft',
       pickupCode: generateShortCode(4),
       createdAt
     }, client);
@@ -404,6 +415,10 @@ export const getOrderById = asyncHandler(async (req, res) => {
     return res.status(404).json({ success: false, message: 'Order not found' });
   }
 
+  if (String(order.paymentStatus || '').toLowerCase() === 'draft' && !canAccessOrder(req.user, order)) {
+    return res.status(404).json({ success: false, message: 'Order not found' });
+  }
+
   if (!req.user) {
     return res.json({ success: true, order: publicTrackingOrder(order), public: true });
   }
@@ -430,6 +445,7 @@ export const collectCashPayment = asyncHandler(async (req, res) => {
   const orderId = req.params.id;
   const collectionMethod = req.body.method === 'manual_upi' ? 'MANUAL_UPI' : 'CASH';
   const transactionNote = typeof req.body.transactionNote === 'string' ? req.body.transactionNote.trim().slice(0, 200) : '';
+  const autoPrintAfterCollection = req.body.autoPrintAfterCollection !== false;
 
   const result = await withTransaction(async (client) => {
     const order = await findOrderByIdOrCode(orderId, client);
@@ -439,8 +455,14 @@ export const collectCashPayment = asyncHandler(async (req, res) => {
     }
 
     const normalizedPaymentStatus = String(order.paymentStatus || '').toLowerCase();
+    if (isCancelledOrder(order) && !isPaymentComplete(order)) {
+      return { cancelledBeforePayment: true, order };
+    }
+
     if (!['pending', 'unpaid', ''].includes(normalizedPaymentStatus)) {
-      const autoQueue = await queuePrintJobIfPaymentReady(order.id, hubId, client);
+      const autoQueue = autoPrintAfterCollection
+        ? await queuePrintJobIfPaymentReady(order.id, hubId, client)
+        : { queued: false, message: 'Payment already collected. Auto-print is off; press Send to print manually.' };
       return {
         order,
         payment: null,
@@ -462,7 +484,9 @@ export const collectCashPayment = asyncHandler(async (req, res) => {
     }, client);
 
     const collectedOrder = await updateOrderPayment(order.id, 'collected', 'Payment Collected', client);
-    const autoQueue = await queuePrintJobIfPaymentReady(collectedOrder.id, hubId, client);
+    const autoQueue = autoPrintAfterCollection
+      ? await queuePrintJobIfPaymentReady(collectedOrder.id, hubId, client)
+      : { queued: false, message: 'Payment collected. Auto-print is off; press Send to print manually.' };
 
     return {
       payment,
@@ -474,6 +498,14 @@ export const collectCashPayment = asyncHandler(async (req, res) => {
 
   if (result?.notFound) {
     return res.status(404).json({ success: false, message: 'Order not found for this hub' });
+  }
+
+  if (result?.cancelledBeforePayment) {
+    return res.status(409).json({
+      success: false,
+      message: 'Order was cancelled before payment. Cash collection is disabled.',
+      order: result.order
+    });
   }
 
   res.json({

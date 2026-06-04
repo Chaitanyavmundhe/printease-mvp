@@ -44,6 +44,30 @@ function assertRazorpayConfigured() {
   }
 }
 
+function normalizePaymentStatus(order) {
+  return String(order?.paymentStatus || '').trim().toLowerCase();
+}
+
+function normalizeOrderStatus(order) {
+  return String(order?.status || '').trim().toLowerCase();
+}
+
+function isOrderCancelled(order) {
+  return normalizeOrderStatus(order) === 'cancelled';
+}
+
+function isPaymentComplete(order) {
+  return ['verified', 'collected', 'paid'].includes(normalizePaymentStatus(order));
+}
+
+function assertOrderCanStartPayment(order) {
+  if (isOrderCancelled(order) && !isPaymentComplete(order)) {
+    const error = new Error('Order was cancelled before payment. Payment cannot be started.');
+    error.statusCode = 409;
+    throw error;
+  }
+}
+
 function verifyRazorpayCheckoutSignature({ razorpayOrderId, razorpayPaymentId, razorpaySignature }) {
   const body = `${razorpayOrderId}|${razorpayPaymentId}`;
   const expectedSignature = crypto
@@ -98,6 +122,54 @@ export const getPaymentConfig = asyncHandler(async (_req, res) => {
   });
 });
 
+export const createManualPaymentRequest = asyncHandler(async (req, res) => {
+  const { orderId } = req.body;
+
+  if (!orderId) {
+    return res.status(400).json({ success: false, message: 'Order ID is required' });
+  }
+
+  const order = await findOrderByIdOrCode(orderId);
+
+  if (!order) {
+    return res.status(404).json({ success: false, message: 'Order not found' });
+  }
+
+  if (!canAccessOrder(req.user, order)) {
+    return res.status(403).json({ success: false, message: 'You are not allowed to create payment request for this order' });
+  }
+
+  assertOrderCanStartPayment(order);
+
+  const paymentStatus = normalizePaymentStatus(order);
+  if (['verified', 'collected', 'paid'].includes(paymentStatus)) {
+    return res.status(409).json({ success: false, message: 'Payment is already completed for this order' });
+  }
+
+  const result = await withTransaction(async (client) => {
+    const payment = await savePayment({
+      id: generateId(),
+      orderId: order.id,
+      amount: order.amount,
+      method: 'MANUAL_PAYMENT_REQUEST',
+      transactionId: `manual_request_${Date.now()}`,
+      status: 'pending',
+      createdAt: new Date().toISOString(),
+      verifiedAt: null
+    }, client);
+
+    const requestedOrder = await updateOrderPayment(order.id, 'pending', 'Payment Pending', client);
+
+    return { payment, order: requestedOrder };
+  });
+
+  res.status(201).json({
+    success: true,
+    message: 'Pending payment request created.',
+    ...result
+  });
+});
+
 export const createRazorpayOrder = asyncHandler(async (req, res) => {
   assertRazorpayConfigured();
 
@@ -117,8 +189,10 @@ export const createRazorpayOrder = asyncHandler(async (req, res) => {
     return res.status(403).json({ success: false, message: 'You are not allowed to create payment for this order' });
   }
 
-  const paymentStatus = String(order.paymentStatus || '').toLowerCase();
-  if (['verified', 'collected'].includes(paymentStatus)) {
+  assertOrderCanStartPayment(order);
+
+  const paymentStatus = normalizePaymentStatus(order);
+  if (['verified', 'collected', 'paid'].includes(paymentStatus)) {
     return res.status(409).json({ success: false, message: 'Payment is already completed for this order' });
   }
 
@@ -136,25 +210,31 @@ export const createRazorpayOrder = asyncHandler(async (req, res) => {
     }
   });
 
-  const payment = await savePayment({
-    id: generateId(),
-    orderId: order.id,
-    amount: order.amount,
-    method: 'RAZORPAY_CHECKOUT',
-    provider: 'RAZORPAY',
-    providerOrderId: razorpayOrder.id,
-    providerStatus: razorpayOrder.status,
-    providerPayload: razorpayOrder,
-    transactionId: razorpayOrder.id,
-    status: 'created',
-    createdAt: new Date().toISOString(),
-    verifiedAt: null
+  const { payment, requestedOrder } = await withTransaction(async (client) => {
+    const payment = await savePayment({
+      id: generateId(),
+      orderId: order.id,
+      amount: order.amount,
+      method: 'RAZORPAY_CHECKOUT',
+      provider: 'RAZORPAY',
+      providerOrderId: razorpayOrder.id,
+      providerStatus: razorpayOrder.status,
+      providerPayload: razorpayOrder,
+      transactionId: razorpayOrder.id,
+      status: 'created',
+      createdAt: new Date().toISOString(),
+      verifiedAt: null
+    }, client);
+
+    const requestedOrder = await updateOrderPayment(order.id, 'pending', 'Payment Pending', client);
+    return { payment, requestedOrder };
   });
 
   res.status(201).json({
     success: true,
     message: 'Razorpay order created',
     payment,
+    order: requestedOrder,
     razorpay: {
       enabled: true,
       keyId: RAZORPAY_KEY_ID,
@@ -239,15 +319,31 @@ export const verifyRazorpayPayment = asyncHandler(async (req, res) => {
 
   const result = await withTransaction(async (client) => {
     const latestOrder = await findOrderByIdOrCode(order.id, client);
-    const latestPaymentStatus = String(latestOrder?.paymentStatus || '').toLowerCase();
+    const latestPaymentStatus = normalizePaymentStatus(latestOrder);
 
-    if (['verified', 'collected'].includes(latestPaymentStatus)) {
+    if (['verified', 'collected', 'paid'].includes(latestPaymentStatus)) {
       return {
         payment,
         order: latestOrder,
         autoQueue: { queued: false, message: 'Payment already processed.' },
         printJob: null
       };
+    }
+
+    if (isOrderCancelled(latestOrder)) {
+      const cancelledPayment = await updatePayment(payment.id, {
+        status: 'cancelled',
+        providerPaymentId: razorpay_payment_id,
+        providerSignature: razorpay_signature,
+        providerStatus: 'order_cancelled_before_payment',
+        providerPayload: { ...req.body, reason: 'order_cancelled_before_payment' }
+      }, client);
+
+      const error = new Error('Order was cancelled before payment. Payment cannot be verified.');
+      error.statusCode = 409;
+      error.payment = cancelledPayment;
+      error.order = latestOrder;
+      throw error;
     }
 
     return markOrderPaidAndQueue({
@@ -287,6 +383,13 @@ export const createRazorpayUpiQr = asyncHandler(async (req, res) => {
     return res.status(403).json({ success: false, message: 'You are not allowed to create QR payment for this order' });
   }
 
+  assertOrderCanStartPayment(order);
+
+  const paymentStatus = normalizePaymentStatus(order);
+  if (['verified', 'collected', 'paid'].includes(paymentStatus)) {
+    return res.status(409).json({ success: false, message: 'Payment is already completed for this order' });
+  }
+
   const amountPaise = amountToPaise(order.amount);
   const razorpay = getRazorpayClient();
 
@@ -310,28 +413,34 @@ export const createRazorpayUpiQr = asyncHandler(async (req, res) => {
     throw error;
   }
 
-  const payment = await savePayment({
-    id: generateId(),
-    orderId: order.id,
-    amount: order.amount,
-    method: 'RAZORPAY_UPI_QR',
-    provider: 'RAZORPAY',
-    providerOrderId: qr.id,
-    providerStatus: qr.status,
-    providerPayload: qr,
-    transactionId: qr.id,
-    qrCodeId: qr.id,
-    qrImageUrl: qr.image_url || null,
-    shortUrl: qr.image_url || null,
-    status: 'created',
-    createdAt: new Date().toISOString(),
-    verifiedAt: null
+  const { payment, requestedOrder } = await withTransaction(async (client) => {
+    const payment = await savePayment({
+      id: generateId(),
+      orderId: order.id,
+      amount: order.amount,
+      method: 'RAZORPAY_UPI_QR',
+      provider: 'RAZORPAY',
+      providerOrderId: qr.id,
+      providerStatus: qr.status,
+      providerPayload: qr,
+      transactionId: qr.id,
+      qrCodeId: qr.id,
+      qrImageUrl: qr.image_url || null,
+      shortUrl: qr.image_url || null,
+      status: 'created',
+      createdAt: new Date().toISOString(),
+      verifiedAt: null
+    }, client);
+
+    const requestedOrder = await updateOrderPayment(order.id, 'pending', 'Payment Pending', client);
+    return { payment, requestedOrder };
   });
 
   res.status(201).json({
     success: true,
     message: 'UPI QR created',
     payment,
+    order: requestedOrder,
     qr: {
       id: qr.id,
       imageUrl: qr.image_url || null,
@@ -386,13 +495,31 @@ export const razorpayWebhook = asyncHandler(async (req, res) => {
         providerPayload: event
       }, client);
 
-      const failedOrder = await updateOrderPayment(order.id, 'failed', 'Payment Failed', client);
+      const failedOrder = isOrderCancelled(order)
+        ? order
+        : await updateOrderPayment(order.id, 'failed', 'Payment Failed', client);
       return { payment: failedPayment, order: failedOrder, failed: true };
     }
 
-    const currentOrderStatus = String(order.paymentStatus || '').toLowerCase();
-    if (['verified', 'collected'].includes(currentOrderStatus)) {
+    const currentOrderStatus = normalizePaymentStatus(order);
+    if (['verified', 'collected', 'paid'].includes(currentOrderStatus)) {
       return { payment, order, alreadyProcessed: true };
+    }
+
+    if (isOrderCancelled(order)) {
+      const cancelledPayment = await updatePayment(payment.id, {
+        status: 'cancelled',
+        providerPaymentId: paymentId,
+        providerStatus: 'order_cancelled_before_payment',
+        providerPayload: event
+      }, client);
+
+      return {
+        payment: cancelledPayment,
+        order,
+        cancelledBeforePayment: true,
+        message: 'Order was cancelled before payment; webhook payment was not applied.'
+      };
     }
 
     return markOrderPaidAndQueue({
@@ -444,6 +571,8 @@ export const verifyDemoPayment = asyncHandler(async (req, res) => {
   if (!canAccessOrder(req.user, order)) {
     return res.status(403).json({ success: false, message: 'You are not allowed to verify this payment' });
   }
+
+  assertOrderCanStartPayment(order);
 
   if (!demoSuccess) {
     const result = await withTransaction(async (client) => {
