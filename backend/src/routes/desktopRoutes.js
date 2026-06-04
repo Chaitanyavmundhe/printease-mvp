@@ -12,10 +12,11 @@ import {
 import { authMiddleware } from '../middleware/authMiddleware.js';
 import { agentAuthMiddleware } from '../middleware/agentAuthMiddleware.js';
 import { roleMiddleware } from '../middleware/roleMiddleware.js';
+import { diagnosticsRateLimit } from '../middleware/rateLimitMiddleware.js';
 
 const router = express.Router();
 
-router.post('/printer-diagnostics', logDesktopPrinterDiagnostics);
+router.post('/printer-diagnostics', diagnosticsRateLimit, logDesktopPrinterDiagnostics);
 router.post('/device/register', authMiddleware, roleMiddleware('hub'), registerDesktopDevice);
 router.post('/device/heartbeat', agentAuthMiddleware, desktopHeartbeat);
 router.get('/device/status', agentAuthMiddleware, getDesktopDeviceStatus);

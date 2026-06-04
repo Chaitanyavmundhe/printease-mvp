@@ -769,6 +769,23 @@ export async function updateOrderStatus(orderId, centreId, status, client) {
   return mapOrder(result.rows[0]);
 }
 
+export async function cancelActivePrintJobsForOrder(orderId, hubId, reasonText = 'Order was stopped by hub owner', client) {
+  const result = await executor(client).query(
+    `update print_jobs
+     set status = 'cancelled',
+         failure_reason_code = coalesce(failure_reason_code, 'ORDER_CANCELLED'),
+         failure_reason_text = coalesce($3, failure_reason_text),
+         failed_at = coalesce(failed_at, now())
+     where order_id = $1
+       and hub_id = $2
+       and status in ('queued', 'assigned', 'accepted', 'downloading', 'printing')
+     returning *`,
+    [orderId, hubId, reasonText]
+  );
+
+  return result.rows.map(mapPrintJob);
+}
+
 export async function updateOrderPayment(orderId, paymentStatus, status, client) {
   const result = await executor(client).query(
     'update print_orders set payment_status = $2, status = $3 where id = $1 returning *, hub_id as centre_id',
@@ -1350,7 +1367,7 @@ export async function findActivePrintJobByOrder(orderId, hubId, client) {
      from print_jobs
      where order_id = $1
        and hub_id = $2
-       and status in ('queued', 'assigned', 'accepted', 'downloading', 'printing', 'completed')
+       and status in ('queued', 'assigned', 'accepted', 'downloading', 'printing')
      order by created_at desc
      limit 1`,
     [orderId, hubId]
@@ -1569,7 +1586,15 @@ export async function findNextPrintJobForAgent(agentId, hubId, client) {
        and pj.status in ('queued', 'assigned')
        and a.revoked_at is null
        and a.paused = false
-       and lower(coalesce(po.payment_status, '')) = 'collected'
+       and lower(coalesce(po.payment_status, '')) in ('collected', 'verified')
+       and lower(coalesce(po.status, '')) not in (
+         'paused',
+         'cancelled',
+         'refund requested',
+         'printing failed',
+         'ready for pickup',
+         'collected'
+       )
        and exists (
          select 1
          from print_order_files pof
@@ -1639,7 +1664,7 @@ export async function updatePrintJobStatus(jobId, hubId, updates, client) {
          accepted_at = case when $3 = 'accepted' then now() else accepted_at end,
          printing_started_at = case when $3 = 'printing' then now() else printing_started_at end,
          completed_at = case when $3 = 'completed' then now() else completed_at end,
-         failed_at = case when $3 = 'failed' then now() else failed_at end
+         failed_at = case when $3 in ('failed', 'cancelled') then now() else failed_at end
      where id = $1
        and hub_id = $2
        and ($6::uuid is null or agent_id = $6 or agent_id is null)

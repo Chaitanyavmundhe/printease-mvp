@@ -34,6 +34,8 @@ async function getSupabaseSessionUser(token) {
 }
 
 async function resolveUserFromBearer(token) {
+  if (!token || token.length < 20 || token.length > 4096) return null;
+
   const legacyUser = await findLegacyJwtUser(token);
   if (legacyUser) return { user: legacyUser, supabaseUser: null, profileRequired: false };
 

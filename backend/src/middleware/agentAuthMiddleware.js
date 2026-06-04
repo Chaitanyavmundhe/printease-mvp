@@ -10,6 +10,11 @@ export async function agentAuthMiddleware(req, res, next) {
 
   try {
     const token = header.slice('Bearer '.length).trim();
+
+    if (token.length < 32 || token.length > 512) {
+      return res.status(401).json({ success: false, message: 'Invalid or revoked agent token' });
+    }
+
     const tokenHash = hashAgentSecret(token);
     const agent = await findActiveAgentByTokenHash(tokenHash);
 

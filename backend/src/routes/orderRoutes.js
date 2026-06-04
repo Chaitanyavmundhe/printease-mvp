@@ -17,7 +17,7 @@ router.post('/', optionalAuthMiddleware, createOrder);
 router.get('/mine', authMiddleware, roleMiddleware('user'), getMyOrders);
 router.get('/centre/mine', authMiddleware, roleMiddleware('hub'), getCentreOrders);
 router.get('/:orderId/documents', authMiddleware, getOrderDocuments);
-router.get('/:id', getOrderById);
+router.get('/:id', optionalAuthMiddleware, getOrderById);
 router.post('/:id/collect-payment', authMiddleware, roleMiddleware('hub'), collectCashPayment);
 router.patch('/:id/status', authMiddleware, roleMiddleware('hub'), updateOrderStatus);
 

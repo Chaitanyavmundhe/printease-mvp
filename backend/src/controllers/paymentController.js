@@ -26,7 +26,7 @@ function canAccessOrder(user, order) {
   if (!user || !order) return false;
   if (user.role === 'admin') return true;
   if (user.role === 'user') return order.userId === user.id;
-  if (user.role === 'hub') return Boolean(user.centreId && order.centreId === user.centreId);
+  if (user.role === 'hub') return Boolean((user.centreId || user.hubId) && order.centreId === (user.centreId || user.hubId));
   return false;
 }
 

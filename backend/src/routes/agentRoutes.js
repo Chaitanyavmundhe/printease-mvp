@@ -6,6 +6,7 @@ import {
   getAgentConfig,
   heartbeat,
   markCompleted,
+  markCancelled,
   markDownloading,
   markFailed,
   markPrinting,
@@ -13,11 +14,12 @@ import {
   syncPrinters
 } from '../controllers/agentController.js';
 import { agentAuthMiddleware } from '../middleware/agentAuthMiddleware.js';
+import { agentPairingRateLimit } from '../middleware/rateLimitMiddleware.js';
 
 const router = express.Router();
 
-router.post('/pair/start', startPairing);
-router.post('/pair/confirm', confirmPairing);
+router.post('/pair/start', agentPairingRateLimit, startPairing);
+router.post('/pair/confirm', agentPairingRateLimit, confirmPairing);
 
 router.post('/heartbeat', agentAuthMiddleware, heartbeat);
 router.get('/config', agentAuthMiddleware, getAgentConfig);
@@ -28,5 +30,6 @@ router.post('/jobs/:jobId/downloading', agentAuthMiddleware, markDownloading);
 router.post('/jobs/:jobId/printing', agentAuthMiddleware, markPrinting);
 router.post('/jobs/:jobId/completed', agentAuthMiddleware, markCompleted);
 router.post('/jobs/:jobId/failed', agentAuthMiddleware, markFailed);
+router.post('/jobs/:jobId/cancelled', agentAuthMiddleware, markCancelled);
 
 export default router;

@@ -17,6 +17,10 @@ function safeFileName(name) {
   return `${base || 'document'}${ext || '.pdf'}`;
 }
 
+function looksLikePdf(buffer) {
+  return Buffer.isBuffer(buffer) && buffer.slice(0, 5).toString('ascii') === '%PDF-';
+}
+
 export const uploadDocument = asyncHandler(async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ success: false, message: 'No file uploaded' });
@@ -26,6 +30,13 @@ export const uploadDocument = asyncHandler(async (req, res) => {
     return res.status(400).json({
       success: false,
       message: 'Only PDF files are supported for agent printing MVP'
+    });
+  }
+
+  if (!looksLikePdf(req.file.buffer)) {
+    return res.status(400).json({
+      success: false,
+      message: 'Uploaded file is not a valid PDF.'
     });
   }
 

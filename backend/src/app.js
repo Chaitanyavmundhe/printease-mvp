@@ -14,8 +14,11 @@ import documentRoutes from './routes/documentRoutes.js';
 import agentRoutes from './routes/agentRoutes.js';
 import hubAgentRoutes from './routes/hubAgentRoutes.js';
 import desktopRoutes from './routes/desktopRoutes.js';
+import { globalRateLimit } from './middleware/rateLimitMiddleware.js';
 
 const app = express();
+
+app.set('trust proxy', 1);
 
 function normalizeOrigin(origin) {
   if (!origin) return null;
@@ -30,13 +33,23 @@ function normalizeOrigin(origin) {
 const desktopAppOrigin = String(process.env.DESKTOP_APP_ORIGIN || 'app://printease').replace(/\/+$/, '');
 const allowDesktopNullOrigin = process.env.ALLOW_DESKTOP_NULL_ORIGIN === 'true';
 
-const allowedOrigins = new Set([
+const baseAllowedOrigins = [
   process.env.FRONTEND_URL,
-  'https://printhubdesi.vercel.app',
+  'https://printhubdesi.vercel.app'
+];
+
+const localDevOrigins = [
   'http://localhost:5173',
   'http://127.0.0.1:5173',
   'http://localhost:5175',
   'http://127.0.0.1:5175'
+];
+
+const allowedOrigins = new Set([
+  ...baseAllowedOrigins,
+  ...(process.env.NODE_ENV === 'production' && process.env.ALLOW_LOCAL_ORIGINS !== 'true'
+    ? []
+    : localDevOrigins)
 ].map(normalizeOrigin).filter(Boolean));
 
 function isAllowedVercelPreviewOrigin(origin) {
@@ -110,6 +123,7 @@ app.use(express.json({
 }));
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
+app.use(globalRateLimit);
 
 app.get('/', (req, res) => {
   res.json({
@@ -185,7 +199,7 @@ app.use((err, req, res, next) => {
 
   res.status(status).json({
     success: false,
-    message: databaseMessage || uploadMessage || err.message || 'Internal server error',
+    message: databaseMessage || uploadMessage || (status >= 500 ? 'Internal server error' : err.message) || 'Internal server error',
     route: req.originalUrl
   });
 });

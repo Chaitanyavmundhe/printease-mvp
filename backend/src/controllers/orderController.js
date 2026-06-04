@@ -1,6 +1,7 @@
 import {
   createOrder as saveOrder,
   createOrderFile,
+  cancelActivePrintJobsForOrder,
   findCentreByCode,
   findCentreById,
   createPayment as savePayment,
@@ -77,6 +78,48 @@ function pricingMetadata(price) {
   };
 }
 
+function canAccessOrder(user, order) {
+  if (!user || !order) return false;
+  if (user.role === 'admin') return true;
+  if (user.role === 'user') return order.userId === user.id;
+  if (user.role === 'hub') return order.centreId === (user.centreId || user.hubId);
+  return false;
+}
+
+function publicTrackingOrder(order) {
+  return {
+    id: order.id,
+    orderCode: order.orderCode,
+    centreId: order.centreId,
+    documentName: order.documentName,
+    amount: order.amount,
+    paymentStatus: order.paymentStatus,
+    status: order.status,
+    createdAt: order.createdAt
+  };
+}
+
+function privateOrder(order) {
+  return {
+    ...order,
+    pickupCode: order.pickupCode || null
+  };
+}
+
+const ALLOWED_HUB_ORDER_STATUSES = new Set([
+  'Payment Pending',
+  'Payment Collected',
+  'Queued for Printing',
+  'Sent to Agent',
+  'Printing',
+  'Ready for Pickup',
+  'Collected',
+  'Paused',
+  'Cancelled',
+  'Printing Failed',
+  'Refund Requested'
+]);
+
 export const createOrder = asyncHandler(async (req, res) => {
   const {
     centreCode,
@@ -132,7 +175,6 @@ export const createOrder = asyncHandler(async (req, res) => {
 
       if (
         !document.userId &&
-        req.user?.role !== 'hub' &&
         req.user?.role !== 'admin'
       ) {
         return res.status(403).json({ success: false, message: 'Guest uploaded documents cannot be attached to an order. Please upload again while logged in.' });
@@ -140,7 +182,6 @@ export const createOrder = asyncHandler(async (req, res) => {
 
       if (
         document.userId &&
-        req.user?.role !== 'hub' &&
         req.user?.role !== 'admin' &&
         document.userId !== req.user?.id
       ) {
@@ -363,7 +404,15 @@ export const getOrderById = asyncHandler(async (req, res) => {
     return res.status(404).json({ success: false, message: 'Order not found' });
   }
 
-  res.json({ success: true, order });
+  if (!req.user) {
+    return res.json({ success: true, order: publicTrackingOrder(order), public: true });
+  }
+
+  if (!canAccessOrder(req.user, order)) {
+    return res.status(403).json({ success: false, message: 'You are not allowed to view this order' });
+  }
+
+  res.json({ success: true, order: privateOrder(order), public: false });
 });
 
 export const getMyOrders = asyncHandler(async (req, res) => {
@@ -372,7 +421,7 @@ export const getMyOrders = asyncHandler(async (req, res) => {
 });
 
 export const getCentreOrders = asyncHandler(async (req, res) => {
-  const orders = await listOrdersByCentre(req.user.centreId);
+  const orders = await listOrdersByCentre(req.user.centreId || req.user.hubId);
   res.json({ success: true, orders });
 });
 
@@ -435,11 +484,36 @@ export const collectCashPayment = asyncHandler(async (req, res) => {
 });
 
 export const updateOrderStatus = asyncHandler(async (req, res) => {
-  const order = await saveOrderStatus(req.params.id, req.user.centreId, req.body.status);
+  const hubId = req.user?.centreId || req.user?.hubId;
+  const nextStatus = String(req.body.status || '').trim();
 
-  if (!order) {
+  if (!ALLOWED_HUB_ORDER_STATUSES.has(nextStatus)) {
+    return res.status(400).json({ success: false, message: 'Unsupported order status' });
+  }
+
+  const result = await withTransaction(async (client) => {
+    const order = await saveOrderStatus(req.params.id, hubId, nextStatus, client);
+    if (!order) return null;
+
+    const normalizedStatus = nextStatus.toLowerCase();
+    const shouldStopPrintJobs = ['cancelled', 'paused', 'refund requested', 'printing failed'].includes(normalizedStatus);
+    const cancelledPrintJobs = shouldStopPrintJobs
+      ? await cancelActivePrintJobsForOrder(order.id, hubId, `Order marked ${nextStatus} by hub owner`, client)
+      : [];
+
+    return { order, cancelledPrintJobs };
+  });
+
+  if (!result) {
     return res.status(404).json({ success: false, message: 'Order not found for this centre' });
   }
 
-  res.json({ success: true, message: 'Order status updated', order });
+  res.json({
+    success: true,
+    message: result.cancelledPrintJobs.length
+      ? 'Order status updated and active print jobs stopped.'
+      : 'Order status updated',
+    order: result.order,
+    cancelledPrintJobs: result.cancelledPrintJobs
+  });
 });

@@ -37,6 +37,11 @@ const ALLOWED_DESKTOP_JOB_STATUSES = new Set([
   'cancelled'
 ]);
 
+function safeText(value, maxLength = 500) {
+  if (value === null || value === undefined) return null;
+  return String(value).replace(/[\r\n\t]+/g, ' ').slice(0, maxLength);
+}
+
 function toSelectedPrinter(printers) {
   const selected = printers.find((printer) => printer.isDefault) || printers[0] || null;
 
@@ -139,30 +144,30 @@ export const registerDesktopDevice = asyncHandler(async (req, res) => {
 
 export const logDesktopPrinterDiagnostics = asyncHandler(async (req, res) => {
   const result = req.body?.result || {};
-  const printers = Array.isArray(result.printers) ? result.printers : [];
-  const probes = Array.isArray(result.probes) ? result.probes : [];
+  const printers = Array.isArray(result.printers) ? result.printers.slice(0, 25) : [];
+  const probes = Array.isArray(result.probes) ? result.probes.slice(0, 20) : [];
 
   console.log('[DESKTOP PRINTER DIAGNOSTIC]', {
-    event: req.body?.event || 'unknown',
-    deviceId: req.body?.deviceId || null,
-    deviceName: req.body?.deviceName || null,
-    platform: req.body?.platform || null,
+    event: safeText(req.body?.event || 'unknown', 80),
+    deviceId: safeText(req.body?.deviceId, 120),
+    deviceName: safeText(req.body?.deviceName, 120),
+    platform: safeText(req.body?.platform, 80),
     paired: Boolean(req.body?.paired),
     success: result.success,
     printerCount: printers.length,
     printers: printers.map((printer) => ({
-      printerName: printer.printerName,
-      status: printer.status,
+      printerName: safeText(printer.printerName, 160),
+      status: safeText(printer.status, 80),
       isDefault: printer.isDefault,
-      rawStatus: printer.rawStatus
+      rawStatus: safeText(printer.rawStatus, 160)
     })),
-    error: result.error || result.message || null,
+    error: safeText(result.error || result.message, 500),
     probes: probes.map((probe) => ({
-      command: probe.command,
+      command: safeText(probe.command, 120),
       success: probe.success,
-      stdout: probe.stdout,
-      stderr: probe.stderr,
-      error: probe.error
+      stdout: safeText(probe.stdout, 500),
+      stderr: safeText(probe.stderr, 500),
+      error: safeText(probe.error, 500)
     }))
   });
 

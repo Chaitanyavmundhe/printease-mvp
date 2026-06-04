@@ -49,6 +49,22 @@ function isEmail(value) {
   return /^\S+@\S+\.\S+$/.test(String(value || '').trim());
 }
 
+function validateUsername(username) {
+  if (!/^[a-z0-9]{3,32}$/.test(username)) {
+    return 'Username must be 3-32 letters or numbers.';
+  }
+
+  return null;
+}
+
+function validatePassword(password) {
+  if (password.length < 8 || password.length > 128) {
+    return 'Password must be 8-128 characters.';
+  }
+
+  return null;
+}
+
 async function findUserByIdentifier(identifier) {
   if (isEmail(identifier)) return findUserByEmail(identifier);
   return findUserByUsername(normalizeUsername(identifier));
@@ -63,6 +79,16 @@ export const registerUser = asyncHandler(async (req, res) => {
 
   if (!name || !username || !password) {
     return res.status(400).json({ success: false, message: 'Name, username, and password are required.' });
+  }
+
+  const usernameError = validateUsername(username);
+  if (usernameError) {
+    return res.status(400).json({ success: false, message: usernameError });
+  }
+
+  const passwordError = validatePassword(password);
+  if (passwordError) {
+    return res.status(400).json({ success: false, message: passwordError });
   }
 
   if (email && !isEmail(email)) {
@@ -118,6 +144,16 @@ export const registerCentre = asyncHandler(async (req, res) => {
 
   if (!finalOwnerName || !username || !password || !finalHubName || !centreCode) {
     return res.status(400).json({ success: false, message: 'Name, username, password, hub name, and centre code are required.' });
+  }
+
+  const usernameError = validateUsername(username);
+  if (usernameError) {
+    return res.status(400).json({ success: false, message: usernameError });
+  }
+
+  const passwordError = validatePassword(password);
+  if (passwordError) {
+    return res.status(400).json({ success: false, message: passwordError });
   }
 
   if (email && !isEmail(email)) {
@@ -194,6 +230,10 @@ async function loginWithPassword(req, res) {
     return res.status(400).json({ success: false, message: 'Username/email and password are required.' });
   }
 
+  if (password.length > 128) {
+    return res.status(400).json({ success: false, message: 'Invalid username/email or password.' });
+  }
+
   const user = await findUserByIdentifier(identifier);
   if (!user) {
     return res.status(401).json({ success: false, message: 'Invalid username/email or password.' });
@@ -224,6 +264,11 @@ export const checkUsernameAvailability = asyncHandler(async (req, res) => {
 
   if (!username) {
     return res.status(400).json({ success: false, message: 'Enter a username.' });
+  }
+
+  const usernameError = validateUsername(username);
+  if (usernameError) {
+    return res.status(400).json({ success: false, message: usernameError });
   }
 
   const existing = await findUserByUsername(username);

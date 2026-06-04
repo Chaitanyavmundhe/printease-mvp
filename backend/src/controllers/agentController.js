@@ -32,7 +32,8 @@ const JOB_STATUS_TO_ORDER_STATUS = {
   downloading: 'Sent to Agent',
   printing: 'Printing',
   completed: 'Ready for Pickup',
-  failed: 'Printing Failed'
+  failed: 'Printing Failed',
+  cancelled: 'Cancelled'
 };
 
 function getPairingExpiry() {
@@ -467,5 +468,15 @@ export const markFailed = asyncHandler((req, res) => {
     nextStatus: 'failed',
     eventType: 'failed',
     message: req.body.reasonText || 'Agent reported print failure'
+  });
+});
+
+export const markCancelled = asyncHandler((req, res) => {
+  return updateJobFromAgent({
+    req,
+    res,
+    nextStatus: 'cancelled',
+    eventType: 'cancelled',
+    message: req.body.reasonText || 'Agent stopped print job after hub cancellation'
   });
 });
