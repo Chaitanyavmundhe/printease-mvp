@@ -1687,3 +1687,52 @@ export async function updatePrintJobStatus(jobId, hubId, updates, client) {
 
   return mapPrintJob(result.rows[0]);
 }
+
+export async function upsertPlatformVisit(sessionId, client) {
+  await executor(client).query(
+    `insert into platform_visits (session_id, created_at, last_active_at)
+     values ($1, now(), now())
+     on conflict (session_id) do update 
+     set last_active_at = now()`,
+    [sessionId]
+  );
+}
+
+export async function getGlobalPlatformStats(client) {
+  // Total orders, pages, revenue
+  const ordersResult = await executor(client).query(
+    `select 
+       count(id) as total_orders,
+       sum(pages * copies) as total_pages,
+       sum(amount) as total_revenue
+     from print_orders 
+     where status in ('printed', 'completed')`
+  );
+
+  // Total print hubs (printers)
+  const hubsResult = await executor(client).query(
+    `select count(id) as total_printers from print_hubs`
+  );
+
+  // Visits and live users
+  const visitsResult = await executor(client).query(
+    `select 
+       count(*) as total_visits,
+       count(case when last_active_at > now() - interval '5 minutes' then 1 end) as live_users
+     from platform_visits`
+  );
+
+  const orders = ordersResult.rows[0];
+  const hubs = hubsResult.rows[0];
+  const visits = visitsResult.rows[0];
+
+  return {
+    totalOrders: parseInt(orders.total_orders || 0, 10),
+    totalPages: parseInt(orders.total_pages || 0, 10),
+    totalRevenue: parseFloat(orders.total_revenue || 0),
+    totalPrinters: parseInt(hubs.total_printers || 0, 10),
+    totalVisits: parseInt(visits.total_visits || 0, 10),
+    liveUsers: parseInt(visits.live_users || 0, 10)
+  };
+}
+

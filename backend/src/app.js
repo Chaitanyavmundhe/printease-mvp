@@ -14,6 +14,7 @@ import documentRoutes from './routes/documentRoutes.js';
 import agentRoutes from './routes/agentRoutes.js';
 import hubAgentRoutes from './routes/hubAgentRoutes.js';
 import desktopRoutes from './routes/desktopRoutes.js';
+import statsRoutes from './routes/stats.js';
 import { globalRateLimit } from './middleware/rateLimitMiddleware.js';
 
 const app = express();
@@ -153,6 +154,7 @@ app.use('/api/documents', documentRoutes);
 app.use('/api/agent', agentRoutes);
 app.use('/api/hub-agents', hubAgentRoutes);
 app.use('/api/desktop', desktopRoutes);
+app.use('/api/stats', statsRoutes);
 
 app.use((req, res) => {
   res.status(404).json({
