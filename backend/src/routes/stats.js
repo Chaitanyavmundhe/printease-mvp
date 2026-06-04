@@ -6,12 +6,12 @@ const router = express.Router();
 // POST /api/stats/visit
 router.post('/visit', async (req, res) => {
   try {
-    const { sessionId } = req.body;
+    const { sessionId, isPageView } = req.body;
     if (!sessionId) {
       return res.status(400).json({ error: 'Session ID is required' });
     }
 
-    await repo.upsertPlatformVisit(sessionId);
+    await repo.upsertPlatformVisit(sessionId, !!isPageView);
     res.json({ success: true });
   } catch (error) {
     console.error('Error tracking visit:', error);

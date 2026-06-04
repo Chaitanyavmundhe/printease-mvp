@@ -1688,13 +1688,16 @@ export async function updatePrintJobStatus(jobId, hubId, updates, client) {
   return mapPrintJob(result.rows[0]);
 }
 
-export async function upsertPlatformVisit(sessionId, client) {
+export async function upsertPlatformVisit(sessionId, isPageView, client) {
+  const pageViewIncrement = isPageView ? 1 : 0;
+  
   await executor(client).query(
-    `insert into platform_visits (session_id, created_at, last_active_at)
-     values ($1, now(), now())
+    `insert into platform_visits (session_id, created_at, last_active_at, page_views)
+     values ($1, now(), now(), $2)
      on conflict (session_id) do update 
-     set last_active_at = now()`,
-    [sessionId]
+     set last_active_at = now(),
+         page_views = platform_visits.page_views + $2`,
+    [sessionId, pageViewIncrement]
   );
 }
 
@@ -1718,6 +1721,8 @@ export async function getGlobalPlatformStats(client) {
   const visitsResult = await executor(client).query(
     `select 
        count(*) as total_visits,
+       sum(coalesce(page_views, 1)) as total_page_views,
+       sum(extract(epoch from (last_active_at - created_at))) as total_seconds_spent,
        count(case when last_active_at > now() - interval '5 minutes' then 1 end) as live_users,
        count(case when created_at >= date_trunc('day', now()) then 1 end) as visits_today,
        count(case when created_at >= date_trunc('month', now()) then 1 end) as visits_this_month
@@ -1740,6 +1745,8 @@ export async function getGlobalPlatformStats(client) {
     totalRevenue: parseFloat(orders.total_revenue || 0),
     totalPrinters: parseInt(hubs.total_printers || 0, 10),
     totalVisits: parseInt(visits.total_visits || 0, 10),
+    totalPageViews: parseInt(visits.total_page_views || 0, 10),
+    totalSecondsSpent: parseInt(visits.total_seconds_spent || 0, 10),
     liveUsers: parseInt(visits.live_users || 0, 10),
     visitsToday: parseInt(visits.visits_today || 0, 10),
     visitsThisMonth: parseInt(visits.visits_this_month || 0, 10),
