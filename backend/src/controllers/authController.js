@@ -49,51 +49,43 @@ function isEmail(value) {
   return /^\S+@\S+\.\S+$/.test(String(value || '').trim());
 }
 
-async function signInWithSupabasePassword(email, password) {
-  const supabaseUrl = process.env.SUPABASE_URL;
-  const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-
-  if (!supabaseUrl || !supabaseAnonKey) {
-    const error = new Error('Supabase email/password login is not configured on the backend.');
-    error.status = 503;
-    throw error;
-  }
-
-  const response = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
-    method: 'POST',
-    headers: {
-      apikey: supabaseAnonKey,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ email, password })
-  });
-  const data = await response.json().catch(() => ({}));
-
-  if (!response.ok) {
-    const error = new Error(data.error_description || data.msg || data.message || 'Invalid username/email or password.');
-    error.status = response.status;
-    throw error;
-  }
-
-  return data;
+async function findUserByIdentifier(identifier) {
+  if (isEmail(identifier)) return findUserByEmail(identifier);
+  return findUserByUsername(normalizeUsername(identifier));
 }
 
 export const registerUser = asyncHandler(async (req, res) => {
-  const { name, mobile, password } = req.body;
+  const name = String(req.body.name || '').trim();
+  const email = String(req.body.email || '').trim() || null;
+  const username = normalizeUsername(req.body.username || req.body.displayHandle);
+  const mobile = String(req.body.mobile || '').trim() || null;
+  const password = String(req.body.password || '');
 
-  if (!name || !mobile || !password) {
-    return res.status(400).json({ success: false, message: 'Name, mobile, and password are required' });
+  if (!name || !username || !password) {
+    return res.status(400).json({ success: false, message: 'Name, username, and password are required.' });
   }
 
-  const exists = await findUserByMobile(mobile);
-  if (exists) {
-    return res.status(409).json({ success: false, message: 'Mobile number already registered' });
+  if (email && !isEmail(email)) {
+    return res.status(400).json({ success: false, message: 'Enter a valid email address.' });
+  }
+
+  const usernameExists = await findUserByUsername(username);
+  if (usernameExists) {
+    return res.status(409).json({ success: false, message: 'Username is already taken.' });
+  }
+
+  const emailExists = email ? await findUserByEmail(email) : null;
+  if (emailExists) {
+    return res.status(409).json({ success: false, message: 'Email is already registered.' });
   }
 
   const passwordHash = await bcrypt.hash(password, 10);
   const user = await createUser({
     id: generateId(),
     name,
+    email,
+    username,
+    displayHandle: username,
     mobile,
     passwordHash,
     role: 'user',
@@ -112,8 +104,6 @@ export const registerCentre = asyncHandler(async (req, res) => {
   const {
     name,
     ownerName,
-    mobile,
-    password,
     hubName,
     centreName,
     centreCode,
@@ -121,16 +111,27 @@ export const registerCentre = asyncHandler(async (req, res) => {
   } = req.body;
   const finalOwnerName = ownerName || name;
   const finalHubName = hubName || centreName;
+  const email = String(req.body.email || '').trim() || null;
+  const username = normalizeUsername(req.body.username || req.body.displayHandle);
+  const mobile = String(req.body.mobile || '').trim() || null;
+  const password = String(req.body.password || '');
 
-  if (!finalOwnerName || !mobile || !password || !finalHubName || !centreCode) {
-    return res.status(400).json({ success: false, message: 'Name, mobile, password, hub name, and centre code are required' });
+  if (!finalOwnerName || !username || !password || !finalHubName || !centreCode) {
+    return res.status(400).json({ success: false, message: 'Name, username, password, hub name, and centre code are required.' });
   }
 
-  console.log('[REGISTER HUB]', { mobile, hubName: finalHubName, centreCode });
+  if (email && !isEmail(email)) {
+    return res.status(400).json({ success: false, message: 'Enter a valid email address.' });
+  }
 
-  const exists = await findUserByMobile(mobile);
-  if (exists) {
-    return res.status(409).json({ success: false, message: 'Mobile number already registered' });
+  const usernameExists = await findUserByUsername(username);
+  if (usernameExists) {
+    return res.status(409).json({ success: false, message: 'Username is already taken.' });
+  }
+
+  const emailExists = email ? await findUserByEmail(email) : null;
+  if (emailExists) {
+    return res.status(409).json({ success: false, message: 'Email is already registered.' });
   }
 
   const codeExists = await findCentreByCode(centreCode);
@@ -143,6 +144,9 @@ export const registerCentre = asyncHandler(async (req, res) => {
     const newOwner = await createUser({
       id: generateId(),
       name: finalOwnerName,
+      email,
+      username,
+      displayHandle: username,
       mobile,
       passwordHash,
       role: 'hub',
@@ -155,7 +159,7 @@ export const registerCentre = asyncHandler(async (req, res) => {
       name: finalHubName,
       ownerId: newOwner.id,
       centreCode,
-      mobile,
+      mobile: mobile || '',
       status: 'available',
       upiId: upiId || null,
       pricing: {
@@ -182,21 +186,22 @@ export const registerCentre = asyncHandler(async (req, res) => {
   });
 });
 
-export const login = asyncHandler(async (req, res) => {
-  const { mobile, password } = req.body;
+async function loginWithPassword(req, res) {
+  const identifier = String(req.body.identifier || req.body.email || req.body.username || '').trim();
+  const password = String(req.body.password || '');
 
-  if (!mobile || !password) {
-    return res.status(400).json({ success: false, message: 'Mobile and password are required' });
+  if (!identifier || !password) {
+    return res.status(400).json({ success: false, message: 'Username/email and password are required.' });
   }
 
-  const user = await findUserByMobile(mobile);
+  const user = await findUserByIdentifier(identifier);
   if (!user) {
-    return res.status(401).json({ success: false, message: 'Invalid mobile or password' });
+    return res.status(401).json({ success: false, message: 'Invalid username/email or password.' });
   }
 
-  const isMatch = await bcrypt.compare(password, user.passwordHash);
+  const isMatch = user.passwordHash ? await bcrypt.compare(password, user.passwordHash) : false;
   if (!isMatch) {
-    return res.status(401).json({ success: false, message: 'Invalid mobile or password' });
+    return res.status(401).json({ success: false, message: 'Invalid username/email or password.' });
   }
 
   const centre = await findCentreForUser(user);
@@ -208,34 +213,11 @@ export const login = asyncHandler(async (req, res) => {
     user: authUser(user, centre),
     centre
   });
-});
+}
 
-export const supabasePasswordLogin = asyncHandler(async (req, res) => {
-  const identifier = String(req.body.identifier || req.body.email || '').trim();
-  const password = String(req.body.password || '');
+export const login = asyncHandler(loginWithPassword);
 
-  if (!identifier || !password) {
-    return res.status(400).json({ success: false, message: 'Username/email and password are required.' });
-  }
-
-  let email = identifier;
-
-  if (!isEmail(identifier)) {
-    const username = normalizeUsername(identifier);
-    if (!username) {
-      return res.status(400).json({ success: false, message: 'Enter a valid username or email.' });
-    }
-
-    const user = await findUserByUsername(username);
-    if (!user?.email) {
-      return res.status(401).json({ success: false, message: 'Invalid username/email or password.' });
-    }
-    email = user.email;
-  }
-
-  const session = await signInWithSupabasePassword(email, password);
-  res.json({ success: true, session });
-});
+export const supabasePasswordLogin = asyncHandler(loginWithPassword);
 
 export const checkUsernameAvailability = asyncHandler(async (req, res) => {
   const username = normalizeUsername(req.query.username || req.params.username);

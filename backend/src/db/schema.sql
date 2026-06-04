@@ -22,6 +22,19 @@ create unique index if not exists users_username_unique on users (lower(username
 
 do $$
 begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'users_username_format_check'
+  ) then
+    alter table users
+      add constraint users_username_format_check
+      check (username is null or username ~ '^[a-z0-9]+$');
+  end if;
+end $$;
+
+do $$
+begin
   if exists (
     select 1
     from pg_constraint
