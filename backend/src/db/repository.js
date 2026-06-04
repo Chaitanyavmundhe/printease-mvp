@@ -745,7 +745,6 @@ export async function listOrdersByUser(userId) {
     `select *, hub_id as centre_id
      from print_orders
      where user_id = $1
-       and lower(coalesce(payment_status, '')) <> 'draft'
      order by created_at desc`,
     [userId]
   );
@@ -762,7 +761,6 @@ export async function listOrdersByCentre(centreId) {
      from print_orders po
      left join users u on u.id = po.user_id
      where po.hub_id = $1
-       and lower(coalesce(po.payment_status, '')) <> 'draft'
      order by po.created_at desc`,
     [centreId]
   );
