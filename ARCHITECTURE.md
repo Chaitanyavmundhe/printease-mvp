@@ -62,3 +62,12 @@ All releases are automated via GitHub Actions when a tag matching `desktop-v*` i
 
 ## QR Code Scanning
 The Web and Desktop apps use `jsQR` to process camera frames natively on a hidden canvas. This provides excellent cross-browser compatibility (including iOS Safari and Firefox) where the native `BarcodeDetector` API is unsupported.
+
+### Version Bumping & Release Workflow
+When preparing a new Desktop release, you must follow this exact sequence to ensure the executables and download links match the new version:
+
+1. **Update Root Version:** In `printease-desk`, run `npm version patch --no-git-tag-version` (or specify the version manually).
+2. **Update Shell Version:** In `printease-desk/desktop-shell`, edit `package.json` to match the root version (e.g., `0.1.30`). This ensures `electron-builder` outputs files like `PrintEase-Desktop-Setup-0.1.30.exe`.
+3. **Update Download Links:** In `printease-mvp/frontend/src/pages/HomePage.jsx`, update the hardcoded `downloadUrl` strings to point to the new version folder and executable names.
+4. **Sync & Commit:** Sync the MVP to Desk, build the frontend (`npm run build:frontend`), and commit the `package.json` bumps and `frontend-dist` changes in `printease-desk`.
+5. **Tag & Push:** Push the commits to `main`, then create and push the exact tag: `git tag desktop-v0.1.30 && git push origin desktop-v0.1.30`. The GitHub Action will automatically package and release the updated `.exe` and `.AppImage`.
