@@ -1754,3 +1754,36 @@ export async function getGlobalPlatformStats(client) {
   };
 }
 
+export async function updateUserProfile(userId, updates, client) {
+  const result = await executor(client).query(
+    `update users
+     set name = coalesce($2, name),
+         username = coalesce($3, username),
+         display_handle = coalesce($4, display_handle),
+         mobile = coalesce($5, mobile)
+     where id = $1
+     returning *`,
+    [userId, updates.name, updates.username, updates.displayHandle, updates.mobile]
+  );
+  return result.rows[0] ? mapUser(result.rows[0]) : null;
+}
+
+export async function updateCentreProfile(ownerId, updates, client) {
+  const result = await executor(client).query(
+    `update print_hubs
+     set hub_name = coalesce($2, hub_name),
+         centre_code = coalesce($3, centre_code)
+     where owner_id = $1
+     returning *`,
+    [ownerId, updates.hubName, updates.centreCode]
+  );
+  return result.rows[0] ? mapCentre(result.rows[0]) : null;
+}
+
+export async function deleteCentreByOwner(ownerId, client) {
+  await executor(client).query(
+    `delete from print_hubs where owner_id = $1`,
+    [ownerId]
+  );
+}
+

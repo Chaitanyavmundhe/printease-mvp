@@ -3,7 +3,8 @@ import {
   findCentreById,
   listCentres,
   updateCentrePaymentMethod,
-  updateCentrePricing as saveCentrePricing
+  updateCentrePricing as saveCentrePricing,
+  deleteCentreByOwner
 } from '../db/repository.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 
@@ -70,4 +71,14 @@ export const updatePaymentMethod = asyncHandler(async (req, res) => {
   });
 
   res.json({ success: true, message: 'Payment method updated', centre });
+});
+
+export const deleteMyCentre = asyncHandler(async (req, res) => {
+  const userId = req.user.id;
+  
+  // Note: the foreign key from print_orders to print_hubs is "on delete cascade".
+  // This will cascade delete printers, agents, print_orders, and print_jobs associated with the hub.
+  await deleteCentreByOwner(userId);
+  
+  res.json({ success: true, message: 'Centre deleted successfully' });
 });

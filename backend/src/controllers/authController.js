@@ -9,7 +9,9 @@ import {
   findUserById,
   findUserByMobile,
   findUserByUsername,
-  withTransaction
+  withTransaction,
+  updateUserProfile,
+  updateCentreProfile
 } from '../db/repository.js';
 import { generateId } from '../utils/generateCode.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
@@ -388,6 +390,40 @@ export const completeSupabaseProfile = asyncHandler(async (req, res) => {
   res.status(existingProfile ? 200 : 201).json({
     success: true,
     message: 'Profile complete',
+    user: authUser(result.user, result.centre),
+    centre: result.centre
+  });
+});
+
+export const updateProfile = asyncHandler(async (req, res) => {
+  const userId = req.user.id;
+  const { name, username, displayHandle, mobile, hubName, centreCode } = req.body;
+
+  if (username) {
+    const existingUsernameUser = await findUserByUsername(username);
+    if (existingUsernameUser && existingUsernameUser.id !== userId) {
+      return res.status(400).json({ success: false, message: 'Username is already taken.' });
+    }
+  }
+
+  const result = await withTransaction(async (client) => {
+    const updatedUser = await updateUserProfile(userId, {
+      name, username, displayHandle, mobile
+    }, client);
+
+    let updatedCentre = null;
+    if (req.user.role === 'hub' && (hubName || centreCode)) {
+      updatedCentre = await updateCentreProfile(userId, {
+        hubName, centreCode
+      }, client);
+    }
+
+    return { user: updatedUser, centre: updatedCentre };
+  });
+
+  res.status(200).json({
+    success: true,
+    message: 'Profile updated successfully',
     user: authUser(result.user, result.centre),
     centre: result.centre
   });
