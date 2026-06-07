@@ -211,6 +211,22 @@ export const createOrder = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: 'Invalid print options' });
   }
 
+  let totalTrustedPages = 0;
+  for (const file of resolvedFiles) {
+    const pages = file.document?.pageCount || Number(file.pages ?? req.body.pages);
+    if (Number.isFinite(pages) && pages > 0) {
+      totalTrustedPages += pages * copyCount;
+    }
+  }
+
+  if (!req.user && totalTrustedPages > 5) {
+    return res.status(403).json({
+      success: false,
+      code: 'LOGIN_REQUIRED_FOR_MORE_THAN_5_PAGES',
+      message: 'Guest users can print up to 5 pages only. Please login to print larger documents.'
+    });
+  }
+
   const centre = hubId ? await findCentreById(hubId) : await findCentreByCode(trimmedCentreCode);
   if (!centre) {
     return res.status(404).json({ success: false, message: 'Centre not found' });

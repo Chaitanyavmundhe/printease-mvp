@@ -8,17 +8,17 @@ import {
   verifyDemoPayment,
   verifyRazorpayPayment
 } from '../controllers/paymentController.js';
-import { authMiddleware } from '../middleware/authMiddleware.js';
+import { authMiddleware, optionalAuthMiddleware } from '../middleware/authMiddleware.js';
 import { paymentRateLimit } from '../middleware/rateLimitMiddleware.js';
 
 const router = express.Router();
 
 router.post('/razorpay/webhook', razorpayWebhook);
 router.get('/config', getPaymentConfig);
-router.post('/manual-request', authMiddleware, paymentRateLimit, createManualPaymentRequest);
-router.post('/razorpay/order', authMiddleware, paymentRateLimit, createRazorpayOrder);
-router.post('/razorpay/verify', authMiddleware, paymentRateLimit, verifyRazorpayPayment);
-router.post('/razorpay/upi-qr', authMiddleware, paymentRateLimit, createRazorpayUpiQr);
+router.post('/manual-request', optionalAuthMiddleware, paymentRateLimit, createManualPaymentRequest);
+router.post('/razorpay/order', optionalAuthMiddleware, paymentRateLimit, createRazorpayOrder);
+router.post('/razorpay/verify', optionalAuthMiddleware, paymentRateLimit, verifyRazorpayPayment);
+router.post('/razorpay/upi-qr', optionalAuthMiddleware, paymentRateLimit, createRazorpayUpiQr);
 
 /**
  * Compatibility only. Disabled unless DEMO_PAYMENT_ENABLED=true.

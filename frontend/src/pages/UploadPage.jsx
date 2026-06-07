@@ -5,6 +5,8 @@ import Row from "../components/Row";
 import { calculateTotalAmount, getPricePerPage, countSelectedPages } from "../utils/price";
 
 export default function UploadPage({
+  currentUser,
+  startLogin,
   selectedCentre,
   documentFile,
   setDocumentFile,

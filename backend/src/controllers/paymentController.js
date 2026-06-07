@@ -23,7 +23,10 @@ import {
 } from '../config/razorpay.js';
 
 function canAccessOrder(user, order) {
-  if (!user || !order) return false;
+  if (!order) return false;
+  if (!order.userId) return true; // Guest order
+
+  if (!user) return false;
   if (user.role === 'admin') return true;
   if (user.role === 'user') return order.userId === user.id;
   if (user.role === 'hub') return Boolean((user.centreId || user.hubId) && order.centreId === (user.centreId || user.hubId));
@@ -172,6 +175,14 @@ export const createManualPaymentRequest = asyncHandler(async (req, res) => {
 
 export const createRazorpayOrder = asyncHandler(async (req, res) => {
   assertRazorpayConfigured();
+
+  if (!req.user) {
+    return res.status(403).json({
+      success: false,
+      code: 'LOGIN_REQUIRED_FOR_ONLINE_PAYMENT',
+      message: 'Please login to use online payment.'
+    });
+  }
 
   const { orderId } = req.body;
 

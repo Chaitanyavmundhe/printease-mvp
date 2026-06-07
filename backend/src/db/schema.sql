@@ -473,3 +473,7 @@ create table if not exists platform_visits (
 
 create index if not exists idx_platform_visits_last_active on platform_visits(last_active_at);
 
+
+alter table print_orders add column if not exists expires_at timestamptz;
+alter table print_orders add column if not exists customer_type text default 'registered';
+

@@ -115,6 +115,8 @@ export function mapOrder(row) {
       : Number(row.total_amount_paise),
     customerName: row.customer_name || row.user_name || null,
     customerMobile: row.customer_mobile || row.user_mobile || null,
+    customerType: row.customer_type || 'registered',
+    expiresAt: row.expires_at || null,
     paymentStatus: row.payment_status,
     status: row.status,
     pickupCode: row.pickup_code,
@@ -761,6 +763,7 @@ export async function listOrdersByCentre(centreId) {
      from print_orders po
      left join users u on u.id = po.user_id
      where po.hub_id = $1
+       and (po.expires_at is null or po.expires_at > now() or po.payment_status in ('collected', 'verified', 'paid'))
      order by po.created_at desc`,
     [centreId]
   );

@@ -39,6 +39,8 @@ function OrderSummaryRow({ label, value, highlight = false }) {
 }
 
 export default function PaymentPage({
+  currentUser,
+  startLogin,
   selectedCentre,
   documentName,
   pages,
@@ -55,6 +57,14 @@ export default function PaymentPage({
   const rate = backendPrice?.pricePerPage ?? backendPrice?.files?.[0]?.pricePerPage ?? 0;
   const centreUpi = selectedCentre?.upiId || "";
   const upiQrUrl = selectedCentre?.upiQrImageUrl || "";
+
+  const handlePaymentClick = () => {
+    if (!currentUser && paymentMethod !== "manual") {
+      startLogin("user");
+      return;
+    }
+    handlePayment();
+  };
 
   const buttonLabel =
     paymentMethod === "razorpay"
@@ -111,7 +121,7 @@ export default function PaymentPage({
 
         {/* Payment method selector */}
         <div className="mt-5 grid gap-3 sm:grid-cols-3">
-          {paymentOptions.map((option) => {
+          {paymentOptions.filter(o => currentUser || o.id === 'manual').map((option) => {
             const Icon = option.icon;
             const active = paymentMethod === option.id;
 
