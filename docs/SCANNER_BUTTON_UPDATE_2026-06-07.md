@@ -18,10 +18,10 @@ The transparent scan button feature failed because scanner behavior was being pa
 - The Home hero does not start the camera automatically on page load.
 - First-time users, denied camera users, and browsers that only report `prompt` do not get an automatic camera prompt on page load.
 - The Home hero has a corner mode switch for Ready, Transparent scanner, and Classic scanner.
-- Ready mode keeps the camera off until the user taps the scan tile.
+- Ready mode automatically starts the transparent scanner inside the hero/tile surface upon page load (if camera permission is already granted).
 - Transparent mode runs the camera inside the hero/tile surface.
 - Classic mode opens the older full-screen QR scanner modal.
-- Scanner mode is remembered locally, but camera startup still requires a user tap.
+- Scanner mode is remembered locally. In Ready mode, camera startup happens automatically if permissions are granted; otherwise, it requires a tap.
 - The Centre page scanner auto-starts only when navigation comes from the Upload page's select-centre/continue flow.
 - Normal Centre page visits through navbar/dashboard do not auto-start the camera.
 - When the hero scanner is active, the scan tile is transparent and does not draw a second scan line.
