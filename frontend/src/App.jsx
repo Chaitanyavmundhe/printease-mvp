@@ -27,6 +27,7 @@ import {
   getSupabaseUser,
   readSupabaseSessionFromUrl,
 } from "./utils/supabaseAuth";
+import { handleDesktopAutoRegistration } from "./utils/desktopAutoRegistration";
 
 const ROUTES = {
   home: "/",
@@ -618,6 +619,12 @@ export default function App() {
 
     restoreSession();
   }, []);
+
+  useEffect(() => {
+    if (desktopAvailable) {
+      handleDesktopAutoRegistration(currentUser);
+    }
+  }, [desktopAvailable, currentUser]);
 
   const pricePerPage = useMemo(
     () => getPricePerPage(selectedCentre, colorType, sideType),
