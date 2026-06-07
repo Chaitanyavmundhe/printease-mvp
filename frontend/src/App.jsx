@@ -44,6 +44,8 @@ const ROUTES = {
   payment: "/payment",
   track: "/track",
   history: "/history",
+  orderHistory: "/order-history",
+  usageHistory: "/usage-history",
   platformStats: "/platform-metrics-dashboard",
 };
 
@@ -444,9 +446,6 @@ export default function App() {
   const [watermarkOpacity, setWatermarkOpacity] = useState(0.18);
   const [watermarkFontSize, setWatermarkFontSize] = useState(18);
   const [watermarkRotation, setWatermarkRotation] = useState(45);
-  const [guestName, setGuestName] = useState("");
-  const [guestPhone, setGuestPhone] = useState("");
-  const [guestToken, setGuestToken] = useState(() => localStorage.getItem("printease_guest_token") || "");
   const [order, setOrder] = useState(null);
   const [backendPrice, setBackendPrice] = useState(null);
   const [paymentLoading, setPaymentLoading] = useState(false);
@@ -1320,18 +1319,12 @@ export default function App() {
           marginMode,
           watermarkEnabled: watermark,
           printOptions: defaultPrintOptions,
-          guestName: currentUser ? undefined : guestName,
-          guestPhone: currentUser ? undefined : guestPhone,
         }),
       });
 
       const nextOrder = normalizeOrder(orderData.order, centres);
       setOrder(nextOrder);
       setBackendPrice(orderData.price || null);
-      if (orderData.guestToken) {
-        setGuestToken(orderData.guestToken);
-        localStorage.setItem("printease_guest_token", orderData.guestToken);
-      }
       setDocumentFile(null);
       setDocumentFiles([]);
       navigate("payment");
@@ -1356,8 +1349,7 @@ export default function App() {
       try {
         const paymentData = await apiRequest("/api/payments/manual-request", {
           method: "POST",
-          headers: guestToken ? { "x-guest-token": guestToken } : {},
-          body: JSON.stringify({ orderId: order.backendId, guestToken }),
+          body: JSON.stringify({ orderId: order.backendId }),
         });
         const requestedOrder = normalizeOrder(paymentData.order || order, centres);
         setOrder(requestedOrder);
@@ -1472,15 +1464,28 @@ export default function App() {
     if (!existingOrder) return;
     const nextCentre = centres.find((centre) => (
       centre.id === existingOrder.centreId ||
+      centre.id === existingOrder.hub?.id ||
       centre.code === existingOrder.centreCode ||
+      centre.code === existingOrder.hub?.code ||
       centre.name === existingOrder.centre
     ));
-    setOrder(existingOrder);
+    const paymentOrder = existingOrder.backendId
+      ? existingOrder
+      : {
+          ...existingOrder,
+          id: existingOrder.order_code || existingOrder.id,
+          backendId: existingOrder.id,
+          centreId: existingOrder.hub?.id || existingOrder.centreId,
+          centreCode: existingOrder.hub?.code || existingOrder.centreCode,
+          centre: existingOrder.hub?.name || existingOrder.centre,
+          paymentStatus: existingOrder.payment_status || existingOrder.payment?.status,
+        };
+    setOrder(paymentOrder);
     if (nextCentre) setSelectedCentre(nextCentre);
     setPendingPayment({
-      id: `manual-${existingOrder.backendId || existingOrder.id}`,
-      orderId: existingOrder.backendId || existingOrder.id,
-      amount: existingOrder.amount,
+      id: `manual-${paymentOrder.backendId || paymentOrder.id}`,
+      orderId: paymentOrder.backendId || paymentOrder.id,
+      amount: paymentOrder.amount,
       method: "MANUAL_UPI_OR_CASH",
       status: "pending",
       createdAt: new Date().toISOString(),
@@ -1488,6 +1493,54 @@ export default function App() {
     setUpiQr(nextCentre?.upiQrImageUrl ? { imageUrl: nextCentre.upiQrImageUrl } : null);
     setPaymentError("");
     navigate("track");
+  }
+
+  function reprintWithSameSettings(historyOrder) {
+    if (!currentUser || currentUser.role !== "user" || !historyOrder) return;
+
+    const config = historyOrder.print_config || {};
+    const document = historyOrder.document || {};
+    const nextCentre = centres.find((centre) => (
+      centre.id === historyOrder.hub?.id ||
+      centre.code === historyOrder.hub?.code ||
+      centre.name === historyOrder.hub?.name
+    ));
+
+    if (nextCentre) setSelectedCentre(nextCentre);
+    setDocumentFile(null);
+    setDocumentFiles([]);
+    setMultiFileConfigs([]);
+    setDocumentName(document.file_name || historyOrder.documentName || "");
+    setPages(Number(document.original_pages || historyOrder.pages || 1));
+    setSelectedPages(config.page_range && config.page_range !== "all" ? config.page_range : "");
+    setCopies(Number(config.copies || document.copies || historyOrder.copies || 1));
+    setColorType(config.color_mode === "color" ? "color" : "bw");
+    setSideType(config.duplex ? "double" : "single");
+    setPaperSize(config.paper_size || "A4");
+    setPagesPerSheet(Number(config.pages_per_sheet || 1));
+    setOrientation(config.orientation || "auto");
+    setPrintDpi(Number(config.quality_dpi || 300));
+    setScaleMode(config.scaling || "original");
+    setMarginMode(config.margins || "default");
+    setWatermark(Boolean(config.watermark?.enabled));
+    setWatermarkType(config.watermark?.type || "order_code");
+    setWatermarkText(config.watermark?.text || "");
+    setWatermarkPosition(config.watermark?.position || "bottom_right");
+    setWatermarkOpacity(Number(config.watermark?.opacity || 0.18));
+    setWatermarkFontSize(Number(config.watermark?.fontSize || 18));
+    setWatermarkRotation(Number(config.watermark?.rotation || 45));
+    setBackendPrice(null);
+    setPaymentError("");
+    setOrder(null);
+    setPendingPayment(null);
+    setUpiQr(null);
+    navigate("upload", {
+      state: {
+        reprintDraft: true,
+        sourceOrderId: historyOrder.id,
+        message: "Review these copied settings, upload the document again, then place a new order.",
+      },
+    });
   }
 
   async function startRazorpayForExistingOrder(existingOrder = order) {
@@ -1844,7 +1897,7 @@ export default function App() {
           />
           <Route path={ROUTES.desktopAgent} element={<DesktopAgentPage currentUser={currentUser} />} />
           <Route path={ROUTES.centre} element={<CentreCodePage centreCode={centreCode} setCentreCode={setCentreCode} handleCentreCode={handleCentreCode} selectCentreByCode={selectCentreByCode} centres={prioritizedCentres} selectCentreAndUpload={selectCentreAndUpload} lookupLoading={centreLookupLoading} lookupError={centreLookupError} autoStartScanner={Boolean(location.state?.autoStartScanner)} />} />
-          <Route path={ROUTES.upload} element={<UploadPage currentUser={currentUser} startLogin={startLogin} selectedCentre={selectedCentre} documentFile={documentFile} setDocumentFile={setDocumentFile} documentFiles={documentFiles} setDocumentFiles={setDocumentFiles} multiFileConfigs={multiFileConfigs} setMultiFileConfigs={setMultiFileConfigs} documentName={documentName} setDocumentName={setDocumentName} pages={pages} setPages={setPages} selectedPages={selectedPages} setSelectedPages={setSelectedPages} copies={copies} setCopies={setCopies} colorType={colorType} setColorType={setColorType} sideType={sideType} setSideType={setSideType} paperSize={paperSize} setPaperSize={setPaperSize} pagesPerSheet={pagesPerSheet} setPagesPerSheet={setPagesPerSheet} orientation={orientation} setOrientation={setOrientation} printDpi={printDpi} setPrintDpi={setPrintDpi} scaleMode={scaleMode} setScaleMode={setScaleMode} marginMode={marginMode} setMarginMode={setMarginMode} watermark={watermark} setWatermark={setWatermark} watermarkType={watermarkType} setWatermarkType={setWatermarkType} watermarkText={watermarkText} setWatermarkText={setWatermarkText} watermarkPosition={watermarkPosition} setWatermarkPosition={setWatermarkPosition} watermarkOpacity={watermarkOpacity} setWatermarkOpacity={setWatermarkOpacity} watermarkFontSize={watermarkFontSize} setWatermarkFontSize={setWatermarkFontSize} watermarkRotation={watermarkRotation} setWatermarkRotation={setWatermarkRotation} pricePerPage={pricePerPage} estimatedSelectedPageCount={estimatedSelectedPageCount} totalAmount={totalAmount} backendPrice={backendPrice} preparePayment={preparePayment} paymentLoading={paymentLoading} paymentError={paymentError} navigate={navigate} guestName={guestName} setGuestName={setGuestName} guestPhone={guestPhone} setGuestPhone={setGuestPhone} />} />
+          <Route path={ROUTES.upload} element={<UploadPage currentUser={currentUser} startLogin={startLogin} selectedCentre={selectedCentre} documentFile={documentFile} setDocumentFile={setDocumentFile} documentFiles={documentFiles} setDocumentFiles={setDocumentFiles} multiFileConfigs={multiFileConfigs} setMultiFileConfigs={setMultiFileConfigs} documentName={documentName} setDocumentName={setDocumentName} pages={pages} setPages={setPages} selectedPages={selectedPages} setSelectedPages={setSelectedPages} copies={copies} setCopies={setCopies} colorType={colorType} setColorType={setColorType} sideType={sideType} setSideType={setSideType} paperSize={paperSize} setPaperSize={setPaperSize} pagesPerSheet={pagesPerSheet} setPagesPerSheet={setPagesPerSheet} orientation={orientation} setOrientation={setOrientation} printDpi={printDpi} setPrintDpi={setPrintDpi} scaleMode={scaleMode} setScaleMode={setScaleMode} marginMode={marginMode} setMarginMode={setMarginMode} watermark={watermark} setWatermark={setWatermark} watermarkType={watermarkType} setWatermarkType={setWatermarkType} watermarkText={watermarkText} setWatermarkText={setWatermarkText} watermarkPosition={watermarkPosition} setWatermarkPosition={setWatermarkPosition} watermarkOpacity={watermarkOpacity} setWatermarkOpacity={setWatermarkOpacity} watermarkFontSize={watermarkFontSize} setWatermarkFontSize={setWatermarkFontSize} watermarkRotation={watermarkRotation} setWatermarkRotation={setWatermarkRotation} pricePerPage={pricePerPage} estimatedSelectedPageCount={estimatedSelectedPageCount} totalAmount={totalAmount} backendPrice={backendPrice} preparePayment={preparePayment} paymentLoading={paymentLoading} paymentError={paymentError} navigate={navigate} />} />
           <Route
             path={ROUTES.payment}
             element={
@@ -1873,7 +1926,9 @@ export default function App() {
               />
             }
           />
-            <Route path={ROUTES.history} element={<HistoryPage orders={orders} currentUser={currentUser} lastUpdatedAt={lastOrdersUpdatedAt} onOpenPayment={openPaymentRequest} />} />
+            <Route path={ROUTES.history} element={<HistoryPage orders={orders} currentUser={currentUser} lastUpdatedAt={lastOrdersUpdatedAt} onOpenPayment={openPaymentRequest} onReprintOrder={reprintWithSameSettings} />} />
+            <Route path={ROUTES.orderHistory} element={<Navigate to={ROUTES.history} replace />} />
+            <Route path={ROUTES.usageHistory} element={<Navigate to={ROUTES.history} replace />} />
             <Route path="*" element={<Navigate to={ROUTES.home} replace />} />
           </Routes>
         </RouteErrorBoundary>

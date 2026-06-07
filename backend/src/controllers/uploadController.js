@@ -22,6 +22,10 @@ function looksLikePdf(buffer) {
 }
 
 export const uploadDocument = asyncHandler(async (req, res) => {
+  if (!req.user?.id) {
+    return res.status(401).json({ success: false, message: 'Login is required before uploading documents.' });
+  }
+
   if (!req.file) {
     return res.status(400).json({ success: false, message: 'No file uploaded' });
   }
@@ -56,7 +60,7 @@ export const uploadDocument = asyncHandler(async (req, res) => {
   const documentId = generateId();
   const originalName = req.file.originalname || 'document.pdf';
   const cleanedName = safeFileName(originalName);
-  const userFolder = req.user?.id || 'guest';
+  const userFolder = req.user.id;
   const storagePath = `${userFolder}/${documentId}-${Date.now()}-${cleanedName}`;
 
   const fileSha256 = crypto
@@ -82,7 +86,7 @@ export const uploadDocument = asyncHandler(async (req, res) => {
 
   const document = await createDocument({
     id: documentId,
-    userId: req.user?.id || null,
+    userId: req.user.id,
     fileName: originalName,
     fileType: req.file.mimetype,
     fileSize: req.file.size,

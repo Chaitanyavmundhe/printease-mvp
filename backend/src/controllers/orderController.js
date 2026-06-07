@@ -18,7 +18,6 @@ import { calculatePrintPricing } from '../utils/calculatePrice.js';
 import { generateId, generateOrderCode, generateShortCode } from '../utils/generateCode.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { queuePrintJobIfPaymentReady } from '../services/printQueueService.js';
-import crypto from 'crypto';
 import {
   mapLegacyFieldsToPrintOptions,
   normalizePrintOptions,
@@ -87,19 +86,6 @@ function canAccessOrder(user, order) {
   return false;
 }
 
-function publicTrackingOrder(order) {
-  return {
-    id: order.id,
-    orderCode: order.orderCode,
-    centreId: order.centreId,
-    documentName: order.documentName,
-    amount: order.amount,
-    paymentStatus: order.paymentStatus,
-    status: order.status,
-    createdAt: order.createdAt
-  };
-}
-
 function privateOrder(order) {
   return {
     ...order,
@@ -151,9 +137,7 @@ export const createOrder = asyncHandler(async (req, res) => {
     printDpi = 300,
     scaleMode = 'original',
     marginMode = 'default',
-    watermarkEnabled = false,
-    guestName,
-    guestPhone
+    watermarkEnabled = false
   } = req.body;
 
   const trimmedCentreCode = typeof centreCode === 'string' ? centreCode.trim() : '';
@@ -165,8 +149,8 @@ export const createOrder = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: 'Centre code or hub ID is required' });
   }
 
-  if (!req.user && (!guestName || !guestPhone)) {
-    return res.status(400).json({ success: false, message: 'Guest name and phone number are required' });
+  if (!req.user?.id) {
+    return res.status(401).json({ success: false, message: 'Login is required before creating an order.' });
   }
 
   const submittedFiles = Array.isArray(files) && files.length
@@ -191,11 +175,8 @@ export const createOrder = asyncHandler(async (req, res) => {
         return res.status(404).json({ success: false, message: 'Uploaded document not found' });
       }
 
-      if (
-        !document.userId &&
-        req.user?.role !== 'admin'
-      ) {
-        return res.status(403).json({ success: false, message: 'Guest uploaded documents cannot be attached to an order. Please upload again while logged in.' });
+      if (!document.userId && req.user?.role !== 'admin') {
+        return res.status(403).json({ success: false, message: 'This document is not linked to a logged-in account. Please upload it again.' });
       }
 
       if (
@@ -216,22 +197,6 @@ export const createOrder = asyncHandler(async (req, res) => {
 
   if (!allowedColorTypes.includes(colorType) || !allowedSideTypes.includes(sideType)) {
     return res.status(400).json({ success: false, message: 'Invalid print options' });
-  }
-
-  let totalTrustedPages = 0;
-  for (const file of resolvedFiles) {
-    const pages = file.document?.pageCount || Number(file.pages ?? req.body.pages);
-    if (Number.isFinite(pages) && pages > 0) {
-      totalTrustedPages += pages;
-    }
-  }
-
-  if (!req.user && totalTrustedPages > 5) {
-    return res.status(403).json({
-      success: false,
-      code: 'LOGIN_REQUIRED_FOR_MORE_THAN_5_PAGES',
-      message: 'Guest users can print up to 5 pages only. Please login to print larger documents.'
-    });
   }
 
   const centre = hubId ? await findCentreById(hubId) : await findCentreByCode(trimmedCentreCode);
@@ -321,20 +286,16 @@ export const createOrder = asyncHandler(async (req, res) => {
 
   const createdAt = new Date().toISOString();
 
-  const isGuest = !req.user;
-  const expiresAt = isGuest ? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() : null;
-  const guestToken = isGuest ? crypto.randomBytes(32).toString('hex') : null;
-
   const result = await withTransaction(async (client) => {
     const order = await saveOrder({
       id: generateId(),
       orderCode,
-      userId: req.user?.id || null,
-      customerType: isGuest ? 'guest' : 'registered',
-      expiresAt,
-      guestToken,
-      guestName: isGuest ? String(guestName).trim().slice(0, 255) : null,
-      guestPhone: isGuest ? String(guestPhone).trim().slice(0, 50) : null,
+      userId: req.user.id,
+      customerType: 'registered',
+      expiresAt: null,
+      guestToken: null,
+      guestName: null,
+      guestPhone: null,
       priceSnapshot: { amount: totalAmount, totalAmountPaise, breakdown: pricedFiles.map(f => f.price) },
       printConfigSnapshot: orderPrintOptions,
       centreId: centre.id,
@@ -382,16 +343,13 @@ export const createOrder = asyncHandler(async (req, res) => {
     return { order, orderFiles };
   });
 
-  const orderUrl = req.user
-    ? `${process.env.FRONTEND_URL}/orders/${result.order.id}`
-    : `${process.env.FRONTEND_URL}/track?order=${result.order.id}`;
+  const orderUrl = `${process.env.FRONTEND_URL}/track?order=${result.order.id}`;
 
   res.status(201).json({
     success: true,
     message: 'Order created. Complete payment before printing.',
     order: result.order,
     orderFiles: result.orderFiles,
-    guestToken: guestToken,
     url: orderUrl,
     price: {
       totalAmount,
@@ -458,10 +416,6 @@ export const getOrderById = asyncHandler(async (req, res) => {
 
   if (String(order.paymentStatus || '').toLowerCase() === 'draft' && !canAccessOrder(req.user, order)) {
     return res.status(404).json({ success: false, message: 'Order not found' });
-  }
-
-  if (!req.user) {
-    return res.json({ success: true, order: publicTrackingOrder(order), public: true });
   }
 
   if (!canAccessOrder(req.user, order)) {

@@ -766,6 +766,103 @@ export async function listOrdersByUser(userId) {
   return result.rows.map(mapOrder);
 }
 
+export async function getUserPrintHistory(userId) {
+  const ordersResult = await query(
+    `select
+       po.*,
+       po.hub_id as centre_id,
+       h.hub_name,
+       h.hub_name as centre_name,
+       h.centre_code,
+       h.mobile as centre_mobile,
+       h.upi_id as centre_upi_id,
+       h.upi_qr_image_url as centre_upi_qr_image_url
+     from print_orders po
+     left join print_hubs h on h.id = po.hub_id
+     where po.user_id = $1
+       and coalesce(po.customer_type, 'registered') <> 'guest'
+     order by po.created_at desc`,
+    [userId]
+  );
+
+  const orders = ordersResult.rows.map((row) => ({
+    ...mapOrder(row),
+    hub: {
+      id: row.hub_id,
+      name: row.hub_name || row.centre_name || 'Print Hub',
+      code: row.centre_code || null,
+      mobile: row.centre_mobile || null,
+      upiId: row.centre_upi_id || null,
+      upiQrImageUrl: row.centre_upi_qr_image_url || null,
+      address: null
+    }
+  }));
+
+  const orderIds = orders.map((order) => order.id);
+  if (!orderIds.length) {
+    return { orders: [], filesByOrderId: new Map(), paymentsByOrderId: new Map(), printJobsByOrderId: new Map() };
+  }
+
+  const filesResult = await query(
+    `select
+       pof.*,
+       coalesce(pof.print_sequence, row_number() over (partition by pof.order_id order by pof.created_at, pof.id)) as print_sequence,
+       d.file_name,
+       d.file_type,
+       d.file_size,
+       d.file_size_bytes,
+       d.file_sha256,
+       d.storage_path,
+       d.page_count,
+       d.created_at as document_created_at
+     from print_order_files pof
+     join documents d on d.id = pof.document_id
+     where pof.order_id = any($1::text[])
+     order by pof.order_id, coalesce(pof.print_sequence, 999999), pof.created_at, pof.id`,
+    [orderIds]
+  );
+
+  const paymentsResult = await query(
+    `select distinct on (order_id) *
+     from payments
+     where order_id = any($1::text[])
+     order by order_id, coalesce(verified_at, created_at) desc, created_at desc`,
+    [orderIds]
+  );
+
+  const printJobsResult = await query(
+    `select *
+     from print_jobs
+     where order_id = any($1::text[])
+     order by order_id, created_at desc`,
+    [orderIds]
+  );
+
+  const filesByOrderId = new Map();
+  for (const row of filesResult.rows) {
+    const file = mapOrderFile(row);
+    const list = filesByOrderId.get(file.orderId) || [];
+    list.push(file);
+    filesByOrderId.set(file.orderId, list);
+  }
+
+  const paymentsByOrderId = new Map();
+  for (const row of paymentsResult.rows) {
+    const payment = mapPayment(row);
+    paymentsByOrderId.set(payment.orderId, payment);
+  }
+
+  const printJobsByOrderId = new Map();
+  for (const row of printJobsResult.rows) {
+    const printJob = mapPrintJob(row);
+    const list = printJobsByOrderId.get(printJob.orderId) || [];
+    list.push(printJob);
+    printJobsByOrderId.set(printJob.orderId, list);
+  }
+
+  return { orders, filesByOrderId, paymentsByOrderId, printJobsByOrderId };
+}
+
 export async function listOrdersByCentre(centreId) {
   const result = await query(
     `select
@@ -1802,4 +1899,3 @@ export async function deleteCentreByOwner(ownerId, client) {
     [ownerId]
   );
 }
-

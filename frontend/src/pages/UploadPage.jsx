@@ -42,10 +42,6 @@ export default function UploadPage({
   navigate,
   multiFileConfigs,
   setMultiFileConfigs,
-  guestName,
-  setGuestName,
-  guestPhone,
-  setGuestPhone,
 }) {
   const [selectedFileNames, setSelectedFileNames] = useState([]);
   const [modalFile, setModalFile] = useState(null);
@@ -317,6 +313,10 @@ export default function UploadPage({
       navigate("centre", { state: { autoStartScanner: true, fromUpload: true } });
       return;
     }
+    if (!currentUser) {
+      startLogin("user");
+      return;
+    }
     preparePayment();
   };
 
@@ -324,33 +324,40 @@ export default function UploadPage({
   const selectedFileLabel = selectedFileCount > 1 ? `${selectedFileCount} PDFs selected` : documentFile?.name;
   const selectedFileSize = (documentFiles || []).reduce((sum, file) => sum + file.size, 0) || documentFile?.size || 0;
 
-  const localEstimatedTotal = useMemo(() => {
-    if (!isMulti) return totalAmount;
-    let total = 0;
-    for (const f of documentFiles) {
-      const c = multiFileConfigs[f.name];
-      if (!c) continue;
-      const ppp = getPricePerPage(selectedCentre, c.colorType, c.sideType);
-      const estPages = countSelectedPages(c.selectedPages, c.pages) || c.pages;
-      total += calculateTotalAmount({
-        pages: estPages,
-        copies: c.copies,
-        pricePerPage: ppp,
-        watermark: c.watermark,
+  const multiEstimatedFiles = useMemo(() => {
+    if (!isMulti) return [];
+    return documentFiles.map((file) => {
+      const config = multiFileConfigs[file.name] || {};
+      const filePages = Number(config.pages || 1);
+      const selectedCount = countSelectedPages(config.selectedPages, filePages) || filePages;
+      const fileCopies = Number(config.copies || 1);
+      const fileRate = getPricePerPage(selectedCentre, config.colorType || "bw", config.sideType || "single");
+      const fileTotal = calculateTotalAmount({
+        pages: selectedCount,
+        copies: fileCopies,
+        pricePerPage: fileRate,
+        watermark: Boolean(config.watermark),
         watermarkCharge: selectedCentre?.watermarkCharge,
       });
-    }
-    return total;
-  }, [documentFiles, multiFileConfigs, selectedCentre, totalAmount, isMulti]);
 
-  const totalOriginalPages = useMemo(() => {
-    if (isMulti) {
-      return documentFiles.reduce((sum, f) => sum + (f.documentFile?.pageCount || Number(f.pages || 0)), 0);
-    }
-    return documentFile?.pageCount || Number(pages || 0);
-  }, [documentFiles, documentFile, pages, isMulti]);
+      return {
+        name: file.name,
+        pages: filePages,
+        selectedPages: config.selectedPages || "All",
+        selectedCount,
+        copies: fileCopies,
+        colorType: config.colorType || "bw",
+        sideType: config.sideType || "single",
+        rate: fileRate,
+        total: fileTotal,
+      };
+    });
+  }, [documentFiles, isMulti, multiFileConfigs, selectedCentre]);
 
-  const isGuestLimited = !currentUser && totalOriginalPages > 5;
+  const localEstimatedTotal = useMemo(() => {
+    if (!isMulti) return totalAmount;
+    return multiEstimatedFiles.reduce((sum, file) => sum + file.total, 0);
+  }, [multiEstimatedFiles, totalAmount, isMulti]);
 
   const toggleSelectAll = () => {
     if (selectedFileNames.length === documentFiles.length) {
@@ -609,24 +616,55 @@ export default function UploadPage({
               <span className="ml-1 transition-transform group-open:rotate-180">▼</span>
             </summary>
             <div className="mt-2 max-h-[30vh] space-y-2 overflow-y-auto pb-2 text-xs">
-              <Row label="Original Pages" value={backendPrice?.originalPageCount || pages} />
-              <Row label="Selected Pages" value={backendPrice?.selectedPageCount || selectedPages || "All"} />
-              <Row label="Copies" value={copies} />
-              <Row label="Printable Pages" value={backendPrice?.printablePageCount || Number(estimatedSelectedPageCount || pages || 0) * Number(copies || 0)} />
-              <Row label="Sheets" value={backendPrice?.sheetCount || "-"} />
-              <Row label="Print Type" value={colorType === "bw" ? "B/W" : "Color"} />
-              <Row label="Side" value={sideType} />
-              <Row label="Pages/Sheet" value={pagesPerSheet} />
-              <Row label={backendPrice ? "Backend Rate" : "Estimated Rate"} value={`₹${backendPrice?.pricePerPage ?? pricePerPage ?? 0}`} />
-              {backendPrice?.files?.map((file) => (
-                <Row key={file.documentId || file.fileName} label={file.fileName || "File"} value={`₹${file.totalAmount}`} />
-              ))}
+              {isMulti ? (
+                multiEstimatedFiles.map((file) => (
+                  <div key={file.name} className="rounded-xl border border-slate-100 bg-slate-50 p-2">
+                    <p className="mb-1 truncate font-semibold text-slate-900">{file.name}</p>
+                    <Row label="Pages" value={`${file.selectedCount}/${file.pages}`} />
+                    <Row label="Copies" value={file.copies} />
+                    <Row label="Mode" value={`${file.colorType === "bw" ? "B/W" : "Color"} · ${file.sideType}`} />
+                    <Row label="Rate" value={`₹${file.rate}`} />
+                    <Row label="Estimate" value={`₹${file.total}`} />
+                  </div>
+                ))
+              ) : (
+                <>
+                  <Row label="Original Pages" value={backendPrice?.originalPageCount || pages} />
+                  <Row label="Selected Pages" value={backendPrice?.selectedPageCount || selectedPages || "All"} />
+                  <Row label="Copies" value={copies} />
+                  <Row label="Printable Pages" value={backendPrice?.printablePageCount || Number(estimatedSelectedPageCount || pages || 0) * Number(copies || 0)} />
+                  <Row label="Sheets" value={backendPrice?.sheetCount || "-"} />
+                  <Row label="Print Type" value={colorType === "bw" ? "B/W" : "Color"} />
+                  <Row label="Side" value={sideType} />
+                  <Row label="Pages/Sheet" value={pagesPerSheet} />
+                  <Row label={backendPrice ? "Backend Rate" : "Estimated Rate"} value={`₹${backendPrice?.pricePerPage ?? pricePerPage ?? 0}`} />
+                  {backendPrice?.files?.map((file) => (
+                    <Row key={file.documentId || file.fileName} label={file.fileName || "File"} value={`₹${file.totalAmount}`} />
+                  ))}
+                </>
+              )}
             </div>
           </details>
 
           <div className="hidden space-y-3 text-sm md:block md:mt-4">
             {isMulti ? (
-               <p className="text-slate-500 italic mb-2">Detailed pricing for multiple files will be calculated at checkout.</p>
+               <div className="space-y-3">
+                 {multiEstimatedFiles.map((file) => (
+                   <div key={file.name} className="rounded-2xl border border-slate-100 bg-slate-50 p-3">
+                     <div className="mb-2 flex items-start justify-between gap-3">
+                       <p className="truncate font-semibold text-slate-900">{file.name}</p>
+                       <span className="flex shrink-0 items-center font-bold text-emerald-700"><IndianRupee size={15} />{file.total}</span>
+                     </div>
+                     <div className="grid gap-x-4 gap-y-1 text-xs sm:grid-cols-2">
+                       <Row label="Pages" value={`${file.selectedCount}/${file.pages}`} />
+                       <Row label="Copies" value={file.copies} />
+                       <Row label="Mode" value={`${file.colorType === "bw" ? "B/W" : "Color"} · ${file.sideType}`} />
+                       <Row label="Rate" value={`₹${file.rate}`} />
+                     </div>
+                   </div>
+                 ))}
+                 <p className="text-xs text-slate-500">Final page count is verified from the uploaded PDFs at checkout.</p>
+               </div>
             ) : (
                <>
                  <Row label="Original Pages" value={backendPrice?.originalPageCount || pages} />
@@ -655,20 +693,11 @@ export default function UploadPage({
             </div>
           </div>
 
-          {isGuestLimited && (
-            <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 text-center">
-              <p className="mb-3 font-semibold">Guest printing is limited to 5 original pages. You are trying to print {totalOriginalPages} pages.</p>
-              <button onClick={() => startLogin("user")} className="rounded-xl bg-red-600 px-4 py-2 font-semibold text-white">Login to Continue</button>
-            </div>
-          )}
-
-          {!currentUser && !isGuestLimited && (
-            <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
-              <p className="mb-3 text-sm font-semibold text-amber-800">Guest Mode: Maximum 5 pages. Cash payment only.</p>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <input value={guestName || ""} onChange={(e) => setGuestName(e.target.value)} placeholder="Your Name" className="rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-400" />
-                <input value={guestPhone || ""} onChange={(e) => setGuestPhone(e.target.value)} placeholder="Phone Number" className="rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-400" />
-              </div>
+          {!currentUser && (
+            <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+              <p className="font-semibold text-slate-900">Login to continue printing</p>
+              <p className="mt-1">Your documents and print history stay linked to your account. No temporary order is created.</p>
+              <button onClick={() => startLogin("user")} className="mt-3 rounded-xl bg-slate-900 px-4 py-2 font-semibold text-white">Login</button>
             </div>
           )}
 
@@ -679,7 +708,7 @@ export default function UploadPage({
               </button>
             )}
 
-            <button onClick={handlePaymentClick} disabled={!selectedFileCount || paymentLoading || isGuestLimited || (!currentUser && (!guestName || !guestPhone))} className="flex-1 rounded-2xl bg-slate-900 px-2 py-3 text-sm font-semibold text-white disabled:opacity-40 md:mt-3 md:w-full md:px-4 md:text-base">
+            <button onClick={handlePaymentClick} disabled={!selectedFileCount || paymentLoading || !currentUser} className="flex-1 rounded-2xl bg-slate-900 px-2 py-3 text-sm font-semibold text-white disabled:opacity-40 md:mt-3 md:w-full md:px-4 md:text-base">
               {paymentLoading ? "Calculating..." : (!selectedCentre ? "Select & Continue" : "Continue to Payment")}
             </button>
           </div>
