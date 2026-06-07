@@ -483,11 +483,11 @@ export async function updateCentrePricing(centreId, pricing) {
      returning id`,
     [
       centreId,
-      pricing.bwSingle,
-      pricing.bwDouble,
-      pricing.colorSingle,
-      pricing.colorDouble,
-      pricing.watermarkCharge
+      pricing.bwSingle ?? null,
+      pricing.bwDouble ?? null,
+      pricing.colorSingle ?? null,
+      pricing.colorDouble ?? null,
+      pricing.watermarkCharge ?? null
     ]
   );
 

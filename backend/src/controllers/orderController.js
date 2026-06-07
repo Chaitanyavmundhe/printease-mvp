@@ -524,10 +524,25 @@ export const updateOrderStatus = asyncHandler(async (req, res) => {
   }
 
   const result = await withTransaction(async (client) => {
-    const order = await saveOrderStatus(req.params.id, hubId, nextStatus, client);
+    const existingOrder = await findOrderByIdOrCode(req.params.id, client);
+    if (!existingOrder || existingOrder.centreId !== hubId) {
+      return null;
+    }
+
+    const currentStatus = String(existingOrder.status || '').toLowerCase();
+    const normalizedStatus = nextStatus.toLowerCase();
+
+    // Do not allow changes if order is cancelled, unless un-cancelling (which we don't support)
+    // Actually, let's keep it simple: can't change from Collected or Cancelled
+    if (['collected', 'cancelled'].includes(currentStatus) && currentStatus !== normalizedStatus) {
+      const error = new Error(`Cannot change status from ${existingOrder.status}`);
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const order = await saveOrderStatus(existingOrder.id, hubId, nextStatus, client);
     if (!order) return null;
 
-    const normalizedStatus = nextStatus.toLowerCase();
     const shouldStopPrintJobs = ['cancelled', 'paused', 'refund requested', 'printing failed'].includes(normalizedStatus);
     const cancelledPrintJobs = shouldStopPrintJobs
       ? await cancelActivePrintJobsForOrder(order.id, hubId, `Order marked ${nextStatus} by hub owner`, client)

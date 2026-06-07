@@ -114,3 +114,10 @@ export const paymentRateLimit = rateLimit({
   keyGenerator: (req) => String(req.user?.id || req.body?.orderId || '').trim(),
   message: 'Too many payment attempts. Please wait and try again.'
 });
+
+export const centreLookupRateLimit = rateLimit({
+  windowMs: 60 * 1000,
+  max: Number(process.env.CENTRE_LOOKUP_RATE_LIMIT_PER_MINUTE || 30),
+  keyPrefix: 'centre_lookup',
+  message: 'Too many centre lookups. Please wait and try again.'
+});

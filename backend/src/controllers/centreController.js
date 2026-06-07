@@ -38,6 +38,13 @@ export const getCentreByCode = asyncHandler(async (req, res) => {
   res.json({ success: true, centre });
 });
 
+function isValidPrice(val) {
+  if (val === undefined) return true;
+  if (typeof val !== 'number' || isNaN(val)) return false;
+  if (val < 0 || val > 10000) return false;
+  return true;
+}
+
 export const updateCentrePricing = asyncHandler(async (req, res) => {
   const hubId = getHubId(req);
   const existingCentre = await findCentreById(hubId);
@@ -46,7 +53,13 @@ export const updateCentrePricing = asyncHandler(async (req, res) => {
     return res.status(404).json({ success: false, message: 'Centre not found for logged in owner' });
   }
 
-  const centre = await saveCentrePricing(hubId, req.body);
+  const { bwSingle, bwDouble, colorSingle, colorDouble, watermarkCharge } = req.body;
+  
+  if (!isValidPrice(bwSingle) || !isValidPrice(bwDouble) || !isValidPrice(colorSingle) || !isValidPrice(colorDouble) || !isValidPrice(watermarkCharge)) {
+    return res.status(400).json({ success: false, message: 'Invalid pricing values. Must be a positive number.' });
+  }
+
+  const centre = await saveCentrePricing(hubId, { bwSingle, bwDouble, colorSingle, colorDouble, watermarkCharge });
 
   res.json({ success: true, message: 'Pricing updated', centre });
 });
