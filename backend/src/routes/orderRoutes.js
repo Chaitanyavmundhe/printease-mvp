@@ -10,10 +10,16 @@ import {
 } from '../controllers/orderController.js';
 import { authMiddleware, optionalAuthMiddleware } from '../middleware/authMiddleware.js';
 import { roleMiddleware } from '../middleware/roleMiddleware.js';
+import { guestOrderRateLimit } from '../middleware/rateLimitMiddleware.js';
 
 const router = express.Router();
 
-router.post('/', optionalAuthMiddleware, createOrder);
+const orderRateLimiter = (req, res, next) => {
+  if (!req.user) return guestOrderRateLimit(req, res, next);
+  return next();
+};
+
+router.post('/', optionalAuthMiddleware, orderRateLimiter, createOrder);
 router.get('/mine', authMiddleware, roleMiddleware('user'), getMyOrders);
 router.get('/centre/mine', authMiddleware, roleMiddleware('hub'), getCentreOrders);
 router.get('/:orderId/documents', authMiddleware, getOrderDocuments);

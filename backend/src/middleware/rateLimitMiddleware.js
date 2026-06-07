@@ -121,3 +121,10 @@ export const centreLookupRateLimit = rateLimit({
   keyPrefix: 'centre_lookup',
   message: 'Too many centre lookups. Please wait and try again.'
 });
+
+export const guestOrderRateLimit = rateLimit({
+  windowMs: 24 * 60 * 60 * 1000,
+  max: Number(process.env.GUEST_ORDER_RATE_LIMIT_PER_DAY || 10),
+  keyPrefix: 'guest_order',
+  message: 'Daily limit reached for guest printing. Please login or try again tomorrow.'
+});

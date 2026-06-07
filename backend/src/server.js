@@ -1,5 +1,6 @@
 import app from './app.js';
 import { applySchema } from './db/schemaRunner.js';
+import { cleanupExpiredGuestOrders } from './utils/cleanup.js';
 
 const PORT = process.env.PORT || 5005;
 
@@ -32,6 +33,11 @@ if (hasDatabaseConfig) {
 
 const server = app.listen(PORT, () => {
   console.log(`PrintEase backend running on port ${PORT}`);
+  
+  if (hasDatabaseConfig) {
+    setInterval(cleanupExpiredGuestOrders, 60 * 60 * 1000); // Hourly
+    cleanupExpiredGuestOrders(); // Run once on startup
+  }
 });
 
 server.on('error', (error) => {

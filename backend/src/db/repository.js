@@ -116,6 +116,11 @@ export function mapOrder(row) {
     customerName: row.customer_name || row.user_name || null,
     customerMobile: row.customer_mobile || row.user_mobile || null,
     customerType: row.customer_type || 'registered',
+    guestToken: row.guest_token || null,
+    guestName: row.guest_name || null,
+    guestPhone: row.guest_phone || null,
+    priceSnapshot: row.price_snapshot || null,
+    printConfigSnapshot: row.print_config_snapshot || null,
     expiresAt: row.expires_at || null,
     paymentStatus: row.payment_status,
     status: row.status,
@@ -553,15 +558,16 @@ export async function findDocumentById(documentId, client) {
 
 export async function createOrder(order, client) {
   const result = await executor(client).query(
-    `insert into print_orders (
-       id, order_code, user_id, hub_id, document_name, document_url, pages, copies,
-       color_type, side_type, watermark_enabled, print_options, selected_page_count,
-       printable_page_count, sheet_count, amount, total_amount_paise, payment_status,
-       status, pickup_code, created_at
-     )
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13, $14, $15, $16, $17, $18, $19, $20, coalesce($21, now()))
-     returning *, hub_id as centre_id`,
-    [
+     `insert into print_orders (
+        id, order_code, user_id, hub_id, document_name, document_url, pages, copies,
+        color_type, side_type, watermark_enabled, print_options, selected_page_count,
+        printable_page_count, sheet_count, amount, total_amount_paise, payment_status,
+        status, pickup_code, created_at, customer_type, expires_at,
+        guest_token, guest_name, guest_phone, price_snapshot, print_config_snapshot
+      )
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13, $14, $15, $16, $17, $18, $19, $20, coalesce($21, now()), $22, $23, $24, $25, $26, $27::jsonb, $28::jsonb)
+      returning *, hub_id as centre_id`,
+     [
       order.id,
       order.orderCode,
       order.userId || null,
@@ -582,7 +588,14 @@ export async function createOrder(order, client) {
       order.paymentStatus,
       order.status,
       order.pickupCode,
-      order.createdAt || null
+      order.createdAt || null,
+      order.customerType || 'registered',
+      order.expiresAt || null,
+      order.guestToken || null,
+      order.guestName || null,
+      order.guestPhone || null,
+      order.priceSnapshot ? JSON.stringify(order.priceSnapshot) : null,
+      order.printConfigSnapshot ? JSON.stringify(order.printConfigSnapshot) : null
     ]
   );
 

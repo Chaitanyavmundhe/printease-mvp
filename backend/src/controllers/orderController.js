@@ -18,6 +18,7 @@ import { calculatePrintPricing } from '../utils/calculatePrice.js';
 import { generateId, generateOrderCode, generateShortCode } from '../utils/generateCode.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { queuePrintJobIfPaymentReady } from '../services/printQueueService.js';
+import crypto from 'crypto';
 import {
   mapLegacyFieldsToPrintOptions,
   normalizePrintOptions,
@@ -150,7 +151,9 @@ export const createOrder = asyncHandler(async (req, res) => {
     printDpi = 300,
     scaleMode = 'original',
     marginMode = 'default',
-    watermarkEnabled = false
+    watermarkEnabled = false,
+    guestName,
+    guestPhone
   } = req.body;
 
   const trimmedCentreCode = typeof centreCode === 'string' ? centreCode.trim() : '';
@@ -160,6 +163,10 @@ export const createOrder = asyncHandler(async (req, res) => {
 
   if (!trimmedCentreCode && !hubId) {
     return res.status(400).json({ success: false, message: 'Centre code or hub ID is required' });
+  }
+
+  if (!req.user && (!guestName || !guestPhone)) {
+    return res.status(400).json({ success: false, message: 'Guest name and phone number are required' });
   }
 
   const submittedFiles = Array.isArray(files) && files.length
@@ -215,7 +222,7 @@ export const createOrder = asyncHandler(async (req, res) => {
   for (const file of resolvedFiles) {
     const pages = file.document?.pageCount || Number(file.pages ?? req.body.pages);
     if (Number.isFinite(pages) && pages > 0) {
-      totalTrustedPages += pages * copyCount;
+      totalTrustedPages += pages;
     }
   }
 
@@ -314,11 +321,22 @@ export const createOrder = asyncHandler(async (req, res) => {
 
   const createdAt = new Date().toISOString();
 
+  const isGuest = !req.user;
+  const expiresAt = isGuest ? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() : null;
+  const guestToken = isGuest ? crypto.randomBytes(16).toString('hex') : null;
+
   const result = await withTransaction(async (client) => {
     const order = await saveOrder({
       id: generateId(),
       orderCode,
       userId: req.user?.id || null,
+      customerType: isGuest ? 'guest' : 'registered',
+      expiresAt,
+      guestToken,
+      guestName: isGuest ? String(guestName).trim().slice(0, 255) : null,
+      guestPhone: isGuest ? String(guestPhone).trim().slice(0, 50) : null,
+      priceSnapshot: { amount: totalAmount, totalAmountPaise, breakdown: pricedFiles.map(f => f.price) },
+      printConfigSnapshot: orderPrintOptions,
       centreId: centre.id,
       documentId: firstFile.document?.id || null,
       documentName: documentLabel,
@@ -364,14 +382,21 @@ export const createOrder = asyncHandler(async (req, res) => {
     return { order, orderFiles };
   });
 
+  const orderUrl = req.user
+    ? `${process.env.FRONTEND_URL}/orders/${result.order.id}`
+    : `${process.env.FRONTEND_URL}/track?order=${result.order.id}&token=${guestToken}`;
+
   res.status(201).json({
     success: true,
     message: 'Order created. Complete payment before printing.',
     order: result.order,
     orderFiles: result.orderFiles,
+    guestToken: guestToken,
+    url: orderUrl,
     price: {
       totalAmount,
       totalAmountPaise,
+      pricePerPage: firstFile.price.pricePerPage,
       files: pricedFiles.map((file) => ({
         documentId: file.document?.id || null,
         fileName: file.document?.fileName || file.documentName || documentName || 'Uploaded Document',

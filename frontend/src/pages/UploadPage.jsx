@@ -42,6 +42,10 @@ export default function UploadPage({
   navigate,
   multiFileConfigs,
   setMultiFileConfigs,
+  guestName,
+  setGuestName,
+  guestPhone,
+  setGuestPhone,
 }) {
   const [selectedFileNames, setSelectedFileNames] = useState([]);
   const [modalFile, setModalFile] = useState(null);
@@ -339,7 +343,14 @@ export default function UploadPage({
     return total;
   }, [documentFiles, multiFileConfigs, selectedCentre, totalAmount, isMulti]);
 
+  const totalOriginalPages = useMemo(() => {
+    if (isMulti) {
+      return documentFiles.reduce((sum, f) => sum + (f.documentFile?.pageCount || Number(f.pages || 0)), 0);
+    }
+    return documentFile?.pageCount || Number(pages || 0);
+  }, [documentFiles, documentFile, pages, isMulti]);
 
+  const isGuestLimited = !currentUser && totalOriginalPages > 5;
 
   const toggleSelectAll = () => {
     if (selectedFileNames.length === documentFiles.length) {
@@ -644,6 +655,23 @@ export default function UploadPage({
             </div>
           </div>
 
+          {isGuestLimited && (
+            <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 text-center">
+              <p className="mb-3 font-semibold">Guest printing is limited to 5 original pages. You are trying to print {totalOriginalPages} pages.</p>
+              <button onClick={() => startLogin("user")} className="rounded-xl bg-red-600 px-4 py-2 font-semibold text-white">Login to Continue</button>
+            </div>
+          )}
+
+          {!currentUser && !isGuestLimited && (
+            <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4">
+              <p className="mb-3 text-sm font-semibold text-amber-800">Guest Mode: Maximum 5 pages. Cash payment only.</p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <input value={guestName || ""} onChange={(e) => setGuestName(e.target.value)} placeholder="Your Name" className="rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-400" />
+                <input value={guestPhone || ""} onChange={(e) => setGuestPhone(e.target.value)} placeholder="Phone Number" className="rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-amber-400" />
+              </div>
+            </div>
+          )}
+
           <div className="flex gap-2 md:block">
             {!selectedCentre && (
               <button onClick={() => navigate("centre", { state: { autoStartScanner: true, fromUpload: true } })} className="flex-1 rounded-2xl border bg-white px-2 py-3 text-sm font-semibold hover:bg-slate-50 md:mt-6 md:w-full md:px-4 md:text-base">
@@ -651,7 +679,7 @@ export default function UploadPage({
               </button>
             )}
 
-            <button onClick={handlePaymentClick} disabled={!selectedFileCount || paymentLoading} className="flex-1 rounded-2xl bg-slate-900 px-2 py-3 text-sm font-semibold text-white disabled:opacity-40 md:mt-3 md:w-full md:px-4 md:text-base">
+            <button onClick={handlePaymentClick} disabled={!selectedFileCount || paymentLoading || isGuestLimited || (!currentUser && (!guestName || !guestPhone))} className="flex-1 rounded-2xl bg-slate-900 px-2 py-3 text-sm font-semibold text-white disabled:opacity-40 md:mt-3 md:w-full md:px-4 md:text-base">
               {paymentLoading ? "Calculating..." : (!selectedCentre ? "Select & Continue" : "Continue to Payment")}
             </button>
           </div>

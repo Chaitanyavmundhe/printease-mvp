@@ -22,15 +22,18 @@ import {
   RAZORPAY_WEBHOOK_SECRET
 } from '../config/razorpay.js';
 
-function canAccessOrder(user, order) {
+function canAccessOrder(user, order, req = null) {
   if (!order) return false;
-  if (!order.userId) return true; // Guest order
+  if (!order.userId) {
+    if (!req) return false;
+    const providedToken = req.headers['x-guest-token'] || req.body?.guestToken;
+    return providedToken && order.guestToken === providedToken;
+  }
 
   if (!user) return false;
   if (user.role === 'admin') return true;
-  if (user.role === 'user') return order.userId === user.id;
-  if (user.role === 'hub') return Boolean((user.centreId || user.hubId) && order.centreId === (user.centreId || user.hubId));
-  return false;
+  if (user.role === 'hub' && (user.centreId === order.centreId || user.hubId === order.centreId)) return true;
+  return order.userId === user.id;
 }
 
 function assertRazorpayConfigured() {
@@ -138,8 +141,8 @@ export const createManualPaymentRequest = asyncHandler(async (req, res) => {
     return res.status(404).json({ success: false, message: 'Order not found' });
   }
 
-  if (!canAccessOrder(req.user, order)) {
-    return res.status(403).json({ success: false, message: 'You are not allowed to create payment request for this order' });
+  if (!canAccessOrder(req.user, order, req)) {
+    return res.status(403).json({ success: false, message: 'You are not authorized to create a payment request for this order' });
   }
 
   assertOrderCanStartPayment(order);
@@ -176,7 +179,7 @@ export const createManualPaymentRequest = asyncHandler(async (req, res) => {
 export const createRazorpayOrder = asyncHandler(async (req, res) => {
   assertRazorpayConfigured();
 
-  if (!req.user) {
+  if (!req.user && !req.body.guestToken) {
     return res.status(403).json({
       success: false,
       code: 'LOGIN_REQUIRED_FOR_ONLINE_PAYMENT',
@@ -196,8 +199,8 @@ export const createRazorpayOrder = asyncHandler(async (req, res) => {
     return res.status(404).json({ success: false, message: 'Order not found' });
   }
 
-  if (!canAccessOrder(req.user, order)) {
-    return res.status(403).json({ success: false, message: 'You are not allowed to create payment for this order' });
+  if (!canAccessOrder(req.user, order, req)) {
+    return res.status(403).json({ success: false, message: 'You are not authorized to pay for this order' });
   }
 
   assertOrderCanStartPayment(order);
@@ -296,8 +299,8 @@ export const verifyRazorpayPayment = asyncHandler(async (req, res) => {
     return res.status(404).json({ success: false, message: 'Linked order not found' });
   }
 
-  if (!canAccessOrder(req.user, order)) {
-    return res.status(403).json({ success: false, message: 'You are not allowed to verify this payment' });
+  if (!canAccessOrder(req.user, order, req)) {
+    return res.status(403).json({ success: false, message: 'You are not authorized to verify payment for this order' });
   }
 
   let validSignature = false;
@@ -390,8 +393,8 @@ export const createRazorpayUpiQr = asyncHandler(async (req, res) => {
     return res.status(404).json({ success: false, message: 'Order not found' });
   }
 
-  if (!canAccessOrder(req.user, order)) {
-    return res.status(403).json({ success: false, message: 'You are not allowed to create QR payment for this order' });
+  if (!canAccessOrder(req.user, order, req)) {
+    return res.status(403).json({ success: false, message: 'You are not authorized to generate QR for this order' });
   }
 
   assertOrderCanStartPayment(order);
@@ -579,8 +582,8 @@ export const verifyDemoPayment = asyncHandler(async (req, res) => {
     return res.status(404).json({ success: false, message: 'Linked order not found' });
   }
 
-  if (!canAccessOrder(req.user, order)) {
-    return res.status(403).json({ success: false, message: 'You are not allowed to verify this payment' });
+  if (!canAccessOrder(req.user, order, req)) {
+    return res.status(403).json({ success: false, message: 'You are not authorized to access this order payment' });
   }
 
   assertOrderCanStartPayment(order);

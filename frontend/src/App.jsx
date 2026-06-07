@@ -443,7 +443,10 @@ export default function App() {
   const [watermarkPosition, setWatermarkPosition] = useState("bottom_right");
   const [watermarkOpacity, setWatermarkOpacity] = useState(0.18);
   const [watermarkFontSize, setWatermarkFontSize] = useState(18);
-  const [watermarkRotation, setWatermarkRotation] = useState(0);
+  const [watermarkRotation, setWatermarkRotation] = useState(45);
+  const [guestName, setGuestName] = useState("");
+  const [guestPhone, setGuestPhone] = useState("");
+  const [guestToken, setGuestToken] = useState(() => localStorage.getItem("printease_guest_token") || "");
   const [order, setOrder] = useState(null);
   const [backendPrice, setBackendPrice] = useState(null);
   const [paymentLoading, setPaymentLoading] = useState(false);
@@ -1317,12 +1320,18 @@ export default function App() {
           marginMode,
           watermarkEnabled: watermark,
           printOptions: defaultPrintOptions,
+          guestName: currentUser ? undefined : guestName,
+          guestPhone: currentUser ? undefined : guestPhone,
         }),
       });
 
       const nextOrder = normalizeOrder(orderData.order, centres);
       setOrder(nextOrder);
       setBackendPrice(orderData.price || null);
+      if (orderData.guestToken) {
+        setGuestToken(orderData.guestToken);
+        localStorage.setItem("printease_guest_token", orderData.guestToken);
+      }
       setDocumentFile(null);
       setDocumentFiles([]);
       navigate("payment");
@@ -1347,7 +1356,8 @@ export default function App() {
       try {
         const paymentData = await apiRequest("/api/payments/manual-request", {
           method: "POST",
-          body: JSON.stringify({ orderId: order.backendId }),
+          headers: guestToken ? { "x-guest-token": guestToken } : {},
+          body: JSON.stringify({ orderId: order.backendId, guestToken }),
         });
         const requestedOrder = normalizeOrder(paymentData.order || order, centres);
         setOrder(requestedOrder);
@@ -1834,7 +1844,7 @@ export default function App() {
           />
           <Route path={ROUTES.desktopAgent} element={<DesktopAgentPage currentUser={currentUser} />} />
           <Route path={ROUTES.centre} element={<CentreCodePage centreCode={centreCode} setCentreCode={setCentreCode} handleCentreCode={handleCentreCode} selectCentreByCode={selectCentreByCode} centres={prioritizedCentres} selectCentreAndUpload={selectCentreAndUpload} lookupLoading={centreLookupLoading} lookupError={centreLookupError} autoStartScanner={Boolean(location.state?.autoStartScanner)} />} />
-          <Route path={ROUTES.upload} element={<UploadPage currentUser={currentUser} startLogin={startLogin} selectedCentre={selectedCentre} documentFile={documentFile} setDocumentFile={setDocumentFile} documentFiles={documentFiles} setDocumentFiles={setDocumentFiles} multiFileConfigs={multiFileConfigs} setMultiFileConfigs={setMultiFileConfigs} documentName={documentName} setDocumentName={setDocumentName} pages={pages} setPages={setPages} selectedPages={selectedPages} setSelectedPages={setSelectedPages} copies={copies} setCopies={setCopies} colorType={colorType} setColorType={setColorType} sideType={sideType} setSideType={setSideType} paperSize={paperSize} setPaperSize={setPaperSize} pagesPerSheet={pagesPerSheet} setPagesPerSheet={setPagesPerSheet} orientation={orientation} setOrientation={setOrientation} printDpi={printDpi} setPrintDpi={setPrintDpi} scaleMode={scaleMode} setScaleMode={setScaleMode} marginMode={marginMode} setMarginMode={setMarginMode} watermark={watermark} setWatermark={setWatermark} watermarkType={watermarkType} setWatermarkType={setWatermarkType} watermarkText={watermarkText} setWatermarkText={setWatermarkText} watermarkPosition={watermarkPosition} setWatermarkPosition={setWatermarkPosition} watermarkOpacity={watermarkOpacity} setWatermarkOpacity={setWatermarkOpacity} watermarkFontSize={watermarkFontSize} setWatermarkFontSize={setWatermarkFontSize} watermarkRotation={watermarkRotation} setWatermarkRotation={setWatermarkRotation} pricePerPage={pricePerPage} estimatedSelectedPageCount={estimatedSelectedPageCount} totalAmount={totalAmount} backendPrice={backendPrice} preparePayment={preparePayment} paymentLoading={paymentLoading} paymentError={paymentError} navigate={navigate} />} />
+          <Route path={ROUTES.upload} element={<UploadPage currentUser={currentUser} startLogin={startLogin} selectedCentre={selectedCentre} documentFile={documentFile} setDocumentFile={setDocumentFile} documentFiles={documentFiles} setDocumentFiles={setDocumentFiles} multiFileConfigs={multiFileConfigs} setMultiFileConfigs={setMultiFileConfigs} documentName={documentName} setDocumentName={setDocumentName} pages={pages} setPages={setPages} selectedPages={selectedPages} setSelectedPages={setSelectedPages} copies={copies} setCopies={setCopies} colorType={colorType} setColorType={setColorType} sideType={sideType} setSideType={setSideType} paperSize={paperSize} setPaperSize={setPaperSize} pagesPerSheet={pagesPerSheet} setPagesPerSheet={setPagesPerSheet} orientation={orientation} setOrientation={setOrientation} printDpi={printDpi} setPrintDpi={setPrintDpi} scaleMode={scaleMode} setScaleMode={setScaleMode} marginMode={marginMode} setMarginMode={setMarginMode} watermark={watermark} setWatermark={setWatermark} watermarkType={watermarkType} setWatermarkType={setWatermarkType} watermarkText={watermarkText} setWatermarkText={setWatermarkText} watermarkPosition={watermarkPosition} setWatermarkPosition={setWatermarkPosition} watermarkOpacity={watermarkOpacity} setWatermarkOpacity={setWatermarkOpacity} watermarkFontSize={watermarkFontSize} setWatermarkFontSize={setWatermarkFontSize} watermarkRotation={watermarkRotation} setWatermarkRotation={setWatermarkRotation} pricePerPage={pricePerPage} estimatedSelectedPageCount={estimatedSelectedPageCount} totalAmount={totalAmount} backendPrice={backendPrice} preparePayment={preparePayment} paymentLoading={paymentLoading} paymentError={paymentError} navigate={navigate} guestName={guestName} setGuestName={setGuestName} guestPhone={guestPhone} setGuestPhone={setGuestPhone} />} />
           <Route
             path={ROUTES.payment}
             element={

@@ -477,3 +477,8 @@ create index if not exists idx_platform_visits_last_active on platform_visits(la
 alter table print_orders add column if not exists expires_at timestamptz;
 alter table print_orders add column if not exists customer_type text default 'registered';
 
+alter table print_orders add column if not exists guest_token text;
+alter table print_orders add column if not exists guest_name text;
+alter table print_orders add column if not exists guest_phone text;
+alter table print_orders add column if not exists price_snapshot jsonb;
+alter table print_orders add column if not exists print_config_snapshot jsonb;
