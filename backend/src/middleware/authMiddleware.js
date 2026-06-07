@@ -90,7 +90,9 @@ export async function optionalAuthMiddleware(req, res, next) {
     const resolved = await resolveUserFromBearer(token);
 
     if (!resolved) {
-      return res.status(401).json({ success: false, message: 'Invalid or expired token' });
+      req.authWarning = 'Invalid or expired optional token ignored';
+      next();
+      return;
     }
 
     req.user = resolved.user || null;
