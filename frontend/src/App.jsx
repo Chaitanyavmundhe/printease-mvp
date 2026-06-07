@@ -1334,7 +1334,17 @@ export default function App() {
       setDocumentFiles([]);
       navigate("payment");
     } catch (error) {
-      setPaymentError(error.message || "Could not upload document and calculate final price.");
+      if (error.status === 403 && error.details?.code === 'LOGIN_REQUIRED_FOR_MORE_THAN_5_PAGES') {
+        const confirmLogin = window.confirm("You can only print up to 5 pages as a guest. Please log in to print larger documents.");
+        if (confirmLogin) {
+          setPostAuthRedirect("upload");
+          navigate("auth");
+        } else {
+          setPaymentError(error.message);
+        }
+      } else {
+        setPaymentError(error.message || "Could not upload document and calculate final price.");
+      }
     } finally {
       setPaymentLoading(false);
     }

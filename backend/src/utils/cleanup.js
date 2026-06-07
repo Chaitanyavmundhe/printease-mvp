@@ -1,4 +1,4 @@
-import { pool } from '../db/client.js';
+import { pool } from '../config/db.js';
 
 export async function cleanupExpiredGuestOrders() {
   console.log('[Cleanup] Starting expired guest orders cleanup...');

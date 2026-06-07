@@ -1,10 +1,10 @@
 import { asyncHandler } from '../utils/asyncHandler.js';
-import { supabase, getSupabaseBucketName } from '../config/supabase.js';
-import { executor } from '../db/client.js';
+import { getSupabaseAdminClient, getSupabaseBucketName } from '../config/supabase.js';
+import { pool } from '../config/db.js';
 
 export async function runInternalCleanup() {
   try {
-    const result = await executor().query(
+    const result = await pool.query(
       `SELECT id, storage_path FROM documents WHERE created_at < NOW() - INTERVAL '15 days'`
     );
 
@@ -18,6 +18,7 @@ export async function runInternalCleanup() {
 
     if (storagePaths.length > 0) {
       const bucketName = getSupabaseBucketName();
+      const supabase = getSupabaseAdminClient();
       const { error } = await supabase.storage.from(bucketName).remove(storagePaths);
       
       if (error) {
@@ -28,12 +29,12 @@ export async function runInternalCleanup() {
 
     const documentIds = documents.map(doc => doc.id);
     
-    await executor().query(
+    await pool.query(
       `DELETE FROM print_order_files WHERE document_id = ANY($1::text[])`,
       [documentIds]
     );
 
-    await executor().query(
+    await pool.query(
       `DELETE FROM documents WHERE id = ANY($1::text[])`,
       [documentIds]
     );
