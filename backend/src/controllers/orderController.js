@@ -18,6 +18,7 @@ import { calculatePrintPricing } from '../utils/calculatePrice.js';
 import { generateId, generateOrderCode, generateShortCode } from '../utils/generateCode.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { queuePrintJobIfPaymentReady } from '../services/printQueueService.js';
+import crypto from 'crypto';
 import {
   mapLegacyFieldsToPrintOptions,
   normalizePrintOptions,
@@ -78,8 +79,17 @@ function pricingMetadata(price) {
   };
 }
 
-function canAccessOrder(user, order) {
-  if (!user || !order) return false;
+function getOrderAccessToken(req) {
+  return String(req.headers['x-order-access-token'] || req.query?.token || '').trim();
+}
+
+function canAccessOrder(user, order, req = null) {
+  if (!order) return false;
+  if (!order.userId) {
+    const providedToken = req ? getOrderAccessToken(req) : '';
+    return Boolean(providedToken && order.guestToken && providedToken === order.guestToken);
+  }
+  if (!user) return false;
   if (user.role === 'admin') return true;
   if (user.role === 'user') return order.userId === user.id;
   if (user.role === 'hub') return order.centreId === (user.centreId || user.hubId);
@@ -149,10 +159,6 @@ export const createOrder = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: 'Centre code or hub ID is required' });
   }
 
-  if (!req.user?.id) {
-    return res.status(401).json({ success: false, message: 'Login is required before creating an order.' });
-  }
-
   const submittedFiles = Array.isArray(files) && files.length
     ? files
     : Array.isArray(documentIds) && documentIds.length
@@ -175,8 +181,8 @@ export const createOrder = asyncHandler(async (req, res) => {
         return res.status(404).json({ success: false, message: 'Uploaded document not found' });
       }
 
-      if (!document.userId && req.user?.role !== 'admin') {
-        return res.status(403).json({ success: false, message: 'This document is not linked to a logged-in account. Please upload it again.' });
+      if (!document.userId && req.user?.role !== 'admin' && req.user?.id) {
+        return res.status(403).json({ success: false, message: 'This document is not linked to your account. Please upload it again.' });
       }
 
       if (
@@ -285,15 +291,27 @@ export const createOrder = asyncHandler(async (req, res) => {
       };
 
   const createdAt = new Date().toISOString();
+  const isLimitedLoginlessOrder = !req.user?.id;
+
+  if (isLimitedLoginlessOrder && totalSelectedPages > 5) {
+    return res.status(403).json({
+      success: false,
+      code: 'LOGIN_REQUIRED_FOR_MORE_THAN_5_PAGES',
+      message: 'Login is required to print more than 5 selected pages.'
+    });
+  }
+
+  const orderAccessToken = isLimitedLoginlessOrder ? crypto.randomBytes(32).toString('hex') : null;
+  const expiresAt = isLimitedLoginlessOrder ? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() : null;
 
   const result = await withTransaction(async (client) => {
     const order = await saveOrder({
       id: generateId(),
       orderCode,
-      userId: req.user.id,
-      customerType: 'registered',
-      expiresAt: null,
-      guestToken: null,
+      userId: req.user?.id || null,
+      customerType: isLimitedLoginlessOrder ? 'limited' : 'registered',
+      expiresAt,
+      guestToken: orderAccessToken,
       guestName: null,
       guestPhone: null,
       priceSnapshot: { amount: totalAmount, totalAmountPaise, breakdown: pricedFiles.map(f => f.price) },
@@ -350,6 +368,7 @@ export const createOrder = asyncHandler(async (req, res) => {
     message: 'Order created. Complete payment before printing.',
     order: result.order,
     orderFiles: result.orderFiles,
+    orderAccessToken,
     url: orderUrl,
     price: {
       totalAmount,
@@ -414,11 +433,11 @@ export const getOrderById = asyncHandler(async (req, res) => {
     return res.status(404).json({ success: false, message: 'Order not found' });
   }
 
-  if (String(order.paymentStatus || '').toLowerCase() === 'draft' && !canAccessOrder(req.user, order)) {
+  if (String(order.paymentStatus || '').toLowerCase() === 'draft' && !canAccessOrder(req.user, order, req)) {
     return res.status(404).json({ success: false, message: 'Order not found' });
   }
 
-  if (!canAccessOrder(req.user, order)) {
+  if (!canAccessOrder(req.user, order, req)) {
     return res.status(403).json({ success: false, message: 'You are not allowed to view this order' });
   }
 
