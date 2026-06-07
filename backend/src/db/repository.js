@@ -664,13 +664,14 @@ export async function listOrderFiles(orderId, client) {
   return result.rows.map(mapOrderFile);
 }
 
-export async function findDocumentAccessContext(documentId, user, client) {
+export async function findDocumentAccessContext(documentId, user, guestToken, client) {
   const result = await executor(client).query(
     `select
        pof.*,
        po.user_id as order_user_id,
        po.hub_id,
        po.order_code,
+       po.guest_token,
        d.file_name,
        d.file_type,
        d.file_size,
@@ -695,9 +696,10 @@ export async function findDocumentAccessContext(documentId, user, client) {
   const isAdmin = user?.role === 'admin';
   const isOwner = user?.role === 'user' && row.order_user_id === user.id;
   const isHubOwner = user?.role === 'hub' && row.hub_id === (user.centreId || user.hubId);
+  const isGuestOwner = !row.order_user_id && guestToken && row.guest_token === guestToken;
 
   return {
-    allowed: Boolean(isAdmin || isOwner || isHubOwner),
+    allowed: Boolean(isAdmin || isOwner || isHubOwner || isGuestOwner),
     orderId: row.order_id,
     hubId: row.hub_id,
     orderCode: row.order_code,

@@ -85,14 +85,16 @@ function getOrderAccessToken(req) {
 
 function canAccessOrder(user, order, req = null) {
   if (!order) return false;
+
+  if (user?.role === 'admin') return true;
+  if (user?.role === 'hub' && order.centreId === (user.centreId || user.hubId)) return true;
+  if (user?.role === 'user' && order.userId === user.id) return true;
+
   if (!order.userId) {
     const providedToken = req ? getOrderAccessToken(req) : '';
     return Boolean(providedToken && order.guestToken && providedToken === order.guestToken);
   }
-  if (!user) return false;
-  if (user.role === 'admin') return true;
-  if (user.role === 'user') return order.userId === user.id;
-  if (user.role === 'hub') return order.centreId === (user.centreId || user.hubId);
+
   return false;
 }
 
@@ -293,6 +295,14 @@ export const createOrder = asyncHandler(async (req, res) => {
   const createdAt = new Date().toISOString();
   const isLimitedLoginlessOrder = !req.user?.id;
 
+  if (isLimitedLoginlessOrder && totalPrintablePages > 5) {
+    return res.status(403).json({
+      success: false,
+      code: 'LOGIN_REQUIRED_FOR_MORE_THAN_5_PAGES',
+      message: 'Login is required to print more than 5 pages.'
+    });
+  }
+
   const orderAccessToken = isLimitedLoginlessOrder ? crypto.randomBytes(32).toString('hex') : null;
   const expiresAt = isLimitedLoginlessOrder ? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() : null;
 
@@ -430,7 +440,7 @@ export const getOrderById = asyncHandler(async (req, res) => {
   }
 
   if (!canAccessOrder(req.user, order, req)) {
-    return res.status(403).json({ success: false, message: 'You are not allowed to view this order' });
+    return res.status(404).json({ success: false, message: 'Order not found' });
   }
 
   res.json({ success: true, order: privateOrder(order), public: false });

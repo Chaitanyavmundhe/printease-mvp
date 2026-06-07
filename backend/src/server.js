@@ -1,6 +1,7 @@
 import app from './app.js';
 import { applySchema } from './db/schemaRunner.js';
 import { cleanupExpiredGuestOrders } from './utils/cleanup.js';
+import { runInternalCleanup } from './controllers/systemController.js';
 
 const PORT = process.env.PORT || 5005;
 
@@ -37,6 +38,10 @@ const server = app.listen(PORT, () => {
   if (hasDatabaseConfig) {
     setInterval(cleanupExpiredGuestOrders, 60 * 60 * 1000); // Hourly
     cleanupExpiredGuestOrders(); // Run once on startup
+
+    // Run 15-day document cleanup every 12 hours
+    setInterval(runInternalCleanup, 12 * 60 * 60 * 1000); 
+    runInternalCleanup(); // Run once on startup
   }
 });
 

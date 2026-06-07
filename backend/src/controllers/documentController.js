@@ -13,7 +13,8 @@ function getRequestIp(req) {
 }
 
 export const createSignedDownload = asyncHandler(async (req, res) => {
-  const context = await findDocumentAccessContext(req.params.documentId, req.user);
+  const guestToken = req.headers['x-order-access-token'] || req.query.token;
+  const context = await findDocumentAccessContext(req.params.documentId, req.user, guestToken);
 
   if (!context) {
     return res.status(404).json({ success: false, message: 'Document not found' });

@@ -142,7 +142,7 @@ create table if not exists print_orders (
   id text primary key default gen_random_uuid()::text,
   order_code text not null unique,
   user_id text references users(id) on delete set null,
-  hub_id text not null references print_hubs(id) on delete cascade,
+  hub_id text references print_hubs(id) on delete set null,
   document_name text not null,
   document_url text,
   pages integer not null,
@@ -391,7 +391,7 @@ alter table agent_printers add column if not exists last_checked_at timestamptz;
 create table if not exists print_jobs (
   id text primary key default gen_random_uuid()::text,
   order_id text not null references print_orders(id) on delete cascade,
-  hub_id text not null references print_hubs(id) on delete cascade,
+  hub_id text references print_hubs(id) on delete set null,
   agent_id text references agents(id) on delete set null,
   printer_name text,
   status text not null default 'queued',

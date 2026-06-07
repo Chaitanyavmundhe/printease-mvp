@@ -22,6 +22,7 @@ import { calculateTotalAmount, countSelectedPages, getPricePerPage } from "./uti
 import { clearStoredAuth, getStoredAuth, isDesktop, onPrintersUpdated, saveStoredAuth } from "./utils/desktopBridge";
 import { apiRequest } from "./services/api";
 import { loadRazorpayCheckout } from "./utils/razorpay";
+import { saveOrderToLocalHistory } from "./utils/localHistory";
 import {
   clearSupabaseUrlSession,
   getSupabaseUser,
@@ -1319,6 +1320,9 @@ export default function App() {
       const nextOrder = normalizeOrder(orderData.order, centres);
       setOrder(nextOrder);
       setBackendPrice(orderData.price || null);
+      
+      saveOrderToLocalHistory(nextOrder, defaultPrintOptions, orderData.price, uploadedDocuments);
+
       if (orderData.orderAccessToken) {
         setOrderAccessToken(orderData.orderAccessToken);
         localStorage.setItem("printease_order_access_token", orderData.orderAccessToken);
