@@ -1,4 +1,4 @@
-import { readFile } from 'fs/promises';
+import { readdir, readFile } from 'fs/promises';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { query } from '../config/db.js';
@@ -44,6 +44,23 @@ export async function applySchema() {
 
     await query(adjustedSql);
     console.log('[DB SCHEMA APPLIED]');
+
+    // Run migrations
+    try {
+      const migrationsDir = join(__dirname, 'migrations');
+      const files = await readdir(migrationsDir);
+      const sqlFiles = files.filter(f => f.endsWith('.sql')).sort();
+      for (const file of sqlFiles) {
+        console.log(`[DB MIGRATION] Running ${file}...`);
+        const migrationSql = await readFile(join(migrationsDir, file), 'utf8');
+        await query(migrationSql);
+      }
+    } catch (err) {
+      if (err.code !== 'ENOENT') {
+        throw err;
+      }
+    }
+    
   } catch (error) {
     console.error('[DB CHECK FAILED]', {
       message: error.message

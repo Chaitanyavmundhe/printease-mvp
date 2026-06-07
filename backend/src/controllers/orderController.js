@@ -323,7 +323,7 @@ export const createOrder = asyncHandler(async (req, res) => {
 
   const isGuest = !req.user;
   const expiresAt = isGuest ? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() : null;
-  const guestToken = isGuest ? crypto.randomBytes(16).toString('hex') : null;
+  const guestToken = isGuest ? crypto.randomBytes(32).toString('hex') : null;
 
   const result = await withTransaction(async (client) => {
     const order = await saveOrder({
@@ -384,7 +384,7 @@ export const createOrder = asyncHandler(async (req, res) => {
 
   const orderUrl = req.user
     ? `${process.env.FRONTEND_URL}/orders/${result.order.id}`
-    : `${process.env.FRONTEND_URL}/track?order=${result.order.id}&token=${guestToken}`;
+    : `${process.env.FRONTEND_URL}/track?order=${result.order.id}`;
 
   res.status(201).json({
     success: true,
