@@ -68,6 +68,10 @@ function isPaymentComplete(order) {
   return ['verified', 'collected', 'paid'].includes(normalizePaymentStatus(order));
 }
 
+function selectedPageCountForOrder(order) {
+  return Number(order?.selectedPageCount || order?.printablePageCount || order?.pages || 0);
+}
+
 function assertOrderCanStartPayment(order) {
   if (isOrderCancelled(order) && !isPaymentComplete(order)) {
     const error = new Error('Order was cancelled before payment. Payment cannot be started.');
@@ -147,6 +151,14 @@ export const createManualPaymentRequest = asyncHandler(async (req, res) => {
     return res.status(403).json({ success: false, message: 'You are not authorized to create a payment request for this order' });
   }
 
+  if (!order.userId && selectedPageCountForOrder(order) > 5) {
+    return res.status(403).json({
+      success: false,
+      code: 'LOGIN_REQUIRED_FOR_MORE_THAN_5_PAGES',
+      message: 'Login is required to print more than 5 selected pages.'
+    });
+  }
+
   assertOrderCanStartPayment(order);
 
   const paymentStatus = normalizePaymentStatus(order);
@@ -195,6 +207,14 @@ export const createRazorpayOrder = asyncHandler(async (req, res) => {
 
   if (!canAccessOrder(req.user, order, req)) {
     return res.status(403).json({ success: false, message: 'You are not authorized to pay for this order' });
+  }
+
+  if (!req.user && !order.userId) {
+    return res.status(403).json({
+      success: false,
+      code: 'LOGIN_REQUIRED_FOR_ONLINE_PAYMENT',
+      message: 'Login is required for online payment.'
+    });
   }
 
   assertOrderCanStartPayment(order);
@@ -389,6 +409,14 @@ export const createRazorpayUpiQr = asyncHandler(async (req, res) => {
 
   if (!canAccessOrder(req.user, order, req)) {
     return res.status(403).json({ success: false, message: 'You are not authorized to generate QR for this order' });
+  }
+
+  if (!req.user && !order.userId) {
+    return res.status(403).json({
+      success: false,
+      code: 'LOGIN_REQUIRED_FOR_ONLINE_PAYMENT',
+      message: 'Login is required for online payment.'
+    });
   }
 
   assertOrderCanStartPayment(order);

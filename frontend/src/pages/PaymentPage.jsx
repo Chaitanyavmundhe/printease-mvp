@@ -55,10 +55,15 @@ export default function PaymentPage({
 }) {
   const amount = backendPrice?.totalAmount ?? order?.amount ?? 0;
   const rate = backendPrice?.pricePerPage ?? backendPrice?.files?.[0]?.pricePerPage ?? 0;
+  const selectedPageCount = Number(backendPrice?.selectedPageCount || order?.selectedPageCount || pages || 0);
   const centreUpi = selectedCentre?.upiId || "";
   const upiQrUrl = selectedCentre?.upiQrImageUrl || "";
 
   const handlePaymentClick = () => {
+    if (!currentUser && paymentMethod === "manual" && selectedPageCount > 5) {
+      startLogin("user");
+      return;
+    }
     if (!currentUser && paymentMethod !== "manual") {
       startLogin("user");
       return;
@@ -121,7 +126,7 @@ export default function PaymentPage({
 
         {/* Payment method selector */}
         <div className="mt-5 grid gap-3 sm:grid-cols-3">
-          {paymentOptions.filter(o => currentUser || o.id === 'manual').map((option) => {
+          {paymentOptions.map((option) => {
             const Icon = option.icon;
             const active = paymentMethod === option.id;
 
@@ -188,7 +193,7 @@ export default function PaymentPage({
       <div className="fixed bottom-[84px] left-4 right-4 z-40 rounded-2xl border bg-white/90 p-2 shadow-2xl backdrop-blur md:static md:bottom-auto md:z-auto md:mt-6 md:block md:border-0 md:bg-transparent md:p-0 md:shadow-none md:backdrop-blur-none">
         <button
           disabled={isDisabled}
-          onClick={handlePayment}
+          onClick={handlePaymentClick}
           className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-3 font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400 disabled:opacity-70 md:rounded-2xl"
         >
           <ButtonIcon size={18} /> {paymentLoading ? loadingLabel : buttonLabel}

@@ -293,14 +293,6 @@ export const createOrder = asyncHandler(async (req, res) => {
   const createdAt = new Date().toISOString();
   const isLimitedLoginlessOrder = !req.user?.id;
 
-  if (isLimitedLoginlessOrder && totalSelectedPages > 5) {
-    return res.status(403).json({
-      success: false,
-      code: 'LOGIN_REQUIRED_FOR_MORE_THAN_5_PAGES',
-      message: 'Login is required to print more than 5 selected pages.'
-    });
-  }
-
   const orderAccessToken = isLimitedLoginlessOrder ? crypto.randomBytes(32).toString('hex') : null;
   const expiresAt = isLimitedLoginlessOrder ? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() : null;
 
