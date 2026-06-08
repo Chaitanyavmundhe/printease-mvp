@@ -330,7 +330,7 @@ const centreSelect = `
   left join users u on u.id = c.owner_id
 `;
 
-function executor(client) {
+export function executor(client) {
   return client || pool;
 }
 
