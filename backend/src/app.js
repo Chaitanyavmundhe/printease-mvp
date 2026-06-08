@@ -55,9 +55,23 @@ const allowedOrigins = new Set([
     ? []
     : localDevOrigins)
 ].map(normalizeOrigin).filter(Boolean));
+function isAllowedVercelPreviewOrigin(origin) {
+  if (process.env.ALLOW_VERCEL_PREVIEW_ORIGINS !== 'true') return false;
+  try {
+    const url = new URL(origin);
 
+    if (url.protocol !== 'https:') return false;
+    if (!url.hostname.endsWith('.vercel.app')) return false;
 
-
+    return (
+      url.hostname.includes('printease') ||
+      url.hostname.includes('printhubdesi') ||
+      url.hostname.includes('printease-mvp')
+    );
+  } catch {
+    return false;
+  }
+}
 function isAllowedDesktopOrigin(origin) {
   if (!origin) return false;
 
@@ -100,7 +114,7 @@ app.use(cors({
 
     const requestOrigin = normalizeOrigin(origin);
 
-    if (allowedOrigins.has(requestOrigin)) {
+    if (allowedOrigins.has(requestOrigin) || isAllowedVercelPreviewOrigin(requestOrigin)) {
       return callback(null, true);
     }
 
@@ -109,7 +123,7 @@ app.use(cors({
       allowedOrigins: [...allowedOrigins],
       desktopAppOrigin,
       allowDesktopNullOrigin,
-      note: 'Allowed origins include production Vercel, local Vite dev, trusted desktop app origin.'
+      note: 'Allowed origins include production Vercel, local Vite dev, trusted desktop app origin, and permitted preview URLs.'
     });
 
     return callback(new Error(`CORS blocked for origin: ${origin}`));
