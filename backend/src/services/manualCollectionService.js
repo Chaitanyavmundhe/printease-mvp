@@ -1,5 +1,5 @@
-import { findOrderByIdOrCode, savePayment, updateOrderPayment, withTransaction } from '../db/repository.js';
-import { generateId } from '../utils/uuid.js';
+import { createPayment as savePayment, findOrderByIdOrCode, updateOrderPayment, withTransaction } from '../db/repository.js';
+import { generateId } from '../utils/generateCode.js';
 import { queuePrintJobIfPaymentReady } from './printQueueService.js';
 import { isCancelledOrder, isPaymentComplete } from './orderUtils.js';
 
