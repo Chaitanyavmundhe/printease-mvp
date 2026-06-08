@@ -49,7 +49,11 @@ export default function UploadPage({
   const [modalFile, setModalFile] = useState(null);
   const longPressTimerRef = useRef(null);
 
-  const isMulti = documentFiles.length > 1 || (reprintSourceDocuments && reprintSourceDocuments.length > 1);
+  const displayFiles = useMemo(() => {
+    return documentFiles.length ? documentFiles.map(f => ({ name: f.name })) : (reprintSourceDocuments || []).map(d => ({ name: d.file_name }));
+  }, [documentFiles, reprintSourceDocuments]);
+
+  const isMulti = displayFiles.length > 1;
 
   function handleTouchStart(fileName) {
     longPressTimerRef.current = window.setTimeout(() => {
@@ -114,8 +118,8 @@ export default function UploadPage({
   }
 
   useEffect(() => {
-    if (documentFiles.length > 1 && Object.keys(multiFileConfigs).length === 0) {
-      initConfigs(documentFiles);
+    if (displayFiles.length > 1 && Object.keys(multiFileConfigs).length === 0) {
+      initConfigs(displayFiles);
     }
 
     const handlePaste = (e) => {
@@ -132,7 +136,7 @@ export default function UploadPage({
     };
     window.addEventListener("paste", handlePaste);
     return () => window.removeEventListener("paste", handlePaste);
-  }, [multiFileConfigs, documentFiles]); // eslint-disable-line
+  }, [multiFileConfigs, displayFiles]); // eslint-disable-line
   
   const activeConfig = modalFile ? multiFileConfigs[modalFile] : isMulti && selectedFileNames.length > 0
     ? multiFileConfigs[selectedFileNames[0]]
@@ -319,7 +323,6 @@ export default function UploadPage({
     preparePayment();
   };
 
-  const displayFiles = documentFiles.length ? documentFiles.map(f => ({ name: f.name })) : (reprintSourceDocuments || []).map(d => ({ name: d.file_name }));
   const selectedFileCount = documentFiles.length || (documentFile ? 1 : 0) || (reprintSourceDocuments ? reprintSourceDocuments.length : 0);
   const selectedFileSize = documentFiles.reduce((acc, file) => acc + file.size, documentFile?.size || 0);
 
