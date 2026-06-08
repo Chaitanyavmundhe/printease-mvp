@@ -83,3 +83,72 @@ export function getStatusLabel(status) {
     .replace(/_/g, " ")
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
+
+export function formatDateTime(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+export function formatDate(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+export function getOrderPrintableSummary(order) {
+  const config = order.print_config || {};
+  const document = order.document || {};
+  return [
+    config.paper_size || "A4",
+    getStatusLabel(config.color_mode || "black_white"),
+    config.sides || (config.duplex ? "Double-sided" : "Single-sided"),
+    `${document.printable_pages || order.pages || 0} pages`,
+    `${document.copies || order.copies || 1} copy`,
+  ].join(" • ");
+}
+
+export function getPageRangeFromOptions(options, fallback = "all") {
+  const pages = options?.pages || {};
+  if (pages.mode === "custom") return pages.range || fallback || "custom";
+  return fallback || "all";
+}
+
+export function getSidesLabel(options, fallback = "") {
+  const sides = options?.sides || fallback;
+  if (sides === "two_sided_long_edge" || sides === "double") return "Double-sided";
+  if (sides === "two_sided_short_edge") return "Double-sided short edge";
+  return "Single-sided";
+}
+
+export function getWatermarkLabel(options) {
+  const watermark = options?.watermark || {};
+  if (!watermark.enabled) return "No";
+  return watermark.type ? `Yes • ${getStatusLabel(watermark.type)}` : "Yes";
+}
+
+export function buildDocumentSettings(document, orderConfig) {
+  const options = document?.print_options || {};
+  return [
+    ["Paper", options.paperSize || orderConfig.paper_size || "A4"],
+    ["Color", getStatusLabel(options.colorMode || orderConfig.color_mode || "black_white")],
+    ["Sides", getSidesLabel(options, orderConfig.sides)],
+    ["Orientation", getStatusLabel(options.orientation || orderConfig.orientation || "auto")],
+    ["Copies", options.copies || document?.copies || orderConfig.copies || 1],
+    ["Page range", getPageRangeFromOptions(options, document?.page_range || orderConfig.page_range || "all")],
+    ["Pages/sheet", options.pagesPerSheet || orderConfig.pages_per_sheet || 1],
+    ["DPI", options.quality?.dpi || orderConfig.quality_dpi || 300],
+    ["Scaling", getStatusLabel(options.scale?.mode || orderConfig.scaling || "original")],
+    ["Margins", getStatusLabel(options.margins?.mode || orderConfig.margins || "default")],
+    ["Watermark", getWatermarkLabel(options.watermark ? options : { watermark: orderConfig.watermark })],
+  ];
+}
+

@@ -725,15 +725,18 @@ export default function App() {
     const bases = getUsernameBaseCandidates(nextName, nextEmail);
     const candidates = [];
 
-    for (const [baseIndex, base] of bases.entries()) {
+    for (const base of bases) {
       candidates.push(base);
-      const maxSerial = baseIndex === 0 ? 9999 : 999;
-      for (let index = 0; index <= maxSerial; index += 1) {
-        candidates.push(`${base}${index}`);
-      }
+      candidates.push(`${base}1`);
+      candidates.push(`${base}2`);
+      candidates.push(`${base}3`);
+      const randDigits = Math.floor(10 + Math.random() * 90);
+      candidates.push(`${base}${randDigits}`);
     }
 
-    for (const candidate of candidates) {
+    const uniqueCandidates = [...new Set(candidates)];
+
+    for (const candidate of uniqueCandidates) {
       try {
         const data = await apiRequest(`/api/auth/username-available?username=${encodeURIComponent(candidate)}`);
         if (usernameSuggestionRequest.current !== requestId || (!force && usernameEdited)) return;

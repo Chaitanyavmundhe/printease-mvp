@@ -1,95 +1,23 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { Calendar, CheckCircle2, ChevronDown, Download, Eye, FileText, Filter, IndianRupee, MapPin, Printer, RefreshCw, Search, Settings2, Store, X, Info } from "lucide-react";
 import Card from "../components/Card";
 import StatusBadge from "../components/StatusBadge";
 import { createDocumentSignedDownload, getUserHistory } from "../services/api";
 import { getLocalHistory } from "../utils/localHistory";
 import { onOrderChanged } from "../utils/appEvents";
-import { filterAndSortHistory, computeSummary, getStatusColor, getStatusLabel as label } from "../utils/historySelectors";
-
-function formatDateTime(value) {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function formatDate(value) {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-}
+import {
+  filterAndSortHistory,
+  computeSummary,
+  getStatusColor,
+  getStatusLabel as label,
+  formatDateTime,
+  formatDate,
+  getOrderPrintableSummary,
+  buildDocumentSettings
+} from "../utils/historySelectors";
 
 const paymentColor = (status) => getStatusColor("payment", status);
 const printStatusColor = (status) => getStatusColor("print", status);
-
-function getOrderSearchText(order) {
-  return [
-    order.order_code,
-    order.status,
-    order.payment_status,
-    order.payment_method,
-    order.hub?.name,
-    order.hub?.code,
-    order.document?.file_name,
-    ...(order.documents || []).map((file) => file.file_name),
-  ].filter(Boolean).join(" ").toLowerCase();
-}
-
-function getOrderPrintableSummary(order) {
-  const config = order.print_config || {};
-  const document = order.document || {};
-  return [
-    config.paper_size || "A4",
-    label(config.color_mode || "black_white"),
-    config.sides || (config.duplex ? "Double-sided" : "Single-sided"),
-    `${document.printable_pages || order.pages || 0} pages`,
-    `${document.copies || order.copies || 1} copy`,
-  ].join(" • ");
-}
-
-function getPageRangeFromOptions(options, fallback = "all") {
-  const pages = options?.pages || {};
-  if (pages.mode === "custom") return pages.range || fallback || "custom";
-  return fallback || "all";
-}
-
-function getSidesLabel(options, fallback = "") {
-  const sides = options?.sides || fallback;
-  if (sides === "two_sided_long_edge" || sides === "double") return "Double-sided";
-  if (sides === "two_sided_short_edge") return "Double-sided short edge";
-  return "Single-sided";
-}
-
-function getWatermarkLabel(options) {
-  const watermark = options?.watermark || {};
-  if (!watermark.enabled) return "No";
-  return watermark.type ? `Yes • ${label(watermark.type)}` : "Yes";
-}
-
-function buildDocumentSettings(document, orderConfig) {
-  const options = document?.print_options || {};
-  return [
-    ["Paper", options.paperSize || orderConfig.paper_size || "A4"],
-    ["Color", label(options.colorMode || orderConfig.color_mode || "black_white")],
-    ["Sides", getSidesLabel(options, orderConfig.sides)],
-    ["Orientation", label(options.orientation || orderConfig.orientation || "auto")],
-    ["Copies", options.copies || document?.copies || orderConfig.copies || 1],
-    ["Page range", getPageRangeFromOptions(options, document?.page_range || orderConfig.page_range || "all")],
-    ["Pages/sheet", options.pagesPerSheet || orderConfig.pages_per_sheet || 1],
-    ["DPI", options.quality?.dpi || orderConfig.quality_dpi || 300],
-    ["Scaling", label(options.scale?.mode || orderConfig.scaling || "original")],
-    ["Margins", label(options.margins?.mode || orderConfig.margins || "default")],
-    ["Watermark", getWatermarkLabel(options.watermark ? options : { watermark: orderConfig.watermark })],
-  ];
-}
 
 function SummaryCard({ title, value, icon }) {
   return (
@@ -153,6 +81,8 @@ export default function HistoryPage({ orders = [], currentUser, lastUpdatedAt, o
   const [hubFilter, setHubFilter] = useState("all");
   const [downloadError, setDownloadError] = useState("");
   const [documentPreview, setDocumentPreview] = useState(null);
+  const [historyStale, setHistoryStale] = useState(false);
+  const lastFetchTime = useRef(0);
 
   const loadHistory = (force = false) => {
     if (!currentUser || currentUser.role !== "user") {
@@ -166,6 +96,8 @@ export default function HistoryPage({ orders = [], currentUser, lastUpdatedAt, o
     getUserHistory({ force, userId: currentUser.id })
       .then((data) => {
         setHistoryData(data);
+        lastFetchTime.current = Date.now();
+        setHistoryStale(false);
       })
       .catch((err) => {
         setError(err.message || "Could not load print history.");
@@ -181,17 +113,18 @@ export default function HistoryPage({ orders = [], currentUser, lastUpdatedAt, o
 
   useEffect(() => {
     const handleFocus = () => {
-      // Optional: Refresh on window focus only if stale (relying on TTL in requestCache)
-      loadHistory(false);
+      const isExpired = Date.now() - lastFetchTime.current > 120000;
+      if (historyStale || isExpired) {
+        loadHistory(false);
+      }
     };
     window.addEventListener("focus", handleFocus);
     return () => window.removeEventListener("focus", handleFocus);
-  }, [currentUser?.id]);
+  }, [currentUser?.id, historyStale]);
 
   useEffect(() => {
     return onOrderChanged(() => {
-      // Mark as stale or background reload without forcing
-      loadHistory(false);
+      setHistoryStale(true);
     });
   }, [currentUser?.id]);
 
