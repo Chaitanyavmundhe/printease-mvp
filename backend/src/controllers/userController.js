@@ -172,6 +172,7 @@ export const getUserHistory = asyncHandler(async (req, res) => {
     return sum + (documentPages || Number(order.pages || 0) * Number(order.copies || 1));
   }, 0);
 
+  res.set("Cache-Control", "private, max-age=60");
   res.json({
     success: true,
     summary: {

@@ -1,5 +1,6 @@
 import { Component, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { emitOrderChanged } from "./utils/appEvents";
 import Navbar from "./components/Navbar";
 import BackendStatus from "./components/BackendStatus";
 import HomePage from "./pages/HomePage";
@@ -872,6 +873,7 @@ export default function App() {
       const nextOrders = Array.isArray(data.orders) ? data.orders.map((item) => normalizeOrder(item, centreList)) : [];
       setOrders(nextOrders);
       setLastOrdersUpdatedAt(new Date().toISOString());
+      emitOrderChanged();
       return nextOrders;
     } catch (error) {
       return [];
@@ -1368,6 +1370,11 @@ export default function App() {
       return;
     }
 
+    if (paymentMethod === "manual" && pendingPayment?.orderId === order.backendId && pendingPayment?.method === "MANUAL_UPI_OR_CASH") {
+      navigate("track");
+      return;
+    }
+
     setPaymentLoading(true);
     setPaymentError("");
 
@@ -1382,6 +1389,7 @@ export default function App() {
         setOrder(requestedOrder);
         setOrders((prev) => upsertOrder(prev, requestedOrder));
         setLastOrdersUpdatedAt(new Date().toISOString());
+      emitOrderChanged();
         setPendingPayment(paymentData.payment || {
           id: `manual-${order.backendId}`,
           orderId: order.backendId,
@@ -1426,6 +1434,7 @@ export default function App() {
         setOrder(requestedOrder);
         setOrders((prev) => upsertOrder(prev, requestedOrder));
         setLastOrdersUpdatedAt(new Date().toISOString());
+      emitOrderChanged();
       }
 
       if (paymentMethod === "razorpay" && paymentData.razorpay?.orderId) {
@@ -1461,6 +1470,7 @@ export default function App() {
               setOrder(verifiedOrder);
               setOrders((prev) => upsertOrder(prev, verifiedOrder));
               setLastOrdersUpdatedAt(new Date().toISOString());
+      emitOrderChanged();
               setPendingPayment(null);
               setUpiQr(null);
               navigate("track");
@@ -1631,6 +1641,7 @@ export default function App() {
       setOrder(createdOrder);
       setOrders((prev) => upsertOrder(prev, createdOrder));
       setLastOrdersUpdatedAt(new Date().toISOString());
+      emitOrderChanged();
 
       setSelectedCentre(nextCentre);
       setPendingPayment({
@@ -1673,6 +1684,7 @@ export default function App() {
         setOrder(requestedOrder);
         setOrders((prev) => upsertOrder(prev, requestedOrder));
         setLastOrdersUpdatedAt(new Date().toISOString());
+      emitOrderChanged();
       }
       await loadRazorpayCheckout();
 
@@ -1705,6 +1717,7 @@ export default function App() {
             setOrder(nextOrder);
             setOrders((prev) => upsertOrder(prev, nextOrder));
             setLastOrdersUpdatedAt(new Date().toISOString());
+      emitOrderChanged();
             setPendingPayment(null);
             setUpiQr(null);
           } catch (error) {
@@ -1751,6 +1764,7 @@ export default function App() {
         setOrder(requestedOrder);
         setOrders((prev) => upsertOrder(prev, requestedOrder));
         setLastOrdersUpdatedAt(new Date().toISOString());
+      emitOrderChanged();
       }
     } catch (error) {
       setPaymentError(error.message || "Could not create UPI QR.");
@@ -1772,6 +1786,7 @@ export default function App() {
       setOrder(verifiedOrder);
       setOrders(prev => upsertOrder(prev, verifiedOrder));
       setLastOrdersUpdatedAt(new Date().toISOString());
+      emitOrderChanged();
       setPendingPayment(null);
       setUpiQr(null);
     } catch (error) {
@@ -1793,6 +1808,7 @@ export default function App() {
         const savedOrder = normalizeOrder(data.order, centres);
         setOrders((prev) => upsertOrder(prev, savedOrder));
         setLastOrdersUpdatedAt(new Date().toISOString());
+      emitOrderChanged();
         if (order?.id === orderId || order?.backendId === existingOrder.backendId) setOrder(savedOrder);
         return;
       }
@@ -1803,6 +1819,7 @@ export default function App() {
 
     setOrders((prev) => prev.map((item) => (item.id === orderId ? { ...item, status: nextStatus } : item)));
     setLastOrdersUpdatedAt(new Date().toISOString());
+    emitOrderChanged();
     if (order?.id === orderId) setOrder((prev) => ({ ...prev, status: nextStatus }));
   }
 

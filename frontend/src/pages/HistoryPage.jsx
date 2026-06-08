@@ -4,6 +4,7 @@ import Card from "../components/Card";
 import StatusBadge from "../components/StatusBadge";
 import { createDocumentSignedDownload, getUserHistory } from "../services/api";
 import { getLocalHistory } from "../utils/localHistory";
+import { onOrderChanged } from "../utils/appEvents";
 
 function formatDateTime(value) {
   if (!value) return "-";
@@ -169,31 +170,46 @@ export default function HistoryPage({ orders = [], currentUser, lastUpdatedAt, o
   const [downloadError, setDownloadError] = useState("");
   const [documentPreview, setDocumentPreview] = useState(null);
 
-  useEffect(() => {
+  const loadHistory = (force = false) => {
     if (!currentUser || currentUser.role !== "user") {
       setHistoryData(null);
       return;
     }
 
-    let ignore = false;
     setLoading(true);
     setError("");
 
-    getUserHistory()
+    getUserHistory({ force, userId: currentUser.id })
       .then((data) => {
-        if (!ignore) setHistoryData(data);
+        setHistoryData(data);
       })
       .catch((err) => {
-        if (!ignore) setError(err.message || "Could not load print history.");
+        setError(err.message || "Could not load print history.");
       })
       .finally(() => {
-        if (!ignore) setLoading(false);
+        setLoading(false);
       });
+  };
 
-    return () => {
-      ignore = true;
+  useEffect(() => {
+    loadHistory(false);
+  }, [currentUser?.id]);
+
+  useEffect(() => {
+    const handleFocus = () => {
+      // Optional: Refresh on window focus only if stale (relying on TTL in requestCache)
+      loadHistory(false);
     };
-  }, [currentUser, lastUpdatedAt]);
+    window.addEventListener("focus", handleFocus);
+    return () => window.removeEventListener("focus", handleFocus);
+  }, [currentUser?.id]);
+
+  useEffect(() => {
+    return onOrderChanged(() => {
+      // Mark as stale or background reload without forcing
+      loadHistory(false);
+    });
+  }, [currentUser?.id]);
 
   const historyOrders = Array.isArray(historyData?.orders) ? historyData.orders : [];
   const localOrders = getLocalHistory().map((order) => ({
@@ -507,12 +523,22 @@ export default function HistoryPage({ orders = [], currentUser, lastUpdatedAt, o
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div className="flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
         <div>
-          <h2 className="text-3xl font-extrabold tracking-tight text-slate-950">Print History</h2>
-          <p className="mt-2 text-sm text-slate-600">View your previous orders, payment details, and print settings.</p>
+          <h2 className="text-2xl font-black tracking-tight lg:text-3xl">Print History</h2>
+          <p className="mt-1 text-sm text-slate-500">View your previous orders, payment details, and print settings.</p>
         </div>
-        {lastUpdatedAt && <p className="text-xs font-semibold text-slate-500">Last refreshed {new Date(lastUpdatedAt).toLocaleTimeString()}</p>}
+        <div className="flex items-center gap-2 text-sm text-slate-500">
+          <RefreshCw size={14} className={loading ? "animate-spin text-slate-900" : ""} />
+          <span>Last refreshed {formatDateTime(historyData?.summary?.last_print_date || new Date())}</span>
+          <button
+            onClick={() => loadHistory(true)}
+            disabled={loading}
+            className="ml-2 rounded border px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          >
+            Refresh
+          </button>
+        </div>
       </div>
 
       <div className="rounded-md bg-blue-50 p-4 border border-blue-100 flex items-start gap-3">
