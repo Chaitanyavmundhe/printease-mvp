@@ -459,7 +459,11 @@ export const getCentreOrders = asyncHandler(async (req, res) => {
 export const collectCashPayment = asyncHandler(async (req, res) => {
   const hubId = req.user?.centreId || req.user?.hubId;
   const orderId = req.params.id;
-  const collectionMethod = req.body.method === 'manual_upi' ? 'MANUAL_UPI' : 'CASH';
+  const rawMethod = req.body.method?.toLowerCase();
+  if (rawMethod !== 'cash' && rawMethod !== 'manual_upi') {
+    return res.status(400).json({ success: false, message: 'Invalid collection method. Allowed values: cash, manual_upi' });
+  }
+  const collectionMethod = rawMethod === 'manual_upi' ? 'MANUAL_UPI' : 'CASH';
   const transactionNote = typeof req.body.transactionNote === 'string' ? req.body.transactionNote.trim().slice(0, 200) : '';
   const autoPrintAfterCollection = req.body.autoPrintAfterCollection !== false;
 

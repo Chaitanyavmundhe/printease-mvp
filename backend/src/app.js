@@ -3,6 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
+import { testDatabaseConnection } from './config/db.js';
 
 import authRoutes from './routes/authRoutes.js';
 import centreRoutes from './routes/centreRoutes.js';
@@ -55,23 +56,7 @@ const allowedOrigins = new Set([
     : localDevOrigins)
 ].map(normalizeOrigin).filter(Boolean));
 
-function isAllowedVercelPreviewOrigin(origin) {
-  if (process.env.NODE_ENV === 'production') return false;
-  try {
-    const url = new URL(origin);
 
-    if (url.protocol !== 'https:') return false;
-    if (!url.hostname.endsWith('.vercel.app')) return false;
-
-    return (
-      url.hostname.includes('printease') ||
-      url.hostname.includes('printhubdesi') ||
-      url.hostname.includes('printease-mvp')
-    );
-  } catch {
-    return false;
-  }
-}
 
 function isAllowedDesktopOrigin(origin) {
   if (!origin) return false;
@@ -115,7 +100,7 @@ app.use(cors({
 
     const requestOrigin = normalizeOrigin(origin);
 
-    if (allowedOrigins.has(requestOrigin) || isAllowedVercelPreviewOrigin(requestOrigin)) {
+    if (allowedOrigins.has(requestOrigin)) {
       return callback(null, true);
     }
 
@@ -124,7 +109,7 @@ app.use(cors({
       allowedOrigins: [...allowedOrigins],
       desktopAppOrigin,
       allowDesktopNullOrigin,
-      note: 'Allowed origins include production Vercel, local Vite dev, trusted desktop app origin, and PrintEase Vercel preview URLs over HTTPS.'
+      note: 'Allowed origins include production Vercel, local Vite dev, trusted desktop app origin.'
     });
 
     return callback(new Error(`CORS blocked for origin: ${origin}`));
@@ -151,14 +136,25 @@ app.get('/', (req, res) => {
   });
 });
 
-app.get('/api/health', (req, res) => {
-  res.json({
-    success: true,
-    message: 'Backend healthy',
-    environment: process.env.NODE_ENV,
-    frontendUrl: process.env.FRONTEND_URL || null,
-    timestamp: new Date().toISOString()
-  });
+app.get('/api/health', async (req, res) => {
+  try {
+    await testDatabaseConnection();
+    res.json({
+      success: true,
+      message: 'Backend healthy',
+      environment: process.env.NODE_ENV,
+      frontendUrl: process.env.FRONTEND_URL || null,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    res.status(503).json({
+      success: false,
+      message: 'Service unavailable: Database connection failed',
+      environment: process.env.NODE_ENV,
+      frontendUrl: process.env.FRONTEND_URL || null,
+      timestamp: new Date().toISOString()
+    });
+  }
 });
 
 app.use('/api/auth', authRoutes);
