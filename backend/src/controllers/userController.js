@@ -51,6 +51,7 @@ function buildPrintConfig(order, files) {
 function buildDocuments(order, files) {
   if (!files.length) {
     return [{
+      document_id: order.documentId,
       file_name: order.documentName || 'Document',
       file_type: 'application/pdf',
       original_pages: order.documentPageCount || order.pages || 0,
