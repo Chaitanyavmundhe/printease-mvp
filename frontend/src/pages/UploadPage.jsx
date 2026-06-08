@@ -4,6 +4,7 @@ import Card from "../components/Card";
 import Row from "../components/Row";
 import { calculateTotalAmount, getPricePerPage, countSelectedPages } from "../utils/price";
 import { countSelectedPagesPreview, estimatePrintablePages, estimateGuestLimitExceeded, estimateSheets, estimatePricePreview } from "../utils/printEstimate";
+import API_BASE_URL from "../services/api";
 
 export default function UploadPage({
   currentUser,
@@ -47,6 +48,7 @@ export default function UploadPage({
   setReprintSourceDocuments,
   reprintDocumentExpired,
   setReprintDocumentExpired,
+  retryReprintFetch,
 }) {
   const [selectedFileIndexes, setSelectedFileIndexes] = useState([]);
   const [modalFileIndex, setModalFileIndex] = useState(null);
@@ -536,15 +538,43 @@ export default function UploadPage({
         )}
 
         {reprintDocumentExpired && (
-          <div className="mt-4 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50/60 p-4 text-sm text-amber-800 shadow-sm">
-            <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-600 font-bold text-xs">
-              !
-            </div>
-            <div>
-              <p className="font-semibold text-amber-900">Some or all documents have expired</p>
-              <p className="text-xs text-amber-700 mt-0.5">
-                The original files from this order could not be retrieved from history. Please upload the documents manually to configure your reprint.
-              </p>
+          <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50/60 p-4 text-sm text-amber-800 shadow-sm">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-600 font-bold text-xs">
+                !
+              </div>
+              <div className="flex-1">
+                <p className="font-semibold text-amber-900">Document retrieval issues</p>
+                <p className="text-xs text-amber-700 mt-0.5">
+                  We couldn't automatically load the original files. You can try syncing them again, downloading them manually below to re-upload, or uploading new documents.
+                </p>
+                
+                {reprintSourceDocuments && reprintSourceDocuments.length > 0 && (
+                  <div className="mt-3">
+                    <button onClick={retryReprintFetch} className="rounded-xl bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 transition">
+                      Sync from History
+                    </button>
+
+                    <div className="mt-4 border-t border-amber-200/60 pt-3">
+                      <p className="text-xs font-semibold text-amber-900 mb-2">Download original files:</p>
+                      <ul className="space-y-1.5">
+                        {reprintSourceDocuments.map((doc, idx) => {
+                          const token = localStorage.getItem("printease_token") || "";
+                          const downloadUrl = `${API_BASE_URL}/api/documents/${encodeURIComponent(doc.document_id || doc.id)}/download?authToken=${token}`;
+                          return (
+                            <li key={idx} className="flex items-center justify-between text-xs bg-white/50 rounded-lg p-2 border border-amber-200/40">
+                              <span className="font-medium truncate max-w-[180px] md:max-w-[280px]">{doc.file_name || "document.pdf"}</span>
+                              <a href={downloadUrl} download target="_blank" rel="noreferrer" className="text-amber-800 hover:text-amber-950 font-bold underline">
+                                Download File
+                              </a>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}

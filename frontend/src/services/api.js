@@ -303,3 +303,19 @@ export function createDocumentSignedDownload(documentId) {
     method: "POST",
   });
 }
+
+export async function downloadDocumentBlob(documentId) {
+  const token = localStorage.getItem("printease_token");
+  const headers = new Headers();
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
+  const endpoint = `/api/documents/${encodeURIComponent(documentId)}/download`;
+  const fullUrl = joinApiUrl(API_BASE_URL, endpoint);
+  const response = await fetch(fullUrl, { headers });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch document: ${response.status}`);
+  }
+  return response.blob();
+}
+
