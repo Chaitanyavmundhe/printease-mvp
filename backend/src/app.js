@@ -56,6 +56,7 @@ const allowedOrigins = new Set([
 ].map(normalizeOrigin).filter(Boolean));
 
 function isAllowedVercelPreviewOrigin(origin) {
+  if (process.env.NODE_ENV === 'production') return false;
   try {
     const url = new URL(origin);
 
@@ -86,7 +87,21 @@ function isAllowedDesktopOrigin(origin) {
   return requestOrigin === 'null' && allowDesktopNullOrigin;
 }
 
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: process.env.NODE_ENV === 'production' ? {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "blob:", "https:"],
+      connectSrc: ["'self'", "https:"],
+      fontSrc: ["'self'", "https:", "data:"],
+      objectSrc: ["'none'"],
+      mediaSrc: ["'self'"],
+      frameSrc: ["'self'", "https://checkout.razorpay.com"]
+    }
+  } : false
+}));
 app.use(cors({
   origin(origin, callback) {
     if (!origin) return callback(null, true);
@@ -203,10 +218,16 @@ app.use((err, req, res, next) => {
   const uploadMessage = err.code === 'LIMIT_FILE_SIZE' ? 'Uploaded file is too large. Maximum size is 10MB.' : null;
   const status = err.code === 'LIMIT_FILE_SIZE' ? 413 : err.status || err.statusCode || 500;
 
+  const isProduction = process.env.NODE_ENV === 'production';
+  const genericMessage = 'An unexpected error occurred.';
+  const finalMessage = isProduction && status >= 500
+    ? (uploadMessage || genericMessage)
+    : (databaseMessage || uploadMessage || (status >= 500 ? 'Internal server error' : err.message) || 'Internal server error');
+
   res.status(status).json({
     success: false,
-    message: databaseMessage || uploadMessage || (status >= 500 ? 'Internal server error' : err.message) || 'Internal server error',
-    route: req.originalUrl
+    message: finalMessage,
+    route: isProduction ? undefined : req.originalUrl
   });
 });
 

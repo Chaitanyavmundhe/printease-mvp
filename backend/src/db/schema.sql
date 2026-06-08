@@ -482,3 +482,18 @@ alter table print_orders add column if not exists guest_name text;
 alter table print_orders add column if not exists guest_phone text;
 alter table print_orders add column if not exists price_snapshot jsonb;
 alter table print_orders add column if not exists print_config_snapshot jsonb;
+
+create table if not exists rate_limits (
+  key text primary key,
+  count integer not null default 1,
+  reset_at timestamptz not null
+);
+create index if not exists idx_rate_limits_reset on rate_limits(reset_at);
+
+create table if not exists login_attempts (
+  identifier text primary key,
+  attempt_count integer not null default 1,
+  locked_until timestamptz,
+  last_attempt_at timestamptz not null default now()
+);
+create index if not exists idx_login_attempts_locked on login_attempts(locked_until);

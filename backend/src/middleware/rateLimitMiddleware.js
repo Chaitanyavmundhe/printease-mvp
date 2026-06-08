@@ -1,15 +1,21 @@
+import { pool } from '../config/db.js';
+
 const DEFAULT_WINDOW_MS = 60 * 1000;
 const DEFAULT_MAX = 120;
 const MAX_KEYS = 10000;
 
-const buckets = new Map();
+const memoryFallback = new Map();
+
+function pruneFallback(now) {
+  if (memoryFallback.size < MAX_KEYS) return;
+  for (const [key, bucket] of memoryFallback.entries()) {
+    if (bucket.resetAt <= now) {
+      memoryFallback.delete(key);
+    }
+  }
+}
 
 function getClientIp(req) {
-  const forwarded = req.headers['x-forwarded-for'];
-  if (typeof forwarded === 'string' && forwarded.trim()) {
-    return forwarded.split(',')[0].trim();
-  }
-
   return req.ip || req.socket?.remoteAddress || 'unknown';
 }
 
@@ -19,16 +25,6 @@ function getBucketKey(req, keyPrefix, keyGenerator) {
   return `${keyPrefix}:${ip}:${generated || ''}`;
 }
 
-function pruneBuckets(now) {
-  if (buckets.size < MAX_KEYS) return;
-
-  for (const [key, bucket] of buckets.entries()) {
-    if (bucket.resetAt <= now) {
-      buckets.delete(key);
-    }
-  }
-}
-
 export function rateLimit({
   windowMs = DEFAULT_WINDOW_MS,
   max = DEFAULT_MAX,
@@ -36,25 +32,58 @@ export function rateLimit({
   keyGenerator,
   message = 'Too many requests. Please wait and try again.'
 } = {}) {
-  return (req, res, next) => {
-    const now = Date.now();
-    pruneBuckets(now);
-
+  return async (req, res, next) => {
     const key = getBucketKey(req, keyPrefix, keyGenerator);
-    const existing = buckets.get(key);
-    const bucket = existing && existing.resetAt > now
-      ? existing
-      : { count: 0, resetAt: now + windowMs };
+    const now = new Date();
+    const resetTime = new Date(now.getTime() + windowMs);
 
-    bucket.count += 1;
-    buckets.set(key, bucket);
+    let count = 1;
+    let resetAt = resetTime.getTime();
 
-    const retryAfterSeconds = Math.max(1, Math.ceil((bucket.resetAt - now) / 1000));
+    try {
+      const result = await pool.query(
+        `INSERT INTO rate_limits (key, count, reset_at)
+         VALUES ($1, 1, $2)
+         ON CONFLICT (key) DO UPDATE
+         SET count = CASE
+                       WHEN rate_limits.reset_at <= $3 THEN 1
+                       ELSE rate_limits.count + 1
+                     END,
+             reset_at = CASE
+                          WHEN rate_limits.reset_at <= $3 THEN $2
+                          ELSE rate_limits.reset_at
+                        END
+         RETURNING count, reset_at`,
+        [key, resetTime, now]
+      );
+      
+      count = result.rows[0].count;
+      resetAt = new Date(result.rows[0].reset_at).getTime();
+
+      if (Math.random() < 0.01) {
+        pool.query('DELETE FROM rate_limits WHERE reset_at <= $1', [now]).catch(() => {});
+      }
+    } catch (error) {
+      const ts = now.getTime();
+      pruneFallback(ts);
+      const existing = memoryFallback.get(key);
+      const bucket = existing && existing.resetAt > ts
+        ? existing
+        : { count: 0, resetAt: ts + windowMs };
+
+      bucket.count += 1;
+      memoryFallback.set(key, bucket);
+
+      count = bucket.count;
+      resetAt = bucket.resetAt;
+    }
+
+    const retryAfterSeconds = Math.max(1, Math.ceil((resetAt - now.getTime()) / 1000));
     res.setHeader('X-RateLimit-Limit', String(max));
-    res.setHeader('X-RateLimit-Remaining', String(Math.max(0, max - bucket.count)));
-    res.setHeader('X-RateLimit-Reset', String(Math.ceil(bucket.resetAt / 1000)));
+    res.setHeader('X-RateLimit-Remaining', String(Math.max(0, max - count)));
+    res.setHeader('X-RateLimit-Reset', String(Math.ceil(resetAt / 1000)));
 
-    if (bucket.count > max) {
+    if (count > max) {
       res.setHeader('Retry-After', String(retryAfterSeconds));
       return res.status(429).json({
         success: false,

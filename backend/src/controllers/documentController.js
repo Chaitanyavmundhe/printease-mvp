@@ -9,7 +9,7 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 const SIGNED_URL_TTL_SECONDS = 5 * 60;
 
 function getRequestIp(req) {
-  return req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || null;
+  return req.ip || req.socket?.remoteAddress || null;
 }
 
 export const createSignedDownload = asyncHandler(async (req, res) => {

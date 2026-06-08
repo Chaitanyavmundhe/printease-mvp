@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs';
+import { pool } from '../config/db.js';
 import jwt from 'jsonwebtoken';
 import {
   createCentre,
@@ -235,15 +236,50 @@ async function loginWithPassword(req, res) {
   if (password.length > 128) {
     return res.status(400).json({ success: false, message: 'Invalid username/email or password.' });
   }
+  
+  const normalizedId = identifier.toLowerCase();
+
+  try {
+    const attemptCheck = await pool.query(
+      'SELECT attempt_count, locked_until FROM login_attempts WHERE identifier = $1',
+      [normalizedId]
+    );
+
+    if (attemptCheck.rows.length > 0) {
+      const { attempt_count, locked_until } = attemptCheck.rows[0];
+      if (locked_until && new Date(locked_until) > new Date()) {
+        return res.status(401).json({ success: false, message: 'Account temporarily locked due to too many failed attempts. Try again later.' });
+      }
+    }
+  } catch (error) {
+    console.error('Failed to check login attempts', error);
+  }
 
   const user = await findUserByIdentifier(identifier);
-  if (!user) {
+  const isMatch = user && user.passwordHash ? await bcrypt.compare(password, user.passwordHash) : false;
+
+  if (!isMatch) {
+    try {
+      await pool.query(
+        `INSERT INTO login_attempts (identifier, attempt_count, last_attempt_at)
+         VALUES ($1, 1, now())
+         ON CONFLICT (identifier) DO UPDATE
+         SET attempt_count = login_attempts.attempt_count + 1,
+             locked_until = CASE WHEN login_attempts.attempt_count + 1 >= 5 THEN now() + interval '15 minutes' ELSE null END,
+             last_attempt_at = now()`,
+        [normalizedId]
+      );
+    } catch (error) {
+      console.error('Failed to update login attempts', error);
+    }
+
     return res.status(401).json({ success: false, message: 'Invalid username/email or password.' });
   }
 
-  const isMatch = user.passwordHash ? await bcrypt.compare(password, user.passwordHash) : false;
-  if (!isMatch) {
-    return res.status(401).json({ success: false, message: 'Invalid username/email or password.' });
+  try {
+    await pool.query('DELETE FROM login_attempts WHERE identifier = $1', [normalizedId]);
+  } catch (error) {
+    // Ignore cleanup errors
   }
 
   const centre = await findCentreForUser(user);
