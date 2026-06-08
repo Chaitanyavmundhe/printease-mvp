@@ -1243,7 +1243,12 @@ export default function App() {
         });
       }
 
-      const trustedPageCount = Number(uploadedDocuments[0]?.pageCount) || pages;
+      let totalPagesSum = 0;
+      for (const doc of uploadedDocuments) {
+        if (doc.pageCount) totalPagesSum += Number(doc.pageCount);
+      }
+      const trustedPageCount = totalPagesSum > 0 ? totalPagesSum : pages;
+
       if (trustedPageCount !== pages) {
         setPages(trustedPageCount);
       }
@@ -1273,8 +1278,8 @@ export default function App() {
         body: JSON.stringify({
           centreCode: selectedCentre.code,
           documentIds: uploadedDocuments.map((document) => document.id),
-          files: uploadedDocuments.map((document) => {
-            const config = multiFileConfigs?.[document.fileName] || {
+          files: uploadedDocuments.map((document, index) => {
+            const config = multiFileConfigs?.[index] || {
               selectedPages,
               copies,
               colorType,
@@ -1297,6 +1302,7 @@ export default function App() {
             return {
               documentId: document.id,
               documentName: document.fileName,
+              pages: document.pageCount || config.pages || 1,
               selectedPages: config.selectedPages,
               copies: config.copies,
               colorType: config.colorType,
@@ -1308,11 +1314,11 @@ export default function App() {
               scaleMode: config.scaleMode,
               marginMode: config.marginMode,
               watermarkEnabled: config.watermark,
-              printOptions: multiFileConfigs?.[document.fileName] ? buildPrintOptions(config) : defaultPrintOptions,
+              printOptions: multiFileConfigs?.[index] ? buildPrintOptions(config) : defaultPrintOptions,
             };
           }),
           documentName: uploadedDocuments.length === 1
-            ? uploadedDocuments[0]?.fileName || documentName || filesToUpload[0].name
+            ? uploadedDocuments[0]?.fileName || documentName || filesToUpload[0]?.name
             : `${uploadedDocuments.length} uploaded documents`,
           pages: trustedPageCount,
           selectedPages,

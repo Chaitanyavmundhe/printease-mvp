@@ -45,8 +45,8 @@ export default function UploadPage({
   reprintSourceDocuments,
   setReprintSourceDocuments,
 }) {
-  const [selectedFileNames, setSelectedFileNames] = useState([]);
-  const [modalFile, setModalFile] = useState(null);
+  const [selectedFileIndexes, setSelectedFileIndexes] = useState([]);
+  const [modalFileIndex, setModalFileIndex] = useState(null);
   const longPressTimerRef = useRef(null);
 
   const displayFiles = useMemo(() => {
@@ -55,9 +55,9 @@ export default function UploadPage({
 
   const isMulti = displayFiles.length > 1;
 
-  function handleTouchStart(fileName) {
+  function handleTouchStart(index) {
     longPressTimerRef.current = window.setTimeout(() => {
-      setModalFile(fileName);
+      setModalFileIndex(index);
     }, 500);
   }
 
@@ -70,11 +70,11 @@ export default function UploadPage({
 
   function initConfigs(files) {
     const newConfigs = { ...multiFileConfigs };
-    const names = [];
-    files.forEach((f) => {
-      names.push(f.name);
-      if (!newConfigs[f.name]) {
-        newConfigs[f.name] = {
+    const indices = [];
+    files.forEach((f, index) => {
+      indices.push(index);
+      if (!newConfigs[index]) {
+        newConfigs[index] = {
           pages: 1,
           selectedPages: "",
           copies: 1,
@@ -97,7 +97,7 @@ export default function UploadPage({
       }
     });
     setMultiFileConfigs(newConfigs);
-    setSelectedFileNames(names);
+    setSelectedFileIndexes(indices);
   }
 
   function handleFileChange(event) {
@@ -108,8 +108,8 @@ export default function UploadPage({
     setDocumentFile(firstFile);
     if (!firstFile) {
       setDocumentName("");
-      setSelectedFileNames([]);
-      setModalFile(null);
+      setSelectedFileIndexes([]);
+      setModalFileIndex(null);
       return;
     }
     if (files.length === 1) setDocumentName(firstFile.name);
@@ -138,8 +138,8 @@ export default function UploadPage({
     return () => window.removeEventListener("paste", handlePaste);
   }, [multiFileConfigs, displayFiles]); // eslint-disable-line
   
-  const activeConfig = modalFile ? multiFileConfigs[modalFile] : isMulti && selectedFileNames.length > 0
-    ? multiFileConfigs[selectedFileNames[0]]
+  const activeConfig = modalFileIndex !== null ? multiFileConfigs[modalFileIndex] : isMulti && selectedFileIndexes.length > 0
+    ? multiFileConfigs[selectedFileIndexes[0]]
     : {
         pages,
         selectedPages,
@@ -162,10 +162,10 @@ export default function UploadPage({
       };
 
   const setConfigVal = (key, value) => {
-    if (modalFile) {
+    if (modalFileIndex !== null) {
       setMultiFileConfigs((prev) => ({
         ...prev,
-        [modalFile]: { ...prev[modalFile], [key]: value },
+        [modalFileIndex]: { ...prev[modalFileIndex], [key]: value },
       }));
       return;
     }
@@ -191,9 +191,9 @@ export default function UploadPage({
     } else {
       setMultiFileConfigs((prev) => {
         const next = { ...prev };
-        selectedFileNames.forEach((name) => {
-          if (next[name]) {
-            next[name] = { ...next[name], [key]: value };
+        selectedFileIndexes.forEach((index) => {
+          if (next[index]) {
+            next[index] = { ...next[index], [key]: value };
           }
         });
         return next;
@@ -334,8 +334,8 @@ export default function UploadPage({
 
   const multiEstimatedFiles = useMemo(() => {
     if (!isMulti) return [];
-    return documentFiles.map((file) => {
-      const config = multiFileConfigs[file.name] || {};
+    return displayFiles.map((file, index) => {
+      const config = multiFileConfigs[index] || {};
       const filePages = Number(config.pages || 1);
       const selectedCount = countSelectedPages(config.selectedPages, filePages) || filePages;
       const fileCopies = Number(config.copies || 1);
@@ -360,7 +360,7 @@ export default function UploadPage({
         total: fileTotal,
       };
     });
-  }, [documentFiles, isMulti, multiFileConfigs, selectedCentre]);
+  }, [displayFiles, isMulti, multiFileConfigs, selectedCentre]);
 
   const localEstimatedTotal = useMemo(() => {
     if (!isMulti) return totalAmount;
@@ -368,16 +368,16 @@ export default function UploadPage({
   }, [multiEstimatedFiles, totalAmount, isMulti]);
 
   const toggleSelectAll = () => {
-    if (selectedFileNames.length === documentFiles.length) {
-      setSelectedFileNames([]);
+    if (selectedFileIndexes.length === displayFiles.length) {
+      setSelectedFileIndexes([]);
     } else {
-      setSelectedFileNames(documentFiles.map((f) => f.name));
+      setSelectedFileIndexes(displayFiles.map((_, i) => i));
     }
   };
 
-  const toggleSelectFile = (name) => {
-    setSelectedFileNames((prev) =>
-      prev.includes(name) ? prev.filter((n) => n !== name) : [...prev, name]
+  const toggleSelectFile = (index) => {
+    setSelectedFileIndexes((prev) =>
+      prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index]
     );
   };
 
@@ -539,20 +539,20 @@ export default function UploadPage({
               <div className="mb-3 flex items-center justify-between">
                 <p className="font-bold text-lg">Select Files to Configure</p>
                 <button onClick={toggleSelectAll} className="text-sm font-semibold text-slate-600 hover:text-slate-900">
-                  {selectedFileNames.length === displayFiles.length ? "Deselect All" : "Select All"}
+                  {selectedFileIndexes.length === displayFiles.length ? "Deselect All" : "Select All"}
                 </button>
               </div>
               <div className="grid gap-2 max-h-64 overflow-y-auto pr-2">
-                {displayFiles.map((file) => {
-                  const isSelected = selectedFileNames.includes(file.name);
-                  const conf = multiFileConfigs[file.name] || {};
+                {displayFiles.map((file, index) => {
+                  const isSelected = selectedFileIndexes.includes(index);
+                  const conf = multiFileConfigs[index] || {};
                   return (
                     <div
-                      key={file.name}
-                      onClick={() => toggleSelectFile(file.name)}
-                      onTouchStart={() => handleTouchStart(file.name)}
+                      key={index}
+                      onClick={() => toggleSelectFile(index)}
+                      onTouchStart={() => handleTouchStart(index)}
                       onTouchEnd={handleTouchEnd}
-                      onMouseDown={() => handleTouchStart(file.name)}
+                      onMouseDown={() => handleTouchStart(index)}
                       onMouseUp={handleTouchEnd}
                       onMouseLeave={handleTouchEnd}
                       className={`flex cursor-pointer items-center justify-between gap-3 rounded-xl border p-3 transition ${
@@ -566,7 +566,7 @@ export default function UploadPage({
                       <div className="shrink-0 flex items-center gap-2 text-slate-500 text-xs">
                         <span className="bg-slate-200 px-2 py-0.5 rounded text-slate-700">{conf.colorType === 'bw' ? 'B/W' : 'Color'}</span>
                         <span className="bg-slate-200 px-2 py-0.5 rounded text-slate-700">{conf.copies} copy</span>
-                        <button onClick={(e) => { e.stopPropagation(); setModalFile(file.name); }} className="ml-1 p-1 text-slate-400 hover:text-slate-900">
+                        <button onClick={(e) => { e.stopPropagation(); setModalFileIndex(index); }} className="ml-1 p-1 text-slate-400 hover:text-slate-900">
                           <Settings2 size={16} />
                         </button>
                       </div>
@@ -581,14 +581,14 @@ export default function UploadPage({
             <details className="group rounded-2xl border bg-white [&_summary::-webkit-details-marker]:hidden" open>
               <summary className="flex cursor-pointer items-center justify-between p-4 outline-none">
                 <span className="font-bold text-lg">
-                  {selectedFileNames.length === 0 
+                  {selectedFileIndexes.length === 0 
                     ? "Select files above to configure" 
-                    : `Configuring ${selectedFileNames.length} file(s)`}
+                    : `Configuring ${selectedFileIndexes.length} file(s)`}
                 </span>
                 <span className="transition-transform group-open:rotate-180 md:hidden">▼</span>
               </summary>
               <div className="p-4 border-t opacity-100 transition-opacity">
-                {selectedFileNames.length > 0 ? (
+                {selectedFileIndexes.length > 0 ? (
                   compactConfigurationForm
                 ) : (
                   <p className="text-slate-500 text-sm italic">No files selected. Check the boxes above to apply configuration.</p>
@@ -724,12 +724,12 @@ export default function UploadPage({
         </Card>
       </div>
     
-      {modalFile && (
-        <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center bg-black/50 p-0 md:p-4 transition-opacity" onClick={() => setModalFile(null)}>
+      {modalFileIndex !== null && (
+        <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center bg-black/50 p-0 md:p-4 transition-opacity" onClick={() => setModalFileIndex(null)}>
           <div className="w-full max-w-2xl md:rounded-2xl rounded-t-2xl bg-white p-4 shadow-xl animate-in slide-in-from-bottom-full md:slide-in-from-bottom-10" onClick={(e) => e.stopPropagation()}>
             <div className="mb-4 flex items-center justify-between border-b pb-2">
-              <h3 className="font-bold text-lg truncate pr-4 text-slate-900">Configure {modalFile}</h3>
-              <button onClick={() => setModalFile(null)} className="text-slate-500 hover:text-slate-900 rounded-full p-1 hover:bg-slate-100 transition-colors">
+              <h3 className="font-bold text-lg truncate pr-4 text-slate-900">Configure {displayFiles[modalFileIndex]?.name}</h3>
+              <button onClick={() => setModalFileIndex(null)} className="text-slate-500 hover:text-slate-900 rounded-full p-1 hover:bg-slate-100 transition-colors">
                 <X size={20} />
               </button>
             </div>
@@ -737,7 +737,7 @@ export default function UploadPage({
               {compactConfigurationForm}
             </div>
             <div className="pt-2">
-              <button onClick={() => setModalFile(null)} className="w-full rounded-xl bg-slate-900 py-3.5 font-semibold text-white shadow-md hover:bg-slate-800 transition-colors">
+              <button onClick={() => setModalFileIndex(null)} className="w-full rounded-xl bg-slate-900 py-3.5 font-semibold text-white shadow-md hover:bg-slate-800 transition-colors">
                 Done
               </button>
             </div>

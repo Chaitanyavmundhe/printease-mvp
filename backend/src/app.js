@@ -28,6 +28,7 @@ function normalizeOrigin(origin) {
   if (!origin) return null;
 
   try {
+
     return new URL(origin).origin;
   } catch {
     return String(origin).replace(/\/+$/, '');
