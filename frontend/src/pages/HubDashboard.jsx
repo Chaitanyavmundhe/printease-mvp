@@ -4,7 +4,7 @@ import Card from "../components/Card";
 import Metric from "../components/Metric";
 import StatusBadge from "../components/StatusBadge";
 import { hubStatusOptions } from "../data/demoData";
-import { apiRequest, collectManualPayment, createDocumentSignedDownload, getHubAgentSummary, getOrderDocuments, pairAgent, sendOrderToAgent } from "../services/api";
+import { apiRequest, collectManualPayment, downloadDocumentBlob, getHubAgentSummary, getOrderDocuments, pairAgent, sendOrderToAgent } from "../services/api";
 
 function normalizeStatus(status) {
   return String(status || "").toLowerCase().replace(/\s+/g, "_");
@@ -161,10 +161,6 @@ export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus,
   const [documentsLoading, setDocumentsLoading] = useState(false);
   const [documentPreview, setDocumentPreview] = useState(null);
   const [documentActionId, setDocumentActionId] = useState("");
-  const [isMobile, setIsMobile] = useState(false);
-  useEffect(() => {
-    setIsMobile(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent));
-  }, []);
   const [selectedAgentId, setSelectedAgentId] = useState("");
   const [selectedPrinterName, setSelectedPrinterName] = useState("");
   const [collectingOrderId, setCollectingOrderId] = useState("");
@@ -420,20 +416,27 @@ export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus,
     const documentId = document.documentId || document.id;
     setDocumentActionId(`${mode}:${documentId}`);
     try {
-      const data = await createDocumentSignedDownload(documentId);
-      if (!data.signedUrl) throw new Error("Signed document link was not returned.");
+      const rawBlob = await downloadDocumentBlob(documentId);
+      const pdfBlob = new Blob([rawBlob], { type: "application/pdf" });
+      const localUrl = URL.createObjectURL(pdfBlob);
 
       if (mode === "view") {
         setDocumentPreview({
-          url: data.signedUrl,
+          url: localUrl,
           name: document.fileName || "Document preview",
         });
         return;
       }
 
-      await openExternalUrl(data.signedUrl);
+      const a = window.document.createElement("a");
+      a.href = localUrl;
+      a.download = document.fileName || "document.pdf";
+      window.document.body.appendChild(a);
+      a.click();
+      window.document.body.removeChild(a);
+      URL.revokeObjectURL(localUrl);
     } catch (error) {
-      setAgentError(error.message || "Could not create signed download link.");
+      setAgentError(error.message || "Could not retrieve document.");
     } finally {
       setDocumentActionId("");
     }
@@ -1060,29 +1063,7 @@ export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus,
                       Close preview
                     </button>
                   </div>
-                  {isMobile ? (
-                    <div className="flex flex-col items-center justify-center p-8 bg-white border rounded-xl text-center shadow-sm">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-red-50 text-red-500 mb-3 shadow-inner">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
-                        </svg>
-                      </div>
-                      <h4 className="font-bold text-slate-800 text-sm mb-1">Mobile Browser PDF Preview</h4>
-                      <p className="text-slate-500 text-xs max-w-xs mb-4 leading-relaxed">
-                        Mobile browsers require opening the document in a new tab to render or print.
-                      </p>
-                      <a
-                        href={documentPreview.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow hover:bg-slate-800 transition"
-                      >
-                        Open PDF in Viewer
-                      </a>
-                    </div>
-                  ) : (
-                    <iframe title={documentPreview.name} src={documentPreview.url} className="h-[70vh] w-full rounded-xl border bg-white" />
-                  )}
+                  <iframe title={documentPreview.name} src={documentPreview.url} className="h-[70vh] w-full rounded-xl border bg-white" />
                 </div>
               )}
             </div>

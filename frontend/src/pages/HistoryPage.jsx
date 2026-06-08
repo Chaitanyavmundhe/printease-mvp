@@ -82,9 +82,8 @@ export default function HistoryPage({ orders = [], currentUser, lastUpdatedAt, o
   const [downloadError, setDownloadError] = useState("");
   const [documentPreview, setDocumentPreview] = useState(null);
   const [historyStale, setHistoryStale] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
-    setIsMobile(/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent));
+    // Mobile check removed to keep unified simple PDF viewer
   }, []);
   const lastFetchTime = useRef(0);
   /** Stores fetched full-detail per order.id so repeat clicks skip re-fetch */
@@ -258,8 +257,9 @@ export default function HistoryPage({ orders = [], currentUser, lastUpdatedAt, o
     if (!document?.document_id) return;
     setDownloadError("");
     try {
-      const blob = await downloadDocumentBlob(document.document_id);
-      const localUrl = URL.createObjectURL(blob);
+      const rawBlob = await downloadDocumentBlob(document.document_id);
+      const pdfBlob = new Blob([rawBlob], { type: document.file_type || "application/pdf" });
+      const localUrl = URL.createObjectURL(pdfBlob);
       
       if (mode === "view") {
         setDocumentPreview({
@@ -656,29 +656,7 @@ export default function HistoryPage({ orders = [], currentUser, lastUpdatedAt, o
               </button>
             </div>
             <div className="flex-1 bg-slate-100 p-2 sm:p-4">
-              {isMobile ? (
-                <div className="flex flex-col items-center justify-center h-full p-6 bg-slate-50 border rounded-2xl text-center shadow-sm">
-                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-red-50 text-red-500 mb-4 shadow-inner">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-8 h-8">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
-                    </svg>
-                  </div>
-                  <h4 className="font-bold text-slate-800 text-base mb-1">Mobile Browser PDF Preview</h4>
-                  <p className="text-slate-500 text-xs max-w-sm mb-6 leading-relaxed">
-                    Mobile browsers cannot render PDF previews directly inside application containers. Click the button below to open and view the PDF in your device's native viewer.
-                  </p>
-                  <a
-                    href={documentPreview.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-6 py-3.5 text-sm font-semibold text-white shadow hover:bg-slate-800 transition"
-                  >
-                    Open PDF in Native Viewer
-                  </a>
-                </div>
-              ) : (
-                <iframe title={documentPreview.name} src={documentPreview.url} className="h-full w-full rounded-2xl border bg-white shadow-sm" />
-              )}
+              <iframe title={documentPreview.name} src={documentPreview.url} className="h-full w-full rounded-2xl border bg-white shadow-sm" />
             </div>
           </div>
         </div>
