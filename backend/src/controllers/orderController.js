@@ -26,6 +26,7 @@ import { pricingMetadata } from '../services/orderPricingPresenter.js';
 import {
   ALLOWED_HUB_ORDER_STATUSES,
   canAccessOrder,
+  getOrderAccessToken,
   isCancelledOrder,
   isPaymentComplete
 } from '../services/orderUtils.js';
@@ -219,6 +220,7 @@ export const createOrder = asyncHandler(async (req, res) => {
   }
 
   const guestTokenHash = isLimitedLoginlessOrder ? getGuestTokenHashFromRequest(req) : null;
+  const orderAccessToken = isLimitedLoginlessOrder ? getOrderAccessToken(req) : null;
   const expiresAt = isLimitedLoginlessOrder ? getGuestExpiry() : null;
 
   const result = await withTransaction(async (client) => {
@@ -226,7 +228,7 @@ export const createOrder = asyncHandler(async (req, res) => {
       id: generateId(),
       orderCode,
       userId: req.user?.id || null,
-      customerType: isLimitedLoginlessOrder ? 'limited' : 'registered',
+      customerType: isLimitedLoginlessOrder ? 'guest' : 'registered',
       expiresAt,
       guestToken: null,
       guestTokenHash,

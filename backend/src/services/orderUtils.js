@@ -1,3 +1,5 @@
+import { hashGuestToken } from './guestAccessService.js';
+
 export const ALLOWED_HUB_ORDER_STATUSES = new Set([
   'Payment Pending',
   'Payment Verified',
@@ -55,7 +57,9 @@ export function canAccessOrder(user, order, req = null) {
 
   if (!order.userId) {
     const providedToken = req ? getOrderAccessToken(req) : '';
-    return Boolean(providedToken && order.guestToken && providedToken === order.guestToken);
+    if (!providedToken) return false;
+    if (order.guestToken && providedToken === order.guestToken) return true;
+    return Boolean(order.guestTokenHash && hashGuestToken(providedToken) === order.guestTokenHash);
   }
 
   return false;

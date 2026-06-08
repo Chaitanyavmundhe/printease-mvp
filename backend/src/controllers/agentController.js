@@ -207,6 +207,14 @@ function normalizePrinterCondition(input, accepting) {
   return 'unknown';
 }
 
+function normalizePrinterStatus(condition) {
+  if (condition === 'available') return 'online';
+  if (condition === PRINT_JOB_STATUSES.PRINTING) return 'busy';
+  if (condition === 'paused') return 'paused';
+  if (condition === 'offline') return 'offline';
+  return 'unknown';
+}
+
 export const syncPrinters = asyncHandler(async (req, res) => {
   const printers = Array.isArray(req.body.printers) ? req.body.printers : [];
   const normalizedPrinters = printers
@@ -218,7 +226,7 @@ export const syncPrinters = asyncHandler(async (req, res) => {
       return {
         printerName: printer.printerName || printer.name,
         systemPrinterId: printer.systemPrinterId || printer.id || printer.name,
-        status: printer.status || condition,
+        status: normalizePrinterStatus(condition),
         condition,
         accepting: typeof printer.accepting === 'boolean' ? printer.accepting : null,
         isDefault: Boolean(printer.isDefault),

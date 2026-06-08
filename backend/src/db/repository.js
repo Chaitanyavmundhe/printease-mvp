@@ -117,6 +117,7 @@ export function mapOrder(row) {
     customerMobile: row.customer_mobile || row.user_mobile || null,
     customerType: row.customer_type || 'registered',
     guestToken: row.guest_token || null,
+    guestTokenHash: row.guest_token_hash || null,
     guestName: row.guest_name || null,
     guestPhone: row.guest_phone || null,
     priceSnapshot: row.price_snapshot || null,
