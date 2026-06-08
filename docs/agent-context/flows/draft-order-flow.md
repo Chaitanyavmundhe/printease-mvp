@@ -1,40 +1,66 @@
-# DRAFT ORDER FLOW
+# Draft Order Flow
 
 ## Purpose
-TBD
+Create a priced draft/pending order from uploaded documents and print settings before payment is collected.
 
 ## Actors
-TBD
+- User or loginless visitor
+- Backend
+- Hub
 
 ## Entry points
-TBD
+- `POST /api/orders`
+- upload page Continue to Payment
 
 ## Input
-TBD
+- centre code/hub ID
+- document IDs/files
+- selected pages, copies, color, side, orientation, DPI, watermark, paper settings
 
 ## Output
-TBD
+- `print_orders` row
+- `print_order_files` rows
+- price snapshot and print config snapshot
+- guest access token for loginless order
 
 ## Source of truth
-TBD
+- `print_orders`
+- `print_order_files`
+- `documents`
 
 ## State changes
-TBD
+- creates order metadata
+- creates per-file metadata
+- stores snapshots for future history
+
+## Micro-components used
+- price calculation
+- print options normalization
+- guest token creation
+- page-count validation
 
 ## Files involved
-TBD
+- `backend/src/controllers/orderController.js`
+- `backend/src/db/repository.js`
+- `backend/src/utils/calculatePrice.js`
+- `backend/src/utils/printOptions.js`
 
 ## Security rules
-TBD
-
-## Reusability opportunities
-TBD
+- backend must use trusted PDF page counts
+- loginless orders require guest token for access
+- do not print until payment is ready
+- store snapshots; do not recalculate old history from current pricing
 
 ## Known risks
-TBD
+- trusting frontend page count
+- mixing old unpaid order into new order
+- missing per-file snapshots
 
-## Safe small follow-up tasks
-TBD
+## Tiny tasks
+- extract order payload validator
+- add tests for multi-file price snapshot
 
 ## Tests
-TBD
+- single-file order creates one order file
+- multi-file order creates all order files
+- loginless order gets guest token

@@ -1,28 +1,31 @@
-# DOCUMENT CONTRACT
+# Contract: document-contract
 
-## Producer
-TBD
+## Purpose
+Defines uploaded document metadata. The file bytes live in private Supabase Storage.
 
-## Consumer
-TBD
+## Shape
+```json
+{
+  "id": "document id",
+  "userId": "user id or null",
+  "fileName": "document.pdf",
+  "fileType": "application/pdf",
+  "fileSizeBytes": 12345,
+  "fileUrl": "private://bucket/path",
+  "storagePath": "private storage path",
+  "fileSha256": "sha256 hex",
+  "pageCount": 2,
+  "createdAt": "ISO timestamp"
+}
+```
 
-## Payload shape
-TBD
+## Used by
+- upload document flow
+- draft order flow
+- document download flow
+- agent payload flow
 
-## Required fields
-TBD
-
-## Optional fields
-TBD
-
-## Legacy compatibility if any
-TBD
-
-## Validation rules
-TBD
-
-## Security rules
-TBD
-
-## Failure behavior
-TBD
+## Security considerations
+- Storage bucket must be private.
+- Signed URLs must be short-lived.
+- `fileSha256` must be preserved for desktop verification.

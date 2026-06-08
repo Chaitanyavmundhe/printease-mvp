@@ -1,38 +1,55 @@
-# MANUAL COLLECTION CONTRACT
+# Contract: manual-collection-contract
 
-## Producer
-Frontend `collectManualPayment` (Hub dashboard)
+## Purpose
+Defines the request and response shape for hub-side offline payment collection.
 
-## Consumer
-Backend `/api/orders/:id/collect-payment` (`orderController.js`)
-
-## Payload shape
+## Request Shape
 ```json
 {
   "method": "cash",
-  "transactionNote": "Paid exact change",
+  "transactionNote": "optional note, max 200 characters",
   "autoPrintAfterCollection": true
 }
 ```
 
-## Required fields
-- `method`: Exact string matching `'cash'` or `'manual_upi'`.
+Allowed `method` values:
 
-## Optional fields
-- `transactionNote`: String up to 200 chars.
-- `autoPrintAfterCollection`: Boolean, defaults to `true` on backend if omitted, but frontend explicitly passes it.
+- `cash`
+- `manual_upi`
 
-## Legacy compatibility if any
-Previously allowed any method and silently converted to `CASH`. Now strictly rejects invalid methods.
+## Response Shape
+```json
+{
+  "success": true,
+  "message": "Payment collected.",
+  "payment": {
+    "id": "payment id",
+    "orderId": "order id",
+    "method": "CASH",
+    "status": "collected"
+  },
+  "order": {
+    "id": "order id",
+    "paymentStatus": "collected",
+    "status": "Payment Collected"
+  },
+  "autoQueue": {
+    "queued": true,
+    "message": "Payment collected. Print job queued."
+  },
+  "printJob": {
+    "id": "print job id"
+  }
+}
+```
 
-## Validation rules
-- `method` strictly validated.
-- `transactionNote` truncated/trimmed to 200 chars.
+## Used by
+- `manual-collection-flow.md`
+- `backend/src/controllers/orderController.js`
+- `backend/src/services/manualCollectionService.js`
 
-## Security rules
-- 400 Bad Request on invalid method.
-
-## Failure behavior
-- 400 if method is invalid.
-- 404 if order not found for hub.
-- 400/409 if cancelled or already paid.
+## Security considerations
+- Reject any method other than `cash` or `manual_upi`.
+- Hub must own the order.
+- Cancelled unpaid orders must not be collected.
+- Auto-print must still pass print readiness checks.

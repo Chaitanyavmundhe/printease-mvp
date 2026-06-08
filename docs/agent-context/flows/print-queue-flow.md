@@ -1,40 +1,65 @@
-# PRINT QUEUE FLOW
+# Print Queue Flow
 
 ## Purpose
-TBD
+Queue a paid/collected order for a desktop agent only when payment, order status, and every document file are printable.
 
 ## Actors
-TBD
+- Backend
+- Hub owner
+- Desktop agent
 
 ## Entry points
-TBD
+- manual collection auto-queue
+- Razorpay verified payment
+- hub Send to Agent action
 
 ## Input
-TBD
+- order ID
+- hub ID
+- collected/verified payment status
+- linked document files
 
 ## Output
-TBD
+- existing active print job or new `print_jobs` row
+- order status updated to queued/sent state
 
 ## Source of truth
-TBD
+- `print_orders`
+- `print_order_files`
+- `documents`
+- `print_jobs`
 
 ## State changes
-TBD
+- `print_jobs` may be inserted
+- `print_orders.status` may move toward queued/sent
+
+## Micro-components used
+- `queuePrintJobIfPaymentReady`
+- `verifyPrintFilesReadiness`
+- `isPrintableOrderStatus`
 
 ## Files involved
-TBD
+- `backend/src/services/printQueueService.js`
+- `backend/src/services/printJobReadinessService.js`
+- `backend/src/db/repository.js`
 
 ## Security rules
-TBD
-
-## Reusability opportunities
-TBD
+- never queue unpaid orders
+- never queue cancelled/failed/paused orders
+- require private storage path and SHA-256 for every file
+- require PDF file type
 
 ## Known risks
-TBD
+- missing multi-file rows
+- duplicate print jobs
+- stale order status
+- file without hash released to desktop
 
-## Safe small follow-up tasks
-TBD
+## Tiny tasks
+- add focused tests for multi-file readiness
+- add duplicate active job reuse test
 
 ## Tests
-TBD
+- collect manual payment with auto-print on
+- verify one active print job exists
+- verify unpaid/cancelled orders are not queued

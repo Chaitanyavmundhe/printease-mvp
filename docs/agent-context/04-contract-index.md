@@ -1,3 +1,0 @@
-# 04 CONTRACT INDEX
-
-TBD
