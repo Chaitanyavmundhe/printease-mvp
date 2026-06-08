@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState, useRef } from "react";
 import { Calendar, CheckCircle2, ChevronDown, Download, Eye, FileText, Filter, IndianRupee, MapPin, Printer, RefreshCw, Search, Settings2, Store, X, Info } from "lucide-react";
 import Card from "../components/Card";
 import StatusBadge from "../components/StatusBadge";
-import { createDocumentSignedDownload, getUserHistory, getOrderDetail, downloadDocumentBlob } from "../services/api";
+import { createDocumentSignedDownload, getUserHistory, getOrderDetail } from "../services/api";
+import { useDocumentPreview } from "../hooks/useDocumentPreview";
+import DocumentPreviewModal from "../components/DocumentPreviewModal";
 import { getLocalHistory } from "../utils/localHistory";
 import { onOrderChanged } from "../utils/appEvents";
 import {
@@ -80,8 +82,22 @@ export default function HistoryPage({ orders = [], currentUser, lastUpdatedAt, o
   const [paymentMethod, setPaymentMethod] = useState("all");
   const [hubFilter, setHubFilter] = useState("all");
   const [downloadError, setDownloadError] = useState("");
-  const [documentPreview, setDocumentPreview] = useState(null);
   const [historyStale, setHistoryStale] = useState(false);
+
+  const {
+    documentId: previewDocId,
+    openPreview,
+    closePreview,
+    downloadDocument: triggerDownload,
+    blobUrl,
+    previewKind,
+    fileName: previewFileName,
+    fileType: previewFileType,
+    fileSize: previewFileSize,
+    textContent: previewTextContent,
+    loading: previewLoading,
+    error: previewError
+  } = useDocumentPreview();
   useEffect(() => {
     // Mobile check removed to keep unified simple PDF viewer
   }, []);
@@ -253,39 +269,14 @@ export default function HistoryPage({ orders = [], currentUser, lastUpdatedAt, o
     });
   }, [visibleSource, search, dateFrom, dateTo, status, paymentMethod, hubFilter]);
 
-  async function downloadDocument(document, mode = "download") {
+  function downloadDocument(document, mode = "download") {
     if (!document?.document_id) return;
     setDownloadError("");
-    try {
-      const rawBlob = await downloadDocumentBlob(document.document_id);
-      const pdfBlob = new Blob([rawBlob], { type: document.file_type || "application/pdf" });
-      const localUrl = URL.createObjectURL(pdfBlob);
-      
-      if (mode === "view") {
-        setDocumentPreview({
-          url: localUrl,
-          name: document.file_name || "Document preview",
-        });
-        return;
-      }
-      
-      const a = window.document.createElement("a");
-      a.href = localUrl;
-      a.download = document.file_name || "document.pdf";
-      window.document.body.appendChild(a);
-      a.click();
-      window.document.body.removeChild(a);
-      URL.revokeObjectURL(localUrl);
-    } catch (err) {
-      setDownloadError(err.message || "Could not retrieve document.");
+    if (mode === "view") {
+      openPreview(document.document_id, document.file_name, document.file_type, document.file_size);
+    } else {
+      triggerDownload(document.document_id, document.file_name);
     }
-  }
-
-  function closePreview() {
-    if (documentPreview?.url?.startsWith("blob:")) {
-      URL.revokeObjectURL(documentPreview.url);
-    }
-    setDocumentPreview(null);
   }
 
   function resetFilters() {
@@ -643,24 +634,19 @@ export default function HistoryPage({ orders = [], currentUser, lastUpdatedAt, o
         </div>
       )}
 
-      {documentPreview && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm sm:p-6 lg:p-8">
-          <div className="flex h-full w-full max-w-5xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b bg-white p-4">
-              <div>
-                <h3 className="font-bold">{documentPreview.name}</h3>
-                <p className="text-xs text-slate-500">Document Preview</p>
-              </div>
-              <button type="button" onClick={closePreview} className="rounded-full border bg-slate-50 p-2 hover:bg-slate-100" aria-label="Close preview">
-                <X size={18} />
-              </button>
-            </div>
-            <div className="flex-1 bg-slate-100 p-2 sm:p-4">
-              <iframe title={documentPreview.name} src={documentPreview.url} className="h-full w-full rounded-2xl border bg-white shadow-sm" />
-            </div>
-          </div>
-        </div>
-      )}
+      <DocumentPreviewModal
+        isOpen={!!previewDocId}
+        onClose={closePreview}
+        blobUrl={blobUrl}
+        previewKind={previewKind}
+        fileName={previewFileName}
+        fileType={previewFileType}
+        fileSize={previewFileSize}
+        textContent={previewTextContent}
+        loading={previewLoading}
+        error={previewError}
+        onDownload={() => triggerDownload(previewDocId, previewFileName)}
+      />
     </div>
   );
 }
