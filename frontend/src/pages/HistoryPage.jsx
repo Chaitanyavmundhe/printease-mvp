@@ -391,11 +391,11 @@ export default function HistoryPage({ orders = [], currentUser, lastUpdatedAt, o
 
             <DetailPanel title="Order Progress" icon={<CheckCircle2 size={17} />}>
               <div className="space-y-3">
-                {(order.timeline || []).map((item, index) => (
+                {(detail.timeline || []).map((item, index) => (
                   <div key={`${item.label}-${item.time}-${index}`} className="grid grid-cols-[24px_minmax(0,1fr)] gap-3">
                     <div className="flex flex-col items-center">
                       <span className="mt-1 h-3 w-3 rounded-full bg-slate-950" />
-                      {index < (order.timeline || []).length - 1 && <span className="mt-1 h-full min-h-8 w-px bg-slate-200" />}
+                      {index < (detail.timeline || []).length - 1 && <span className="mt-1 h-full min-h-8 w-px bg-slate-200" />}
                     </div>
                     <div className="rounded-xl bg-slate-50 px-3 py-2">
                       <p className="text-sm font-bold text-slate-900">{item.label}</p>
@@ -403,7 +403,7 @@ export default function HistoryPage({ orders = [], currentUser, lastUpdatedAt, o
                     </div>
                   </div>
                 ))}
-                {!order.timeline?.length && <p className="rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-500">Timeline is not available for this order yet.</p>}
+                {!detail.timeline?.length && <p className="rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-500">Timeline is not available for this order yet.</p>}
               </div>
             </DetailPanel>
           </div>
@@ -568,7 +568,7 @@ export default function HistoryPage({ orders = [], currentUser, lastUpdatedAt, o
                       </StatusBadge>
                     )}
                   </div>
-                  <p className="mt-1.5 font-semibold text-sm text-slate-800">{order.document?.file_name || `${order.documents?.length || 1} uploaded document${order.documents?.length !== 1 ? 's' : ''}`}</p>
+                  <p className="mt-1.5 font-semibold text-sm text-slate-800">{order.document?.file_name || order.document_name || `${order.file_count || order.documents?.length || 1} uploaded document${(order.file_count || order.documents?.length || 1) !== 1 ? 's' : ''}`}</p>
                   <p className="mt-1 text-[11px] text-slate-500">{formatDateTime(order.created_at)}</p>
                   <p className="mt-1 text-[11px] text-slate-600">{getOrderPrintableSummary(order)}</p>
                   <p className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700">

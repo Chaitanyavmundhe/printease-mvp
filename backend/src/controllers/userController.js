@@ -189,8 +189,12 @@ export const getUserHistory = asyncHandler(async (req, res) => {
     const paidOrders = orders.filter((o) => ['collected', 'verified', 'paid', 'captured'].includes(
       String(o.payment_status || '').toLowerCase()
     ));
-    const totalPages = orders.reduce((sum, o) =>
-      sum + (Number(o.pages || 0) * Number(o.copies || 1)), 0);
+    const totalPages = orders.reduce((sum, o) => {
+      const pages = o.printable_page_count != null
+        ? Number(o.printable_page_count)
+        : Number(o.pages || 0) * Number(o.copies || 1);
+      return sum + pages;
+    }, 0);
 
     res.set('Cache-Control', 'private, max-age=60');
     return res.json({

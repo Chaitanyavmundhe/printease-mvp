@@ -884,7 +884,7 @@ export async function getUserPrintHistory(userId) {
 
 /**
  * Lightweight history query for compact list mode.
- * Runs a single SQL join (orders + hub), no extra sub-queries.
+ * Single SQL join (orders + hub + aggregated file counts).
  * Returns only the fields needed to render the history list card.
  */
 export async function getUserPrintHistoryCompact(userId, limit = 20) {
@@ -899,11 +899,19 @@ export async function getUserPrintHistoryCompact(userId, limit = 20) {
        po.pages,
        po.copies,
        po.document_name,
+       po.printable_page_count,
+       po.selected_page_count,
        po.hub_id,
        h.hub_name,
-       h.centre_code
+       h.centre_code,
+       coalesce(fc.file_count, 1) as file_count
      from print_orders po
      left join print_hubs h on h.id = po.hub_id
+     left join (
+       select order_id, count(*)::int as file_count
+       from print_order_files
+       group by order_id
+     ) fc on fc.order_id = po.id
      where po.user_id = $1
        and coalesce(po.customer_type, 'registered') <> 'guest'
      order by po.created_at desc
@@ -921,6 +929,13 @@ export async function getUserPrintHistoryCompact(userId, limit = 20) {
     pages: row.pages,
     copies: row.copies,
     document_name: row.document_name || null,
+    printable_page_count: row.printable_page_count === null || row.printable_page_count === undefined
+      ? null
+      : Number(row.printable_page_count),
+    selected_page_count: row.selected_page_count === null || row.selected_page_count === undefined
+      ? null
+      : Number(row.selected_page_count),
+    file_count: Number(row.file_count || 1),
     hub: {
       id: row.hub_id,
       name: row.hub_name || 'Print Hub',
