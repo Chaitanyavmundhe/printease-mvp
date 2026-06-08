@@ -1,49 +1,62 @@
 # MANUAL COLLECTION
 
 ## File paths
-TBD
+- `backend/src/controllers/orderController.js` (see `collectCashPayment` function)
 
 ## Responsibility
-TBD
+Handle the manual collection of payments at the Hub (Cash or Manual UPI), bypassing Razorpay.
 
 ## Owns
-TBD
+- Payment creation for manual methods
+- Updating order status to collected
 
 ## Does not own
-TBD
+- Razorpay verification
 
 ## Important functions
-TBD
+- `collectCashPayment`
 
 ## Inputs
-TBD
+- `method`: MUST be exact string `'cash'` or `'manual_upi'`.
+- `transactionNote`: String up to 200 chars.
+- `autoPrintAfterCollection`: Boolean.
 
 ## Outputs
-TBD
+- Payment object
+- Updated Order object
+- PrintJob object (if auto-queued)
 
 ## Side effects
-TBD
+- Order status changes to `collected`.
+- Payment record created in DB.
+- Print job queued if `autoPrintAfterCollection` is true.
 
 ## API/database calls
-TBD
+- `withTransaction`
+- `findOrderByIdOrCode`
+- `savePayment`
+- `updateOrderPayment`
+- `queuePrintJobIfPaymentReady`
 
 ## Security rules
-TBD
+- Validates method strictly against `cash` or `manual_upi`.
+- Validates user has access to order's hub.
+- Validates order is not cancelled before payment.
 
 ## Known risks
-TBD
+- Manual payment depends on Hub operator honesty.
 
 ## Reusable helper extraction ideas
-TBD
+- Move `collectCashPayment` into a `manualCollectionService`.
 
 ## Safe to edit
-TBD
+Yes, with care to maintain strict method validation.
 
 ## Do not edit
-TBD
+- The strict method validation logic.
 
 ## Related flow docs
-TBD
+- `manual-collection-flow.md`
 
 ## Related contract docs
-TBD
+- `manual-collection-contract.md`
