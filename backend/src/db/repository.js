@@ -835,7 +835,7 @@ export async function getUserPrintHistory(userId) {
        d.created_at as document_created_at
      from print_order_files pof
      join documents d on d.id = pof.document_id
-     where pof.order_id = any($1::text[])
+     where pof.order_id = any($1::uuid[])
      order by pof.order_id, coalesce(pof.print_sequence, 999999), pof.created_at, pof.id`,
     [orderIds]
   );
@@ -843,7 +843,7 @@ export async function getUserPrintHistory(userId) {
   const paymentsResult = await query(
     `select distinct on (order_id) *
      from payments
-     where order_id = any($1::text[])
+     where order_id = any($1::uuid[])
      order by order_id, coalesce(verified_at, created_at) desc, created_at desc`,
     [orderIds]
   );
@@ -851,7 +851,7 @@ export async function getUserPrintHistory(userId) {
   const printJobsResult = await query(
     `select *
      from print_jobs
-     where order_id = any($1::text[])
+     where order_id = any($1::uuid[])
      order by order_id, created_at desc`,
     [orderIds]
   );
