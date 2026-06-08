@@ -45,6 +45,14 @@ export async function applySchema() {
     await query(adjustedSql);
     console.log('[DB SCHEMA APPLIED]');
 
+    await query(`
+      CREATE TABLE IF NOT EXISTS schema_migrations (
+        version text PRIMARY KEY,
+        applied_at timestamptz NOT NULL DEFAULT now()
+      );
+    `);
+    console.log('[DB MIGRATION TABLE READY]');
+
     // Run migrations
     try {
       const migrationsDir = join(__dirname, 'migrations');
