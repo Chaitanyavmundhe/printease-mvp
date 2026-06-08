@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useRef } from "react";
 import { Calendar, CheckCircle2, ChevronDown, Download, Eye, FileText, Filter, IndianRupee, MapPin, Printer, RefreshCw, Search, Settings2, Store, X, Info } from "lucide-react";
 import Card from "../components/Card";
 import StatusBadge from "../components/StatusBadge";
-import { createDocumentSignedDownload, getUserHistory, getOrderDetail } from "../services/api";
+import { createDocumentSignedDownload, getUserHistory, getOrderDetail, downloadDocumentBlob } from "../services/api";
 import { getLocalHistory } from "../utils/localHistory";
 import { onOrderChanged } from "../utils/appEvents";
 import {
@@ -254,21 +254,34 @@ export default function HistoryPage({ orders = [], currentUser, lastUpdatedAt, o
     if (!document?.document_id) return;
     setDownloadError("");
     try {
-      const data = await createDocumentSignedDownload(document.document_id);
-      if (!data.signedUrl) throw new Error("Signed document link was not returned.");
+      const blob = await downloadDocumentBlob(document.document_id);
+      const localUrl = URL.createObjectURL(blob);
       
       if (mode === "view") {
         setDocumentPreview({
-          url: data.signedUrl,
+          url: localUrl,
           name: document.file_name || "Document preview",
         });
         return;
       }
       
-      window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+      const a = window.document.createElement("a");
+      a.href = localUrl;
+      a.download = document.file_name || "document.pdf";
+      window.document.body.appendChild(a);
+      a.click();
+      window.document.body.removeChild(a);
+      URL.revokeObjectURL(localUrl);
     } catch (err) {
-      setDownloadError(err.message || "Could not create signed download link.");
+      setDownloadError(err.message || "Could not retrieve document.");
     }
+  }
+
+  function closePreview() {
+    if (documentPreview?.url?.startsWith("blob:")) {
+      URL.revokeObjectURL(documentPreview.url);
+    }
+    setDocumentPreview(null);
   }
 
   function resetFilters() {
@@ -634,7 +647,7 @@ export default function HistoryPage({ orders = [], currentUser, lastUpdatedAt, o
                 <h3 className="font-bold">{documentPreview.name}</h3>
                 <p className="text-xs text-slate-500">Document Preview</p>
               </div>
-              <button type="button" onClick={() => setDocumentPreview(null)} className="rounded-full border bg-slate-50 p-2 hover:bg-slate-100" aria-label="Close preview">
+              <button type="button" onClick={closePreview} className="rounded-full border bg-slate-50 p-2 hover:bg-slate-100" aria-label="Close preview">
                 <X size={18} />
               </button>
             </div>

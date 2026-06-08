@@ -509,7 +509,16 @@ export default function UploadPage({
     <div className="grid gap-6 lg:grid-cols-3">
       <Card className="lg:col-span-2">
         <h2 className="text-2xl font-bold">Upload Document</h2>
-        <p className="mt-2 text-slate-600">Selected Centre: <b>{selectedCentre?.name || "Not selected yet"}</b></p>
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-slate-600">
+          <span>Selected Centre: <b>{selectedCentre?.name || "Not selected yet"}</b></span>
+          <button
+            type="button"
+            onClick={() => navigate("centre", { state: { fromUpload: true } })}
+            className="rounded-xl bg-slate-100 border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-200 hover:text-slate-900 transition shadow-sm"
+          >
+            Change Centre
+          </button>
+        </div>
 
         {!selectedCentre && (
           <div className="mt-4 rounded-2xl bg-orange-50 p-4 text-sm text-orange-700">
