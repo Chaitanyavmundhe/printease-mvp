@@ -16,48 +16,12 @@ import { getPrintReadyFile } from '../utils/printReadyPdf.js';
 
 const PAYMENT_READY_STATUSES = new Set(['verified', 'collected']);
 
-function normalize(value) {
-  return String(value || '').trim().toLowerCase();
-}
-
-function isPrintableOrderStatus(status) {
-  const normalized = normalize(status);
-  return ![
-    'printing',
-    'ready for pickup',
-    'collected',
-    'printing failed',
-    'paused',
-    'cancelled',
-    'refund requested'
-  ].includes(normalized);
-}
-
-function paymentReadyMessage(paymentStatus, text) {
-  const normalized = normalize(paymentStatus);
-  const prefix = normalized === 'collected'
-    ? 'Payment collected'
-    : normalized === 'verified'
-      ? 'Payment verified'
-      : 'Payment pending';
-  return `${prefix}. ${text}`;
-}
-
-function optionsForDeliveredPdf(printOptions, transformed) {
-  if (!transformed) return printOptions || {};
-
-  return {
-    ...(printOptions || {}),
-    pages: {
-      mode: 'all',
-      range: ''
-    },
-    watermark: {
-      ...((printOptions || {}).watermark || {}),
-      enabled: false
-    }
-  };
-}
+import {
+  normalize,
+  paymentReadyMessage,
+  optionsForDeliveredPdf,
+  verifyPrintFilesReadiness
+} from './printJobReadinessService.js';
 
 export async function queuePrintJobIfPaymentReady(orderId, hubId, client) {
   const orderWithDocument = await findOrderWithDocumentForHub(orderId, hubId, client);
@@ -88,22 +52,16 @@ export async function queuePrintJobIfPaymentReady(orderId, hubId, client) {
   }
 
   const orderFiles = await listOrderFiles(orderId, client);
-  const firstFile = orderFiles[0];
-  const storagePath = firstFile?.document?.storagePath || orderWithDocument.document_storage_path;
-  const fileSha256 = firstFile?.document?.fileSha256 || orderWithDocument.document_file_sha256;
-  const fileType = firstFile?.document?.fileType || orderWithDocument.document_file_type || 'application/pdf';
-  const allFilesPrintable = orderFiles.every((file) => (
-    file.document?.storagePath &&
-    file.document?.fileSha256 &&
-    (file.document?.fileType || 'application/pdf') === 'application/pdf'
-  ));
+  const readiness = verifyPrintFilesReadiness(orderFiles, orderWithDocument);
 
-  if (!orderFiles.length || !storagePath || !fileSha256 || fileType !== 'application/pdf' || !allFilesPrintable || !isPrintableOrderStatus(orderWithDocument.status)) {
+  if (!readiness.isReady) {
     return {
       queued: false,
       message: paymentReadyMessage(paymentStatus, 'Order is not ready for desktop PDF printing; hub can print manually.')
     };
   }
+
+  const { firstFile, storagePath, fileSha256, fileType } = readiness;
 
   const targetAgent = await findBestAgentForHub(hubId, client);
   const printerHint = targetAgent

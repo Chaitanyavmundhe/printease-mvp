@@ -18,6 +18,7 @@ import { calculatePrintPricing } from '../utils/calculatePrice.js';
 import { generateId, generateOrderCode, generateShortCode } from '../utils/generateCode.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { queuePrintJobIfPaymentReady } from '../services/printQueueService.js';
+import { processManualCollection } from '../services/manualCollectionService.js';
 import crypto from 'crypto';
 import {
   mapLegacyFieldsToPrintOptions,
@@ -105,11 +106,11 @@ function privateOrder(order) {
   };
 }
 
-function isCancelledOrder(order) {
+export function isCancelledOrder(order) {
   return String(order?.status || '').trim().toLowerCase() === 'cancelled';
 }
 
-function isPaymentComplete(order) {
+export function isPaymentComplete(order) {
   const value = String(order?.paymentStatus || '').trim().toLowerCase();
   return value === 'verified' || value === 'collected' || value === 'paid';
 }
@@ -457,64 +458,17 @@ export const getCentreOrders = asyncHandler(async (req, res) => {
 });
 
 export const collectCashPayment = asyncHandler(async (req, res) => {
-  const hubId = req.user?.centreId || req.user?.hubId;
-  const orderId = req.params.id;
-  const rawMethod = req.body.method?.toLowerCase();
-  if (rawMethod !== 'cash' && rawMethod !== 'manual_upi') {
-    return res.status(400).json({ success: false, message: 'Invalid collection method. Allowed values: cash, manual_upi' });
-  }
-  const collectionMethod = rawMethod === 'manual_upi' ? 'MANUAL_UPI' : 'CASH';
-  const transactionNote = typeof req.body.transactionNote === 'string' ? req.body.transactionNote.trim().slice(0, 200) : '';
-  const autoPrintAfterCollection = req.body.autoPrintAfterCollection !== false;
-
-  const result = await withTransaction(async (client) => {
-    const order = await findOrderByIdOrCode(orderId, client);
-
-    if (!order || order.centreId !== hubId) {
-      return { notFound: true };
-    }
-
-    const normalizedPaymentStatus = String(order.paymentStatus || '').toLowerCase();
-    if (isCancelledOrder(order) && !isPaymentComplete(order)) {
-      return { cancelledBeforePayment: true, order };
-    }
-
-    if (!['pending', 'unpaid', ''].includes(normalizedPaymentStatus)) {
-      const autoQueue = autoPrintAfterCollection
-        ? await queuePrintJobIfPaymentReady(order.id, hubId, client)
-        : { queued: false, message: 'Payment already collected. Auto-print is off; press Send to print manually.' };
-      return {
-        order,
-        payment: null,
-        autoQueue,
-        printJob: autoQueue.printJob || autoQueue.existingPrintJob || null
-      };
-    }
-
-    const now = new Date().toISOString();
-    const payment = await savePayment({
-      id: generateId(),
-      orderId: order.id,
-      amount: order.amount,
-      method: collectionMethod,
-      transactionId: transactionNote || `${collectionMethod.toLowerCase()}_collected_${Date.now()}`,
-      status: 'collected',
-      createdAt: now,
-      verifiedAt: now
-    }, client);
-
-    const collectedOrder = await updateOrderPayment(order.id, 'collected', 'Payment Collected', client);
-    const autoQueue = autoPrintAfterCollection
-      ? await queuePrintJobIfPaymentReady(collectedOrder.id, hubId, client)
-      : { queued: false, message: 'Payment collected. Auto-print is off; press Send to print manually.' };
-
-    return {
-      payment,
-      order: autoQueue.order || collectedOrder,
-      autoQueue,
-      printJob: autoQueue.printJob || autoQueue.existingPrintJob || null
-    };
+  const result = await processManualCollection({
+    orderId: req.params.id,
+    hubId: req.user?.centreId || req.user?.hubId,
+    rawMethod: req.body.method?.toLowerCase(),
+    transactionNoteInput: req.body.transactionNote,
+    autoPrintAfterCollection: req.body.autoPrintAfterCollection !== false
   });
+
+  if (result.error === 'INVALID_METHOD') {
+    return res.status(400).json({ success: false, message: result.message });
+  }
 
   if (result?.notFound) {
     return res.status(404).json({ success: false, message: 'Order not found for this hub' });

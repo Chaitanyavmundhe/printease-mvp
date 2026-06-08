@@ -12,6 +12,6 @@
 10. ~~Update jobPoller to process job.files[] sequentially only.~~ (Done)
 11. ~~Add CUPS option mapper only.~~ (Done)
 12. ~~Wire updater isPrintingActive to jobPoller only.~~ (Done)
-13. Extract manualCollectionService only.
-14. Extract printJobReadinessService only.
-15. Extract agentJobPayloadService only.
+13. ~~Extract manualCollectionService only.~~ (Done)
+14. ~~Extract printJobReadinessService only.~~ (Done)
+15. ~~Extract agentJobPayloadService only.~~ (Done)
