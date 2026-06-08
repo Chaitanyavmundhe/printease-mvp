@@ -45,6 +45,8 @@ export default function UploadPage({
   setMultiFileConfigs,
   reprintSourceDocuments,
   setReprintSourceDocuments,
+  reprintDocumentExpired,
+  setReprintDocumentExpired,
 }) {
   const [selectedFileIndexes, setSelectedFileIndexes] = useState([]);
   const [modalFileIndex, setModalFileIndex] = useState(null);
@@ -103,6 +105,7 @@ export default function UploadPage({
 
   function handleFileChange(event) {
     if (setReprintSourceDocuments) setReprintSourceDocuments([]);
+    if (setReprintDocumentExpired) setReprintDocumentExpired(false);
     const files = Array.from(event.target.files || []);
     const firstFile = files[0] || null;
     setDocumentFiles(files);
@@ -126,6 +129,8 @@ export default function UploadPage({
     const handlePaste = (e) => {
       const files = Array.from(e.clipboardData?.files || []).filter((f) => f.type === "application/pdf");
       if (files.length > 0) {
+        if (setReprintSourceDocuments) setReprintSourceDocuments([]);
+        if (setReprintDocumentExpired) setReprintDocumentExpired(false);
         setDocumentFiles(files);
         setDocumentFile(files[0]);
         if (files.length === 1) setDocumentName(files[0].name);
@@ -516,6 +521,32 @@ export default function UploadPage({
           <p className="mt-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
             {paymentError}
           </p>
+        )}
+
+        {paymentLoading && reprintSourceDocuments && reprintSourceDocuments.length > 0 && documentFiles.length === 0 && (
+          <div className="mt-4 flex items-center gap-3 rounded-2xl border border-sky-100 bg-sky-50/50 p-4 text-sm text-sky-800 shadow-sm backdrop-blur-sm animate-pulse">
+            <div className="flex h-5 w-5 items-center justify-center rounded-full bg-sky-100 text-sky-600">
+              <span className="h-2 w-2 rounded-full bg-sky-500 animate-ping"></span>
+            </div>
+            <div>
+              <p className="font-semibold text-sky-900">Restoring original documents</p>
+              <p className="text-xs text-sky-700 mt-0.5">Fetching and pre-loading files from your order history...</p>
+            </div>
+          </div>
+        )}
+
+        {reprintDocumentExpired && (
+          <div className="mt-4 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50/60 p-4 text-sm text-amber-800 shadow-sm">
+            <div className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-600 font-bold text-xs">
+              !
+            </div>
+            <div>
+              <p className="font-semibold text-amber-900">Some or all documents have expired</p>
+              <p className="text-xs text-amber-700 mt-0.5">
+                The original files from this order could not be retrieved from history. Please upload the documents manually to configure your reprint.
+              </p>
+            </div>
+          </div>
         )}
 
         <div className="mt-6">
