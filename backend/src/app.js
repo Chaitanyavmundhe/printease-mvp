@@ -156,16 +156,12 @@ app.get('/api/health', async (req, res) => {
     res.json({
       success: true,
       message: 'Backend healthy',
-      environment: process.env.NODE_ENV,
-      frontendUrl: process.env.FRONTEND_URL || null,
       timestamp: new Date().toISOString()
     });
   } catch (error) {
     res.status(503).json({
       success: false,
       message: 'Service unavailable: Database connection failed',
-      environment: process.env.NODE_ENV,
-      frontendUrl: process.env.FRONTEND_URL || null,
       timestamp: new Date().toISOString()
     });
   }

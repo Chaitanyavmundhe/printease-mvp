@@ -2,7 +2,7 @@
 
 1. ~~Fix manual collection method validation only.~~ (Done)
 2. ~~Tighten production CORS only.~~ (Done)
-3. Clean /api/health response only.
+3. ~~Clean /api/health response only.~~ (Done)
 4. Fix desktop updater owner/repo only.
 5. Strengthen desktop package verification only.
 6. Add desktop IPC sender validation only.
