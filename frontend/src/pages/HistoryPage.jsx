@@ -153,7 +153,7 @@ function EmptyState({ currentUser }) {
   );
 }
 
-export default function HistoryPage({ orders = [], currentUser, lastUpdatedAt, onOpenPayment, onReprintOrder }) {
+export default function HistoryPage({ orders = [], currentUser, lastUpdatedAt, onOpenPayment, onReprintOrder, onReprintWithSettings }) {
   const [historyData, setHistoryData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -477,7 +477,14 @@ export default function HistoryPage({ orders = [], currentUser, lastUpdatedAt, o
                 onClick={() => onReprintOrder?.(order)}
                 className="inline-flex items-center justify-center gap-2 rounded-xl bg-slate-950 px-4 py-3 text-sm font-bold text-white shadow-sm hover:bg-slate-800"
               >
-                <RefreshCw size={16} /> Reprint with these settings
+                <RefreshCw size={16} /> Reprint exact settings
+              </button>
+              <button
+                type="button"
+                onClick={() => onReprintWithSettings?.(order)}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-900 shadow-sm hover:bg-slate-50"
+              >
+                <Settings2 size={16} /> Reprint with changes
               </button>
               <button
                 type="button"
@@ -604,8 +611,11 @@ export default function HistoryPage({ orders = [], currentUser, lastUpdatedAt, o
                   >
                     View Details
                   </button>
-                  <button type="button" onClick={() => onReprintOrder?.(order)} className="rounded-xl border px-3 py-2 text-sm font-semibold hover:bg-slate-50">
-                    Reprint
+                  <button type="button" onClick={() => onReprintOrder?.(order)} className="rounded-xl border px-3 py-2 text-[11px] font-semibold hover:bg-slate-50">
+                    Reprint exactly
+                  </button>
+                  <button type="button" onClick={() => onReprintWithSettings?.(order)} className="rounded-xl border px-3 py-2 text-[11px] font-semibold hover:bg-slate-50">
+                    Reprint with changes
                   </button>
                 </div>
               </div>

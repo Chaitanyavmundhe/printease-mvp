@@ -42,12 +42,14 @@ export default function UploadPage({
   navigate,
   multiFileConfigs,
   setMultiFileConfigs,
+  reprintSourceDocuments,
+  setReprintSourceDocuments,
 }) {
   const [selectedFileNames, setSelectedFileNames] = useState([]);
   const [modalFile, setModalFile] = useState(null);
   const longPressTimerRef = useRef(null);
 
-  const isMulti = documentFiles.length > 1;
+  const isMulti = documentFiles.length > 1 || (reprintSourceDocuments && reprintSourceDocuments.length > 1);
 
   function handleTouchStart(fileName) {
     longPressTimerRef.current = window.setTimeout(() => {
@@ -95,6 +97,7 @@ export default function UploadPage({
   }
 
   function handleFileChange(event) {
+    if (setReprintSourceDocuments) setReprintSourceDocuments([]);
     const files = Array.from(event.target.files || []);
     const firstFile = files[0] || null;
     setDocumentFiles(files);
@@ -316,9 +319,15 @@ export default function UploadPage({
     preparePayment();
   };
 
-  const selectedFileCount = documentFiles?.length || (documentFile ? 1 : 0);
-  const selectedFileLabel = selectedFileCount > 1 ? `${selectedFileCount} PDFs selected` : documentFile?.name;
-  const selectedFileSize = (documentFiles || []).reduce((sum, file) => sum + file.size, 0) || documentFile?.size || 0;
+  const displayFiles = documentFiles.length ? documentFiles.map(f => ({ name: f.name })) : (reprintSourceDocuments || []).map(d => ({ name: d.file_name }));
+  const selectedFileCount = documentFiles.length || (documentFile ? 1 : 0) || (reprintSourceDocuments ? reprintSourceDocuments.length : 0);
+  const selectedFileSize = documentFiles.reduce((acc, file) => acc + file.size, documentFile?.size || 0);
+
+  const selectedFileLabel = isMulti
+    ? `${displayFiles.length} documents selected`
+    : displayFiles.length > 0
+    ? displayFiles[0].name
+    : "";
 
   const multiEstimatedFiles = useMemo(() => {
     if (!isMulti) return [];
@@ -508,9 +517,9 @@ export default function UploadPage({
         <div className="mt-6">
           <label className="cursor-pointer rounded-2xl border border-dashed bg-slate-50 p-6 text-center hover:bg-slate-100 flex flex-col mb-4">
             <input type="file" accept="application/pdf" multiple onChange={handleFileChange} className="hidden" />
-            {documentFile ? <FileText className="mx-auto mb-3" size={36} /> : <Upload className="mx-auto mb-3" size={36} />}
+            {displayFiles.length > 0 ? <FileText className="mx-auto mb-3" size={36} /> : <Upload className="mx-auto mb-3" size={36} />}
             <p className="font-semibold">{selectedFileLabel || "Choose one or more PDFs"}</p>
-            <p className="text-sm text-slate-500">{selectedFileCount ? `${Math.ceil(selectedFileSize / 1024)} KB selected` : "Select multiple PDF files from your file manager"}</p>
+            <p className="text-sm text-slate-500">{selectedFileCount ? (selectedFileSize ? `${Math.ceil(selectedFileSize / 1024)} KB selected` : "Documents selected from history") : "Select multiple PDF files from your file manager"}</p>
           </label>
 
           {!isMulti && (
@@ -527,11 +536,11 @@ export default function UploadPage({
               <div className="mb-3 flex items-center justify-between">
                 <p className="font-bold text-lg">Select Files to Configure</p>
                 <button onClick={toggleSelectAll} className="text-sm font-semibold text-slate-600 hover:text-slate-900">
-                  {selectedFileNames.length === documentFiles.length ? "Deselect All" : "Select All"}
+                  {selectedFileNames.length === displayFiles.length ? "Deselect All" : "Select All"}
                 </button>
               </div>
               <div className="grid gap-2 max-h-64 overflow-y-auto pr-2">
-                {documentFiles.map((file) => {
+                {displayFiles.map((file) => {
                   const isSelected = selectedFileNames.includes(file.name);
                   const conf = multiFileConfigs[file.name] || {};
                   return (

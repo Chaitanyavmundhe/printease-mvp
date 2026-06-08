@@ -427,6 +427,7 @@ export default function App() {
   const [selectedCentre, setSelectedCentre] = useState(null);
   const [documentFile, setDocumentFile] = useState(null);
   const [documentFiles, setDocumentFiles] = useState([]);
+  const [reprintSourceDocuments, setReprintSourceDocuments] = useState([]);
   const [multiFileConfigs, setMultiFileConfigs] = useState({});
   const [documentName, setDocumentName] = useState("");
   const [pages, setPages] = useState(1);
@@ -1206,7 +1207,7 @@ export default function App() {
     }
 
     const filesToUpload = documentFiles.length ? documentFiles : documentFile ? [documentFile] : [];
-    if (!filesToUpload.length) {
+    if (!filesToUpload.length && !reprintSourceDocuments.length) {
       setPaymentError("Please upload a PDF document first.");
       navigate("upload");
       return;
@@ -1218,16 +1219,26 @@ export default function App() {
 
     try {
       const uploadedDocuments = [];
-      for (const file of filesToUpload) {
-        const formData = new FormData();
-        formData.append("document", file);
+      if (filesToUpload.length) {
+        for (const file of filesToUpload) {
+          const formData = new FormData();
+          formData.append("document", file);
 
-        const uploadData = await apiRequest("/api/uploads", {
-          method: "POST",
-          body: formData,
+          const uploadData = await apiRequest("/api/uploads", {
+            method: "POST",
+            body: formData,
+          });
+
+          uploadedDocuments.push(uploadData.document);
+        }
+      } else if (reprintSourceDocuments.length) {
+        reprintSourceDocuments.forEach(doc => {
+          uploadedDocuments.push({
+            id: doc.document_id,
+            fileName: doc.file_name,
+            pageCount: doc.original_pages
+          });
         });
-
-        uploadedDocuments.push(uploadData.document);
       }
 
       const trustedPageCount = Number(uploadedDocuments[0]?.pageCount) || pages;
@@ -1513,6 +1524,55 @@ export default function App() {
     setUpiQr(nextCentre?.upiQrImageUrl ? { imageUrl: nextCentre.upiQrImageUrl } : null);
     setPaymentError("");
     navigate("track");
+  }
+
+  function reprintWithSettings(historyOrder) {
+    if (!currentUser || currentUser.role !== "user" || !historyOrder) return;
+
+    const config = historyOrder.print_config || {};
+    const document = historyOrder.document || {};
+    const nextCentre = centres.find((centre) => (
+      centre.id === historyOrder.hub?.id ||
+      centre.code === historyOrder.hub?.code ||
+      centre.name === historyOrder.hub?.name
+    ));
+
+    if (nextCentre) setSelectedCentre(nextCentre);
+    
+    const docs = historyOrder.documents?.length ? historyOrder.documents : [historyOrder.document].filter(Boolean);
+    setReprintSourceDocuments(docs);
+    
+    setDocumentFile(null);
+    setDocumentFiles([]);
+    setMultiFileConfigs({});
+    
+    setDocumentName(document.file_name || historyOrder.documentName || "");
+    setPages(Number(document.original_pages || historyOrder.pages || 1));
+    setSelectedPages(config.page_range && config.page_range !== "all" ? config.page_range : "");
+    setCopies(Number(config.copies || document.copies || historyOrder.copies || 1));
+    setColorType(config.color_mode === "color" ? "color" : "bw");
+    setSideType(config.duplex ? "double" : "single");
+    setPaperSize(config.paper_size || "A4");
+    setPagesPerSheet(Number(config.pages_per_sheet || 1));
+    setOrientation(config.orientation || "auto");
+    setPrintDpi(Number(config.quality_dpi || 300));
+    setScaleMode(config.scaling || "original");
+    setMarginMode(config.margins || "default");
+    setWatermark(Boolean(config.watermark?.enabled));
+    setWatermarkType(config.watermark?.type || "order_code");
+    setWatermarkText(config.watermark?.text || "");
+    setWatermarkPosition(config.watermark?.position || "bottom_right");
+    setWatermarkOpacity(Number(config.watermark?.opacity || 0.18));
+    setWatermarkFontSize(Number(config.watermark?.fontSize || 18));
+    setWatermarkRotation(Number(config.watermark?.rotation || 45));
+    
+    setBackendPrice(null);
+    setPaymentError("");
+    setOrder(null);
+    setPendingPayment(null);
+    setUpiQr(null);
+    
+    navigate("upload");
   }
 
   async function reprintWithSameSettings(historyOrder) {
@@ -1949,7 +2009,7 @@ export default function App() {
           />
           <Route path={ROUTES.desktopAgent} element={<DesktopAgentPage currentUser={currentUser} />} />
           <Route path={ROUTES.centre} element={<CentreCodePage centreCode={centreCode} setCentreCode={setCentreCode} handleCentreCode={handleCentreCode} selectCentreByCode={selectCentreByCode} centres={prioritizedCentres} selectCentreAndUpload={selectCentreAndUpload} lookupLoading={centreLookupLoading} lookupError={centreLookupError} autoStartScanner={Boolean(location.state?.autoStartScanner)} />} />
-          <Route path={ROUTES.upload} element={<UploadPage currentUser={currentUser} startLogin={startLogin} selectedCentre={selectedCentre} documentFile={documentFile} setDocumentFile={setDocumentFile} documentFiles={documentFiles} setDocumentFiles={setDocumentFiles} multiFileConfigs={multiFileConfigs} setMultiFileConfigs={setMultiFileConfigs} documentName={documentName} setDocumentName={setDocumentName} pages={pages} setPages={setPages} selectedPages={selectedPages} setSelectedPages={setSelectedPages} copies={copies} setCopies={setCopies} colorType={colorType} setColorType={setColorType} sideType={sideType} setSideType={setSideType} paperSize={paperSize} setPaperSize={setPaperSize} pagesPerSheet={pagesPerSheet} setPagesPerSheet={setPagesPerSheet} orientation={orientation} setOrientation={setOrientation} printDpi={printDpi} setPrintDpi={setPrintDpi} scaleMode={scaleMode} setScaleMode={setScaleMode} marginMode={marginMode} setMarginMode={setMarginMode} watermark={watermark} setWatermark={setWatermark} watermarkType={watermarkType} setWatermarkType={setWatermarkType} watermarkText={watermarkText} setWatermarkText={setWatermarkText} watermarkPosition={watermarkPosition} setWatermarkPosition={setWatermarkPosition} watermarkOpacity={watermarkOpacity} setWatermarkOpacity={setWatermarkOpacity} watermarkFontSize={watermarkFontSize} setWatermarkFontSize={setWatermarkFontSize} watermarkRotation={watermarkRotation} setWatermarkRotation={setWatermarkRotation} pricePerPage={pricePerPage} estimatedSelectedPageCount={estimatedSelectedPageCount} totalAmount={totalAmount} backendPrice={backendPrice} preparePayment={preparePayment} paymentLoading={paymentLoading} paymentError={paymentError} navigate={navigate} />} />
+          <Route path={ROUTES.upload} element={<UploadPage currentUser={currentUser} startLogin={startLogin} selectedCentre={selectedCentre} documentFile={documentFile} setDocumentFile={setDocumentFile} documentFiles={documentFiles} setDocumentFiles={setDocumentFiles} reprintSourceDocuments={reprintSourceDocuments} setReprintSourceDocuments={setReprintSourceDocuments} multiFileConfigs={multiFileConfigs} setMultiFileConfigs={setMultiFileConfigs} documentName={documentName} setDocumentName={setDocumentName} pages={pages} setPages={setPages} selectedPages={selectedPages} setSelectedPages={setSelectedPages} copies={copies} setCopies={setCopies} colorType={colorType} setColorType={setColorType} sideType={sideType} setSideType={setSideType} paperSize={paperSize} setPaperSize={setPaperSize} pagesPerSheet={pagesPerSheet} setPagesPerSheet={setPagesPerSheet} orientation={orientation} setOrientation={setOrientation} printDpi={printDpi} setPrintDpi={setPrintDpi} scaleMode={scaleMode} setScaleMode={setScaleMode} marginMode={marginMode} setMarginMode={setMarginMode} watermark={watermark} setWatermark={setWatermark} watermarkType={watermarkType} setWatermarkType={setWatermarkType} watermarkText={watermarkText} setWatermarkText={setWatermarkText} watermarkPosition={watermarkPosition} setWatermarkPosition={setWatermarkPosition} watermarkOpacity={watermarkOpacity} setWatermarkOpacity={setWatermarkOpacity} watermarkFontSize={watermarkFontSize} setWatermarkFontSize={setWatermarkFontSize} watermarkRotation={watermarkRotation} setWatermarkRotation={setWatermarkRotation} pricePerPage={pricePerPage} estimatedSelectedPageCount={estimatedSelectedPageCount} totalAmount={totalAmount} backendPrice={backendPrice} preparePayment={preparePayment} paymentLoading={paymentLoading} paymentError={paymentError} navigate={navigate} />} />
           <Route
             path={ROUTES.payment}
             element={
@@ -1978,7 +2038,7 @@ export default function App() {
               />
             }
           />
-            <Route path={ROUTES.history} element={<HistoryPage orders={orders} currentUser={currentUser} lastUpdatedAt={lastOrdersUpdatedAt} onOpenPayment={openPaymentRequest} onReprintOrder={reprintWithSameSettings} />} />
+            <Route path={ROUTES.history} element={<HistoryPage orders={orders} currentUser={currentUser} lastUpdatedAt={lastOrdersUpdatedAt} onOpenPayment={openPaymentRequest} onReprintOrder={reprintWithSameSettings} onReprintWithSettings={reprintWithSettings} />} />
             <Route path={ROUTES.orderHistory} element={<Navigate to={ROUTES.history} replace />} />
             <Route path={ROUTES.usageHistory} element={<Navigate to={ROUTES.history} replace />} />
             <Route path="*" element={<Navigate to={ROUTES.home} replace />} />
