@@ -5,6 +5,7 @@ import StatusBadge from "../components/StatusBadge";
 import { createDocumentSignedDownload, getUserHistory } from "../services/api";
 import { getLocalHistory } from "../utils/localHistory";
 import { onOrderChanged } from "../utils/appEvents";
+import { filterAndSortHistory, computeSummary, getStatusColor, getStatusLabel as label } from "../utils/historySelectors";
 
 function formatDateTime(value) {
   if (!value) return "-";
@@ -26,25 +27,8 @@ function formatDate(value) {
   return date.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 }
 
-function label(value) {
-  return String(value || "-")
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (char) => char.toUpperCase());
-}
-
-function paymentColor(status) {
-  const value = String(status || "").toLowerCase();
-  if (value.includes("paid") || value.includes("collected") || value.includes("verified")) return "green";
-  if (value.includes("failed") || value.includes("refund")) return "red";
-  return "amber";
-}
-
-function printStatusColor(status) {
-  const value = String(status || "").toLowerCase();
-  if (value.includes("collected") || value.includes("printed") || value.includes("ready")) return "green";
-  if (value.includes("failed") || value.includes("cancelled")) return "red";
-  return "slate";
-}
+const paymentColor = (status) => getStatusColor("payment", status);
+const printStatusColor = (status) => getStatusColor("print", status);
 
 function getOrderSearchText(order) {
   return [
@@ -281,12 +265,9 @@ export default function HistoryPage({ orders = [], currentUser, lastUpdatedAt, o
 
   const visibleSource = historyOrders.length || historyData ? historyOrders : [...fallbackOrders, ...localOrders];
 
-  const summary = historyData?.summary || {
-    total_orders: visibleSource.length,
-    total_pages_printed: visibleSource.reduce((sum, order) => sum + Number(order.pages || 0) * Number(order.copies || 1), 0),
-    total_amount_spent: visibleSource.reduce((sum, order) => sum + Number(order.amount || 0), 0),
-    last_print_date: visibleSource[0]?.created_at || null,
-  };
+  const summary = useMemo(() => {
+    return historyData?.summary || computeSummary(visibleSource);
+  }, [historyData, visibleSource]);
 
   const hubs = useMemo(() => {
     return [...new Set(visibleSource.map((order) => order.hub?.name).filter(Boolean))].sort();
@@ -301,21 +282,16 @@ export default function HistoryPage({ orders = [], currentUser, lastUpdatedAt, o
   }, [visibleSource]);
 
   const filteredOrders = useMemo(() => {
-    const searchText = search.trim().toLowerCase();
-    const fromTime = dateFrom ? new Date(`${dateFrom}T00:00:00`).getTime() : null;
-    const toTime = dateTo ? new Date(`${dateTo}T23:59:59`).getTime() : null;
-
-    return visibleSource.filter((order) => {
-      const createdTime = new Date(order.created_at).getTime();
-      if (searchText && !getOrderSearchText(order).includes(searchText)) return false;
-      if (fromTime && Number.isFinite(createdTime) && createdTime < fromTime) return false;
-      if (toTime && Number.isFinite(createdTime) && createdTime > toTime) return false;
-      if (status !== "all" && order.status !== status) return false;
-      if (paymentMethod !== "all" && (order.payment_method || order.payment?.method) !== paymentMethod) return false;
-      if (hubFilter !== "all" && order.hub?.name !== hubFilter) return false;
-      return true;
+    return filterAndSortHistory(visibleSource, {
+      search,
+      dateFrom,
+      dateTo,
+      status,
+      paymentMethod,
+      hubFilter,
+      sortBy: "newest"
     });
-  }, [dateFrom, dateTo, hubFilter, paymentMethod, search, status, visibleSource]);
+  }, [visibleSource, search, dateFrom, dateTo, status, paymentMethod, hubFilter]);
 
   async function downloadDocument(document, mode = "download") {
     if (!document?.document_id) return;

@@ -3,6 +3,7 @@ import { FileText, Upload, IndianRupee, CheckSquare, Square, X, Settings2 } from
 import Card from "../components/Card";
 import Row from "../components/Row";
 import { calculateTotalAmount, getPricePerPage, countSelectedPages } from "../utils/price";
+import { countSelectedPagesPreview, estimatePrintablePages, estimateGuestLimitExceeded, estimateSheets, estimatePricePreview } from "../utils/printEstimate";
 
 export default function UploadPage({
   currentUser,
@@ -337,10 +338,10 @@ export default function UploadPage({
     return displayFiles.map((file, index) => {
       const config = multiFileConfigs[index] || {};
       const filePages = Number(config.pages || 1);
-      const selectedCount = countSelectedPages(config.selectedPages, filePages) || filePages;
+      const selectedCount = countSelectedPagesPreview(config.selectedPages, filePages) || filePages;
       const fileCopies = Number(config.copies || 1);
       const fileRate = getPricePerPage(selectedCentre, config.colorType || "bw", config.sideType || "single");
-      const fileTotal = calculateTotalAmount({
+      const fileTotal = estimatePricePreview({
         pages: selectedCount,
         copies: fileCopies,
         pricePerPage: fileRate,
@@ -640,8 +641,8 @@ export default function UploadPage({
                   <Row label="Original Pages" value={backendPrice?.originalPageCount || pages} />
                   <Row label="Selected Pages" value={backendPrice?.selectedPageCount || selectedPages || "All"} />
                   <Row label="Copies" value={copies} />
-                  <Row label="Printable Pages" value={backendPrice?.printablePageCount || Number(estimatedSelectedPageCount || pages || 0) * Number(copies || 0)} />
-                  <Row label="Sheets" value={backendPrice?.sheetCount || "-"} />
+                  <Row label="Printable Pages" value={backendPrice?.printablePageCount || estimatePrintablePages(estimatedSelectedPageCount, copies)} />
+                  <Row label="Sheets" value={backendPrice?.sheetCount || estimateSheets(estimatedSelectedPageCount, copies, sideType)} />
                   <Row label="Print Type" value={colorType === "bw" ? "B/W" : "Color"} />
                   <Row label="Side" value={sideType} />
                   <Row label="Pages/Sheet" value={pagesPerSheet} />
@@ -678,8 +679,8 @@ export default function UploadPage({
                  <Row label="Original Pages" value={backendPrice?.originalPageCount || pages} />
                  <Row label="Selected Pages" value={backendPrice?.selectedPageCount || selectedPages || "All"} />
                  <Row label="Copies" value={copies} />
-                 <Row label="Printable Pages" value={backendPrice?.printablePageCount || Number(estimatedSelectedPageCount || pages || 0) * Number(copies || 0)} />
-                 <Row label="Sheets" value={backendPrice?.sheetCount || "-"} />
+                 <Row label="Printable Pages" value={backendPrice?.printablePageCount || estimatePrintablePages(estimatedSelectedPageCount, copies)} />
+                 <Row label="Sheets" value={backendPrice?.sheetCount || estimateSheets(estimatedSelectedPageCount, copies, sideType)} />
                  <Row label="Print Type" value={colorType === "bw" ? "B/W" : "Color"} />
                  <Row label="Side" value={sideType} />
                  <Row label="Orientation" value={orientation} />
@@ -702,10 +703,27 @@ export default function UploadPage({
           </div>
 
           {!currentUser && (
-            <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-              <p className="font-semibold">Continue without login for up to 5 selected pages.</p>
-              <p className="mt-1">Login for larger orders and saved print history.</p>
-              <button onClick={() => startLogin("user")} className="mt-3 rounded-xl bg-amber-900 px-4 py-2 font-semibold text-white">Login instead</button>
+            <div className={`mb-4 rounded-xl border p-4 text-sm ${
+              estimateGuestLimitExceeded(isMulti ? localEstimatedTotal / (pricePerPage || 1) : estimatePrintablePages(estimatedSelectedPageCount, copies), currentUser)
+                ? "border-rose-200 bg-rose-50 text-rose-800"
+                : "border-amber-200 bg-amber-50 text-amber-800"
+            }`}>
+              {estimateGuestLimitExceeded(isMulti ? localEstimatedTotal / (pricePerPage || 1) : estimatePrintablePages(estimatedSelectedPageCount, copies), currentUser) ? (
+                <>
+                  <p className="font-semibold">⚠️ Guest limit exceeded ({isMulti ? Math.ceil(localEstimatedTotal / (pricePerPage || 1)) : estimatePrintablePages(estimatedSelectedPageCount, copies)} printable pages).</p>
+                  <p className="mt-1">Please login to print more than 5 pages.</p>
+                </>
+              ) : (
+                <>
+                  <p className="font-semibold">Continue without login for up to 5 selected pages.</p>
+                  <p className="mt-1">Login for larger orders and saved print history.</p>
+                </>
+              )}
+              <button onClick={() => startLogin("user")} className={`mt-3 rounded-xl px-4 py-2 font-semibold text-white ${
+                estimateGuestLimitExceeded(isMulti ? localEstimatedTotal / (pricePerPage || 1) : estimatePrintablePages(estimatedSelectedPageCount, copies), currentUser)
+                  ? "bg-rose-900 hover:bg-rose-800"
+                  : "bg-amber-900 hover:bg-amber-800"
+              }`}>Login instead</button>
             </div>
           )}
 

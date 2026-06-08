@@ -20,8 +20,9 @@ import HistoryPage from "./pages/HistoryPage";
 import PlatformStatsPage from "./pages/PlatformStatsPage";
 import { initialCentres, initialOrders } from "./data/demoData";
 import { calculateTotalAmount, countSelectedPages, getPricePerPage } from "./utils/price";
+import { countSelectedPagesPreview, estimatePricePreview } from "./utils/printEstimate";
 import { clearStoredAuth, getStoredAuth, isDesktop, onPrintersUpdated, saveStoredAuth } from "./utils/desktopBridge";
-import { apiRequest } from "./services/api";
+import { apiRequest, invalidateUserHistory } from "./services/api";
 import { loadRazorpayCheckout } from "./utils/razorpay";
 import { saveOrderToLocalHistory } from "./utils/localHistory";
 import {
@@ -416,6 +417,9 @@ export default function App() {
   const [name, setName] = useState("");
   const [username, setUsernameState] = useState("");
   const [usernameEdited, setUsernameEdited] = useState(false);
+  const [usernameStatus, setUsernameStatus] = useState(null); // null, 'checking', 'available', 'taken'
+  const usernameCache = useRef({});
+  const usernameAbortController = useRef(null);
   const usernameSuggestionRequest = useRef(0);
   const [hubName, setHubName] = useState("");
   const [hubCode, setHubCode] = useState("");
@@ -478,20 +482,18 @@ export default function App() {
       sessionStorage.setItem("printease_session_id", sessionId);
     }
 
-    const pingVisit = () => {
-      apiRequest("/api/stats/visit", { method: "POST", body: JSON.stringify({ sessionId, isPageView: false }) }).catch(() => {});
-    };
-
-    const interval = setInterval(pingVisit, 60000);
-    return () => clearInterval(interval);
-  }, []);
-
-  useEffect(() => {
-    const sessionId = sessionStorage.getItem("printease_session_id");
-    if (sessionId) {
-      apiRequest("/api/stats/visit", { method: "POST", body: JSON.stringify({ sessionId, isPageView: true }) }).catch(() => {});
+    const key = "printease_visit_sent";
+    if (!sessionStorage.getItem(key)) {
+      apiRequest("/api/stats/visit", {
+        method: "POST",
+        body: JSON.stringify({ sessionId, isPageView: false }),
+      })
+        .then(() => {
+          sessionStorage.setItem(key, "1");
+        })
+        .catch(() => {});
     }
-  }, [location.pathname]);
+  }, []);
 
   useEffect(() => {
     let ignore = false;
@@ -638,13 +640,13 @@ export default function App() {
   );
 
   const estimatedSelectedPageCount = useMemo(
-    () => countSelectedPages(selectedPages, pages) || pages,
+    () => countSelectedPagesPreview(selectedPages, pages) || pages,
     [selectedPages, pages]
   );
 
   const totalAmount = useMemo(
     () =>
-      calculateTotalAmount({
+      estimatePricePreview({
         pages: estimatedSelectedPageCount,
         copies,
         pricePerPage,
@@ -773,6 +775,66 @@ export default function App() {
     setUsernameState(normalizeUsername(value));
   }
 
+  useEffect(() => {
+    if (authMode !== "register" && authMode !== "profile") {
+      setUsernameStatus(null);
+      return;
+    }
+
+    if (!usernameEdited) {
+      setUsernameStatus(null);
+      return;
+    }
+
+    const cleaned = username.trim().toLowerCase();
+
+    if (cleaned.length < 4) {
+      setUsernameStatus(null);
+      return;
+    }
+
+    if (!/^[a-z0-9]+$/.test(cleaned)) {
+      setUsernameStatus("taken");
+      return;
+    }
+
+    if (usernameCache.current[cleaned] !== undefined) {
+      setUsernameStatus(usernameCache.current[cleaned] ? "available" : "taken");
+      return;
+    }
+
+    setUsernameStatus("checking");
+
+    const timer = setTimeout(async () => {
+      if (usernameAbortController.current) {
+        usernameAbortController.current.abort();
+      }
+      usernameAbortController.current = new AbortController();
+      const { signal } = usernameAbortController.current;
+
+      try {
+        const data = await apiRequest(
+          `/api/auth/username-available?username=${encodeURIComponent(cleaned)}`,
+          { signal }
+        );
+        usernameCache.current[cleaned] = data.available;
+        setUsernameStatus(data.available ? "available" : "taken");
+      } catch (err) {
+        if (err.name === "AbortError") {
+          return;
+        }
+        setUsernameStatus(null);
+      }
+    }, 500);
+
+    return () => {
+      clearTimeout(timer);
+      if (usernameAbortController.current) {
+        usernameAbortController.current.abort();
+      }
+    };
+  }, [username, authMode, usernameEdited]);
+
   function generateStrongPassword() {
     const nextPassword = generateStrongPasswordValue();
     setPassword(nextPassword);
@@ -796,6 +858,7 @@ export default function App() {
     setAuthRole(role);
     setAuthMode("register");
     setUsernameEdited(false);
+    setUsernameStatus(null);
     suggestUniqueUsername(name, email, true);
     setAuthError("");
     navigate("auth");
@@ -810,6 +873,7 @@ export default function App() {
     setAuthMode(mode);
     if (mode === "register" || mode === "profile") {
       setUsernameEdited(false);
+      setUsernameStatus(null);
       suggestUniqueUsername(name, email, true);
     }
     setAuthError("");
@@ -1051,6 +1115,11 @@ export default function App() {
 
     if (authMode === "register" && (!trimmedUsername || !/^[a-z0-9]+$/.test(trimmedUsername))) {
       setAuthError("Username can use only lowercase letters and numbers.");
+      return;
+    }
+
+    if (authMode === "register" && usernameStatus === "taken") {
+      setAuthError("Username is already taken.");
       return;
     }
 
@@ -1341,6 +1410,7 @@ export default function App() {
       setBackendPrice(orderData.price || null);
       
       saveOrderToLocalHistory(nextOrder, defaultPrintOptions, orderData.price, uploadedDocuments);
+      invalidateUserHistory(currentUser?.id || "me");
 
       if (orderData.orderAccessToken) {
         setOrderAccessToken(orderData.orderAccessToken);
@@ -1395,7 +1465,8 @@ export default function App() {
         setOrder(requestedOrder);
         setOrders((prev) => upsertOrder(prev, requestedOrder));
         setLastOrdersUpdatedAt(new Date().toISOString());
-      emitOrderChanged();
+        emitOrderChanged();
+        invalidateUserHistory(currentUser?.id || "me");
         setPendingPayment(paymentData.payment || {
           id: `manual-${order.backendId}`,
           orderId: order.backendId,
@@ -1441,6 +1512,7 @@ export default function App() {
         setOrders((prev) => upsertOrder(prev, requestedOrder));
         setLastOrdersUpdatedAt(new Date().toISOString());
       emitOrderChanged();
+        invalidateUserHistory(currentUser?.id || "me");
       }
 
       if (paymentMethod === "razorpay" && paymentData.razorpay?.orderId) {
@@ -1477,6 +1549,7 @@ export default function App() {
               setOrders((prev) => upsertOrder(prev, verifiedOrder));
               setLastOrdersUpdatedAt(new Date().toISOString());
       emitOrderChanged();
+              invalidateUserHistory(currentUser?.id || "me");
               setPendingPayment(null);
               setUpiQr(null);
               navigate("track");
@@ -1648,6 +1721,7 @@ export default function App() {
       setOrders((prev) => upsertOrder(prev, createdOrder));
       setLastOrdersUpdatedAt(new Date().toISOString());
       emitOrderChanged();
+      invalidateUserHistory(currentUser?.id || "me");
 
       setSelectedCentre(nextCentre);
       setPendingPayment({
@@ -1691,6 +1765,7 @@ export default function App() {
         setOrders((prev) => upsertOrder(prev, requestedOrder));
         setLastOrdersUpdatedAt(new Date().toISOString());
       emitOrderChanged();
+        invalidateUserHistory(currentUser?.id || "me");
       }
       await loadRazorpayCheckout();
 
@@ -1724,6 +1799,7 @@ export default function App() {
             setOrders((prev) => upsertOrder(prev, nextOrder));
             setLastOrdersUpdatedAt(new Date().toISOString());
       emitOrderChanged();
+            invalidateUserHistory(currentUser?.id || "me");
             setPendingPayment(null);
             setUpiQr(null);
           } catch (error) {
@@ -1771,6 +1847,7 @@ export default function App() {
         setOrders((prev) => upsertOrder(prev, requestedOrder));
         setLastOrdersUpdatedAt(new Date().toISOString());
       emitOrderChanged();
+        invalidateUserHistory(currentUser?.id || "me");
       }
     } catch (error) {
       setPaymentError(error.message || "Could not create UPI QR.");
@@ -1793,6 +1870,7 @@ export default function App() {
       setOrders(prev => upsertOrder(prev, verifiedOrder));
       setLastOrdersUpdatedAt(new Date().toISOString());
       emitOrderChanged();
+      invalidateUserHistory(currentUser?.id || "me");
       setPendingPayment(null);
       setUpiQr(null);
     } catch (error) {
@@ -1815,6 +1893,7 @@ export default function App() {
         setOrders((prev) => upsertOrder(prev, savedOrder));
         setLastOrdersUpdatedAt(new Date().toISOString());
       emitOrderChanged();
+        invalidateUserHistory(currentUser?.id || "me");
         if (order?.id === orderId || order?.backendId === existingOrder.backendId) setOrder(savedOrder);
         return;
       }
@@ -1832,7 +1911,7 @@ export default function App() {
   useEffect(() => {
     if (!currentUser) return;
 
-    const shouldPollHistory = page === "history";
+    const shouldPollHistory = false; // Never poll user history page
     const shouldPollTrack = page === "track" && order?.backendId;
     if (!shouldPollHistory && !shouldPollTrack) return;
 
@@ -1944,6 +2023,7 @@ export default function App() {
                 setShowPassword={setShowPassword}
                 username={username}
                 setUsername={updateUsername}
+                usernameStatus={usernameStatus}
                 name={name}
                 setName={updateName}
                 mobile={mobile}
