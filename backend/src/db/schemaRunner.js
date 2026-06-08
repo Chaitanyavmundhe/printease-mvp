@@ -59,9 +59,26 @@ export async function applySchema() {
       const files = await readdir(migrationsDir);
       const sqlFiles = files.filter(f => f.endsWith('.sql')).sort();
       for (const file of sqlFiles) {
+        const version = file.replace('.sql', '');
+        
+        const { rows } = await query('SELECT version FROM schema_migrations WHERE version = $1', [version]);
+        if (rows.length > 0) {
+          console.log(`[DB MIGRATION] Skipping ${file} (already applied)`);
+          continue;
+        }
+
         console.log(`[DB MIGRATION] Running ${file}...`);
         const migrationSql = await readFile(join(migrationsDir, file), 'utf8');
-        await query(migrationSql);
+        
+        await query('BEGIN');
+        try {
+          await query(migrationSql);
+          await query('INSERT INTO schema_migrations (version) VALUES ($1) ON CONFLICT DO NOTHING', [version]);
+          await query('COMMIT');
+        } catch (err) {
+          await query('ROLLBACK');
+          throw err;
+        }
       }
     } catch (err) {
       if (err.code !== 'ENOENT') {
