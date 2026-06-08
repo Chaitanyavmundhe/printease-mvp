@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Calendar, ChevronDown, Download, FileText, Filter, IndianRupee, Printer, RefreshCw, Search, Store, X } from "lucide-react";
+import { Calendar, ChevronDown, Download, FileText, Filter, IndianRupee, Printer, RefreshCw, Search, Store, X, Info } from "lucide-react";
 import Card from "../components/Card";
 import StatusBadge from "../components/StatusBadge";
 import { createDocumentSignedDownload, getUserHistory } from "../services/api";
@@ -435,10 +435,17 @@ export default function HistoryPage({ orders = [], currentUser, lastUpdatedAt, o
     <div className="space-y-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-3xl font-extrabold tracking-tight text-slate-950">My Prints</h2>
+          <h2 className="text-3xl font-extrabold tracking-tight text-slate-950">Print History</h2>
           <p className="mt-2 text-sm text-slate-600">View your previous orders, payment details, and print settings.</p>
         </div>
         {lastUpdatedAt && <p className="text-xs font-semibold text-slate-500">Last refreshed {new Date(lastUpdatedAt).toLocaleTimeString()}</p>}
+      </div>
+
+      <div className="rounded-md bg-blue-50 p-4 border border-blue-100 flex items-start gap-3">
+        <Info className="h-5 w-5 text-blue-500 mt-0.5 flex-shrink-0" />
+        <p className="text-sm text-blue-700">
+          <strong>Privacy Notice:</strong> For your security, all uploaded documents and server records are permanently deleted after 15 days. Your print history will remain visible here in your browser's local storage until you clear it.
+        </p>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

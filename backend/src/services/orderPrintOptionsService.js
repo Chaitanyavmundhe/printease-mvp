@@ -1,3 +1,10 @@
+/**
+ * orderPrintOptionsService.js
+ * 
+ * Extracts print options from user submissions, normalizing legacy formats
+ * (e.g. string "all" vs objects) into a standard shape for pricing and printing.
+ */
+
 import { mapLegacyFieldsToPrintOptions } from '../utils/printOptions.js';
 
 function legacySelectedPagesToPrintOptionsRange(selectedPages) {

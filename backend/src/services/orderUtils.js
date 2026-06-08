@@ -39,6 +39,13 @@ export function getOrderAccessToken(req) {
   ).trim();
 }
 
+/**
+ * orderUtils.js
+ * 
+ * Shared helper functions for evaluating order state, access permissions,
+ * and standard statuses. Extracted to prevent duplication across controllers.
+ */
+
 export function canAccessOrder(user, order, req = null) {
   if (!order) return false;
 

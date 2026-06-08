@@ -1,3 +1,10 @@
+/**
+ * orderPricingPresenter.js
+ * 
+ * Responsible for formatting internal pricing breakdown objects into
+ * safe, consistent metadata objects for the database and frontend.
+ */
+
 export function pricingMetadata(price) {
   return {
     physicalSheetCount: price.physicalSheetCount,
