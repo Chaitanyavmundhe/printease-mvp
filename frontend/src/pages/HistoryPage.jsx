@@ -324,20 +324,20 @@ export default function HistoryPage({ orders = [], currentUser, lastUpdatedAt, o
     const documents = order.documents?.length ? order.documents : [order.document].filter(Boolean);
 
     return (
-      <div className="grid gap-5 border-t bg-slate-50/70 p-4 lg:grid-cols-[1.1fr_1fr]">
+      <div className="grid gap-4 border-t bg-slate-50/50 p-3 lg:grid-cols-[1.1fr_1fr]">
         <section className="space-y-4">
           <div>
-            <h4 className="font-bold text-slate-950">Document Details</h4>
-            <div className="mt-3 grid gap-3">
+            <h4 className="text-sm font-bold text-slate-900">Document Details</h4>
+            <div className="mt-2 grid gap-3">
               {documents.map((document, index) => (
-                <div key={document.id || document.document_id || `${order.id}-${index}`} className="rounded-2xl border bg-white p-4">
+                <div key={document.id || document.document_id || `${order.id}-${index}`} className="rounded-xl border bg-white p-3">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                     <div>
-                      <p className="font-semibold">{document.file_name || "Document"}</p>
-                      <p className="mt-1 text-xs text-slate-500">
+                      <p className="font-semibold text-sm">{document.file_name || "Document"}</p>
+                      <p className="mt-1 text-[11px] text-slate-500">
                         {document.file_type || "PDF"} • Original {document.original_pages || "-"} pages • Range {document.page_range || "all"}
                       </p>
-                      <p className="mt-1 text-xs text-slate-500">
+                      <p className="mt-0.5 text-[11px] text-slate-500">
                         Printable {document.printable_pages || "-"} • Copies {document.copies || 1} • Charged pages {document.charged_pages || "-"}
                       </p>
                     </div>
@@ -360,9 +360,9 @@ export default function HistoryPage({ orders = [], currentUser, lastUpdatedAt, o
                       </button>
                     </div>
                   </div>
-                  <div className="mt-4 border-t pt-4">
-                    <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Settings used for this document</p>
-                    <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-3">
+                  <div className="mt-3 border-t pt-3">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Settings used</p>
+                    <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-3">
                       {buildDocumentSettings(document, config).map(([settingLabel, value]) => (
                         <DetailLine key={`${document.id || document.document_id || index}-${settingLabel}`} label={settingLabel} value={value} />
                       ))}
@@ -374,14 +374,14 @@ export default function HistoryPage({ orders = [], currentUser, lastUpdatedAt, o
           </div>
 
           <div>
-            <h4 className="font-bold text-slate-950">Status Timeline</h4>
-            <div className="mt-3 space-y-3">
+            <h4 className="text-sm font-bold text-slate-900">Status Timeline</h4>
+            <div className="mt-2 space-y-2">
               {(order.timeline || []).map((item, index) => (
                 <div key={`${item.label}-${item.time}-${index}`} className="flex gap-3">
                   <span className="mt-1 h-3 w-3 rounded-full bg-slate-900" />
                   <div>
-                    <p className="text-sm font-semibold">{item.label}</p>
-                    <p className="text-xs text-slate-500">{formatDateTime(item.time)}</p>
+                    <p className="text-xs font-semibold text-slate-800">{item.label}</p>
+                    <p className="text-[11px] text-slate-500">{formatDateTime(item.time)}</p>
                   </div>
                 </div>
               ))}
@@ -392,8 +392,8 @@ export default function HistoryPage({ orders = [], currentUser, lastUpdatedAt, o
 
         <section className="space-y-4">
           <div>
-            <h4 className="font-bold text-slate-950">Print Settings Used</h4>
-            <div className="mt-3 grid grid-cols-2 gap-3">
+            <h4 className="text-sm font-bold text-slate-900">Print Settings Used</h4>
+            <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-2 lg:grid-cols-3">
               <DetailLine label="Paper" value={config.paper_size || "A4"} />
               <DetailLine label="Color" value={label(config.color_mode || "black_white")} />
               <DetailLine label="Sides" value={config.sides || (config.duplex ? "Double-sided" : "Single-sided")} />
@@ -406,8 +406,8 @@ export default function HistoryPage({ orders = [], currentUser, lastUpdatedAt, o
           </div>
 
           <div>
-            <h4 className="font-bold text-slate-950">Payment</h4>
-            <div className="mt-3 grid grid-cols-2 gap-3">
+            <h4 className="text-sm font-bold text-slate-900">Payment</h4>
+            <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-2 lg:grid-cols-3">
               <DetailLine label="Method" value={order.payment?.method || order.payment_method} />
               <DetailLine label="Status" value={order.payment?.status || order.payment_status} />
               <DetailLine label="Amount" value={`₹${order.payment?.amount ?? order.amount ?? 0}`} />
@@ -417,8 +417,8 @@ export default function HistoryPage({ orders = [], currentUser, lastUpdatedAt, o
           </div>
 
           <div>
-            <h4 className="font-bold text-slate-950">Hub / Shop</h4>
-            <div className="mt-3 grid grid-cols-2 gap-3">
+            <h4 className="text-sm font-bold text-slate-900">Hub / Shop</h4>
+            <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-2 lg:grid-cols-3">
               <DetailLine label="Hub" value={order.hub?.name} />
               <DetailLine label="Code" value={order.hub?.code} />
               <DetailLine label="Printer" value={order.print_job?.printer_name || "Not recorded"} />
@@ -535,10 +535,10 @@ export default function HistoryPage({ orders = [], currentUser, lastUpdatedAt, o
                       </StatusBadge>
                     )}
                   </div>
-                  <p className="mt-2 font-semibold text-slate-800">{order.document?.file_name || `${order.documents?.length || 1} uploaded document${order.documents?.length !== 1 ? 's' : ''}`}</p>
-                  <p className="mt-1 text-sm text-slate-500">{formatDateTime(order.created_at)}</p>
-                  <p className="mt-2 text-sm text-slate-600">{getOrderPrintableSummary(order)}</p>
-                  <p className="mt-2 inline-flex items-center gap-2 text-sm font-semibold text-slate-700">
+                  <p className="mt-1.5 font-semibold text-sm text-slate-800">{order.document?.file_name || `${order.documents?.length || 1} uploaded document${order.documents?.length !== 1 ? 's' : ''}`}</p>
+                  <p className="mt-1 text-[11px] text-slate-500">{formatDateTime(order.created_at)}</p>
+                  <p className="mt-1 text-[11px] text-slate-600">{getOrderPrintableSummary(order)}</p>
+                  <p className="mt-1.5 inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700">
                     <Store size={15} /> {order.hub?.name || "Print Hub"} • ₹{order.amount || 0} • {order.payment_method || order.payment?.method || "Payment"}
                   </p>
                 </div>
