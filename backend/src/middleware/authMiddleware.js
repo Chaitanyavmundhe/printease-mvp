@@ -4,13 +4,11 @@ import { getSupabaseAdminClient } from '../config/supabase.js';
 
 function getBearerToken(req) {
   const header = req.headers.authorization;
-  if (header && header.startsWith('Bearer ')) {
-    return header.split(' ')[1];
+  if (!header || !header.startsWith('Bearer ')) {
+    return null;
   }
-  if (req.query.authToken) {
-    return req.query.authToken;
-  }
-  return null;
+
+  return header.split(' ')[1];
 }
 
 async function findLegacyJwtUser(token) {
