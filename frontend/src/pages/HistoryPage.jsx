@@ -507,10 +507,14 @@ export default function HistoryPage({ orders = [], currentUser, lastUpdatedAt, o
                 <div>
                   <div className="flex flex-wrap items-center gap-2">
                     <h3 className="text-lg font-extrabold">{order.order_code || order.id}</h3>
-                    <StatusBadge color={printStatusColor(order.status)}>{order.status || "Order"}</StatusBadge>
-                    <StatusBadge color={paymentColor(order.payment?.status || order.payment_status)}>{order.payment?.status || order.payment_status || "Payment"}</StatusBadge>
+                    <StatusBadge color={printStatusColor(order.status)}>{label(order.status) || "Order"}</StatusBadge>
+                    {label(order.payment?.status || order.payment_status) !== label(order.status) && (
+                      <StatusBadge color={paymentColor(order.payment?.status || order.payment_status)}>
+                        {label(order.payment?.status || order.payment_status) || "Payment"}
+                      </StatusBadge>
+                    )}
                   </div>
-                  <p className="mt-2 font-semibold text-slate-800">{order.document?.file_name || "Uploaded document"}</p>
+                  <p className="mt-2 font-semibold text-slate-800">{order.document?.file_name || `${order.documents?.length || 1} uploaded document${order.documents?.length !== 1 ? 's' : ''}`}</p>
                   <p className="mt-1 text-sm text-slate-500">{formatDateTime(order.created_at)}</p>
                   <p className="mt-2 text-sm text-slate-600">{getOrderPrintableSummary(order)}</p>
                   <p className="mt-2 inline-flex items-center gap-2 text-sm font-semibold text-slate-700">
