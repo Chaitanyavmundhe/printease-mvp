@@ -270,7 +270,7 @@ export function getOrderDocuments(orderId) {
 export function getUserHistory({ force = false, userId = "me" } = {}) {
   return getCachedJson(
     `user-history:${userId}`,
-    () => apiRequest("/api/user/history"),
+    () => apiRequest("/api/user/history?compact=true&limit=20"),
     {
       ttlMs: 2 * 60 * 1000,
       force,
@@ -280,6 +280,22 @@ export function getUserHistory({ force = false, userId = "me" } = {}) {
 
 export function invalidateUserHistory(userId = "me") {
   invalidateCache(`user-history:${userId}`);
+}
+
+/**
+ * Fetches full detail for a single order (lazy, on demand).
+ * Cached per order ID for 5 minutes so repeat clicks don't re-fetch.
+ */
+export function getOrderDetail(orderId) {
+  return getCachedJson(
+    `order-detail:${orderId}`,
+    () => apiRequest(`/api/user/history/${encodeURIComponent(orderId)}`).then((data) => data.order),
+    { ttlMs: 5 * 60 * 1000 }
+  );
+}
+
+export function invalidateOrderDetail(orderId) {
+  invalidateCache(`order-detail:${orderId}`);
 }
 
 export function createDocumentSignedDownload(documentId) {

@@ -1,4 +1,4 @@
-import { getUserPrintHistory } from '../db/repository.js';
+import { getUserPrintHistory, getUserPrintHistoryCompact, getOrderForUser } from '../db/repository.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 
 function normalizeStatus(value) {
@@ -109,6 +109,27 @@ function buildTimeline(order, payment, printJobs) {
   return items.sort((left, right) => new Date(left.time).getTime() - new Date(right.time).getTime());
 }
 
+/**
+ * Compact representation for the history list.
+ * Only includes fields needed to render the list card row.
+ * No documents array, no print_config, no timeline, no raw snapshots.
+ */
+function toCompactOrder(order, payment) {
+  return {
+    id: order.id,
+    order_code: order.order_code,
+    created_at: order.created_at,
+    status: order.status,
+    payment_status: order.payment_status,
+    payment_method: payment ? labelPaymentMethod(payment, { paymentStatus: order.payment_status }) : labelPaymentMethod(null, { paymentStatus: order.payment_status }),
+    amount: order.amount,
+    pages: order.pages,
+    copies: order.copies,
+    document_name: order.document_name || null,
+    hub: order.hub
+  };
+}
+
 function toHistoryOrder(order, files, payment, printJobs) {
   const documents = buildDocuments(order, files);
   const printConfig = buildPrintConfig(order, files);
@@ -158,6 +179,34 @@ function toHistoryOrder(order, files, payment, printJobs) {
 }
 
 export const getUserHistory = asyncHandler(async (req, res) => {
+  const compact = req.query.compact === 'true';
+  const limit = Math.min(parseInt(req.query.limit, 10) || 20, 100);
+
+  if (compact) {
+    // Compact mode: single SQL query, no sub-queries for files/payments/printjobs
+    const orders = await getUserPrintHistoryCompact(req.user.id, limit);
+
+    const paidOrders = orders.filter((o) => ['collected', 'verified', 'paid', 'captured'].includes(
+      String(o.payment_status || '').toLowerCase()
+    ));
+    const totalPages = orders.reduce((sum, o) =>
+      sum + (Number(o.pages || 0) * Number(o.copies || 1)), 0);
+
+    res.set('Cache-Control', 'private, max-age=60');
+    return res.json({
+      success: true,
+      compact: true,
+      summary: {
+        total_orders: orders.length,
+        total_pages_printed: totalPages,
+        total_amount_spent: paidOrders.reduce((sum, o) => sum + Number(o.amount || 0), 0),
+        last_print_date: orders[0]?.created_at || null
+      },
+      orders
+    });
+  }
+
+  // Full mode — backward-compatible, returns existing payload shape
   const { orders, filesByOrderId, paymentsByOrderId, printJobsByOrderId } = await getUserPrintHistory(req.user.id);
   const historyOrders = orders.map((order) => toHistoryOrder(
     order,
@@ -172,7 +221,7 @@ export const getUserHistory = asyncHandler(async (req, res) => {
     return sum + (documentPages || Number(order.pages || 0) * Number(order.copies || 1));
   }, 0);
 
-  res.set("Cache-Control", "private, max-age=60");
+  res.set('Cache-Control', 'private, max-age=60');
   res.json({
     success: true,
     summary: {
@@ -183,4 +232,27 @@ export const getUserHistory = asyncHandler(async (req, res) => {
     },
     orders: historyOrders
   });
+});
+
+/**
+ * GET /api/user/history/:orderId
+ * Returns full detail for a single order owned by the authenticated user.
+ * Used for lazy loading when the user clicks "View Details".
+ */
+export const getOrderDetail = asyncHandler(async (req, res) => {
+  const { orderId } = req.params;
+  if (!orderId || typeof orderId !== 'string' || orderId.length > 64) {
+    return res.status(400).json({ success: false, error: 'Invalid order ID' });
+  }
+
+  const result = await getOrderForUser(orderId, req.user.id);
+  if (!result) {
+    return res.status(404).json({ success: false, error: 'Order not found' });
+  }
+
+  const { order, files, payment, printJobs } = result;
+  const detail = toHistoryOrder(order, files, payment, printJobs);
+
+  res.set('Cache-Control', 'private, max-age=300');
+  res.json({ success: true, order: detail });
 });

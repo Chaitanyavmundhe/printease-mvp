@@ -882,6 +882,136 @@ export async function getUserPrintHistory(userId) {
   return { orders, filesByOrderId, paymentsByOrderId, printJobsByOrderId };
 }
 
+/**
+ * Lightweight history query for compact list mode.
+ * Runs a single SQL join (orders + hub), no extra sub-queries.
+ * Returns only the fields needed to render the history list card.
+ */
+export async function getUserPrintHistoryCompact(userId, limit = 20) {
+  const ordersResult = await query(
+    `select
+       po.id,
+       po.order_code,
+       po.created_at,
+       po.status,
+       po.payment_status,
+       po.amount,
+       po.pages,
+       po.copies,
+       po.document_name,
+       po.hub_id,
+       h.hub_name,
+       h.centre_code
+     from print_orders po
+     left join print_hubs h on h.id = po.hub_id
+     where po.user_id = $1
+       and coalesce(po.customer_type, 'registered') <> 'guest'
+     order by po.created_at desc
+     limit $2`,
+    [userId, limit]
+  );
+
+  return ordersResult.rows.map((row) => ({
+    id: row.id,
+    order_code: row.order_code,
+    created_at: timestamp(row.created_at),
+    status: row.status,
+    payment_status: row.payment_status,
+    amount: number(row.amount),
+    pages: row.pages,
+    copies: row.copies,
+    document_name: row.document_name || null,
+    hub: {
+      id: row.hub_id,
+      name: row.hub_name || 'Print Hub',
+      code: row.centre_code || null
+    }
+  }));
+}
+
+/**
+ * Full detail fetch for a single order owned by userId.
+ * Reuses the same four-query pattern as getUserPrintHistory but for one order.
+ */
+export async function getOrderForUser(orderId, userId) {
+  const orderResult = await query(
+    `select
+       po.*,
+       po.hub_id as centre_id,
+       h.hub_name,
+       h.hub_name as centre_name,
+       h.centre_code,
+       h.mobile as centre_mobile,
+       h.upi_id as centre_upi_id,
+       h.upi_qr_image_url as centre_upi_qr_image_url
+     from print_orders po
+     left join print_hubs h on h.id = po.hub_id
+     where po.id = $1
+       and po.user_id = $2
+       and coalesce(po.customer_type, 'registered') <> 'guest'
+     limit 1`,
+    [orderId, userId]
+  );
+
+  const row = orderResult.rows[0];
+  if (!row) return null;
+
+  const order = {
+    ...mapOrder(row),
+    hub: {
+      id: row.hub_id,
+      name: row.hub_name || row.centre_name || 'Print Hub',
+      code: row.centre_code || null,
+      mobile: row.centre_mobile || null,
+      upiId: row.centre_upi_id || null,
+      upiQrImageUrl: row.centre_upi_qr_image_url || null,
+      address: null
+    }
+  };
+
+  const [filesResult, paymentsResult, printJobsResult] = await Promise.all([
+    query(
+      `select
+         pof.*,
+         coalesce(pof.print_sequence, row_number() over (partition by pof.order_id order by pof.created_at, pof.id)) as print_sequence,
+         d.file_name,
+         d.file_type,
+         d.file_size,
+         d.file_size_bytes,
+         d.file_sha256,
+         d.storage_path,
+         d.page_count,
+         d.created_at as document_created_at
+       from print_order_files pof
+       join documents d on d.id = pof.document_id
+       where pof.order_id = $1
+       order by coalesce(pof.print_sequence, 999999), pof.created_at, pof.id`,
+      [orderId]
+    ),
+    query(
+      `select distinct on (order_id) *
+       from payments
+       where order_id = $1
+       order by order_id, coalesce(verified_at, created_at) desc, created_at desc`,
+      [orderId]
+    ),
+    query(
+      `select *
+       from print_jobs
+       where order_id = $1
+       order by created_at desc`,
+      [orderId]
+    )
+  ]);
+
+  return {
+    order,
+    files: filesResult.rows.map(mapOrderFile),
+    payment: paymentsResult.rows[0] ? mapPayment(paymentsResult.rows[0]) : null,
+    printJobs: printJobsResult.rows.map(mapPrintJob)
+  };
+}
+
 export async function listOrdersByCentre(centreId) {
   const result = await query(
     `select
