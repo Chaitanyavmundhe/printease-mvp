@@ -19,85 +19,20 @@ import { generateId, generateOrderCode, generateShortCode } from '../utils/gener
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { queuePrintJobIfPaymentReady } from '../services/printQueueService.js';
 import { processManualCollection } from '../services/manualCollectionService.js';
+import { buildSubmittedPrintOptions } from '../services/orderPrintOptionsService.js';
+import { pricingMetadata } from '../services/orderPricingPresenter.js';
+import {
+  ALLOWED_HUB_ORDER_STATUSES,
+  canAccessOrder,
+  isCancelledOrder,
+  isPaymentComplete
+} from '../services/orderUtils.js';
 import crypto from 'crypto';
 import {
-  mapLegacyFieldsToPrintOptions,
   normalizePrintOptions,
   toLegacyColorType,
   toLegacySideType
 } from '../utils/printOptions.js';
-
-function legacySelectedPagesToPrintOptionsRange(selectedPages) {
-  const value = String(selectedPages || '').trim();
-  if (!value || value.toLowerCase() === 'all') {
-    return { mode: 'all', range: '' };
-  }
-
-  return { mode: 'custom', range: value };
-}
-
-function buildSubmittedPrintOptions(file, fallback) {
-  if (file.printOptions && typeof file.printOptions === 'object') {
-    return file.printOptions;
-  }
-
-  const pages = legacySelectedPagesToPrintOptionsRange(file.selectedPages ?? fallback.selectedPages);
-
-  return {
-    ...mapLegacyFieldsToPrintOptions({
-      copies: file.copies ?? fallback.copies,
-      colorType: file.colorType ?? fallback.colorType,
-      sideType: file.sideType ?? fallback.sideType,
-      watermarkEnabled: file.watermarkEnabled ?? fallback.watermarkEnabled
-    }),
-    pages,
-    paperSize: file.paperSize ?? fallback.paperSize,
-    pagesPerSheet: file.pagesPerSheet ?? fallback.pagesPerSheet,
-    orientation: file.orientation ?? fallback.orientation,
-    scale: {
-      mode: file.scaleMode ?? fallback.scaleMode ?? 'original',
-      percent: null
-    },
-    margins: {
-      mode: file.marginMode ?? fallback.marginMode ?? 'default'
-    },
-    quality: {
-      dpi: file.printDpi ?? fallback.printDpi ?? 300
-    }
-  };
-}
-
-function pricingMetadata(price) {
-  return {
-    physicalSheetCount: price.physicalSheetCount,
-    chargeBy: price.chargeBy,
-    pricePerPage: price.pricePerPage,
-    pricePerSheet: price.pricePerSheet,
-    watermarkFee: price.watermarkCharge,
-    serviceFee: price.serviceFee,
-    totalAmount: price.totalAmount,
-    totalAmountPaise: price.totalAmountPaise
-  };
-}
-
-function getOrderAccessToken(req) {
-  return String(req.headers['x-order-access-token'] || req.query?.token || '').trim();
-}
-
-function canAccessOrder(user, order, req = null) {
-  if (!order) return false;
-
-  if (user?.role === 'admin') return true;
-  if (user?.role === 'hub' && order.centreId === (user.centreId || user.hubId)) return true;
-  if (user?.role === 'user' && order.userId === user.id) return true;
-
-  if (!order.userId) {
-    const providedToken = req ? getOrderAccessToken(req) : '';
-    return Boolean(providedToken && order.guestToken && providedToken === order.guestToken);
-  }
-
-  return false;
-}
 
 function privateOrder(order) {
   return {
@@ -105,31 +40,6 @@ function privateOrder(order) {
     pickupCode: order.pickupCode || null
   };
 }
-
-export function isCancelledOrder(order) {
-  return String(order?.status || '').trim().toLowerCase() === 'cancelled';
-}
-
-export function isPaymentComplete(order) {
-  const value = String(order?.paymentStatus || '').trim().toLowerCase();
-  return value === 'verified' || value === 'collected' || value === 'paid';
-}
-
-const ALLOWED_HUB_ORDER_STATUSES = new Set([
-  'Payment Pending',
-  'Payment Verified',
-  'Payment Collected',
-  'Accepted by Centre',
-  'Queued for Printing',
-  'Sent to Agent',
-  'Printing',
-  'Ready for Pickup',
-  'Collected',
-  'Paused',
-  'Cancelled',
-  'Printing Failed',
-  'Refund Requested'
-]);
 
 export const createOrder = asyncHandler(async (req, res) => {
   const {

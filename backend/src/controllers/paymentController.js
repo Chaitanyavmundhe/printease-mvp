@@ -12,6 +12,12 @@ import { queuePrintJobIfPaymentReady } from '../services/printQueueService.js';
 import { generateId } from '../utils/generateCode.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import {
+  canAccessOrder,
+  isCancelledOrder,
+  isPaymentComplete,
+  normalizePaymentStatus
+} from '../services/orderUtils.js';
+import {
   amountToPaise,
   getPublicRazorpayConfig,
   getRazorpayClient,
@@ -21,22 +27,6 @@ import {
   RAZORPAY_KEY_SECRET,
   RAZORPAY_WEBHOOK_SECRET
 } from '../config/razorpay.js';
-
-function getOrderAccessToken(req) {
-  return String(req.headers['x-order-access-token'] || req.body?.orderAccessToken || '').trim();
-}
-
-function canAccessOrder(user, order, req = null) {
-  if (!order) return false;
-  if (!order.userId) {
-    const providedToken = req ? getOrderAccessToken(req) : '';
-    return Boolean(providedToken && order.guestToken && providedToken === order.guestToken);
-  }
-  if (!user) return false;
-  if (user.role === 'admin') return true;
-  if (user.role === 'hub' && (user.centreId === order.centreId || user.hubId === order.centreId)) return true;
-  return order.userId === user.id;
-}
 
 function assertRazorpayConfigured() {
   if (!RAZORPAY_ENABLED) {
@@ -52,28 +42,12 @@ function assertRazorpayConfigured() {
   }
 }
 
-function normalizePaymentStatus(order) {
-  return String(order?.paymentStatus || '').trim().toLowerCase();
-}
-
-function normalizeOrderStatus(order) {
-  return String(order?.status || '').trim().toLowerCase();
-}
-
-function isOrderCancelled(order) {
-  return normalizeOrderStatus(order) === 'cancelled';
-}
-
-function isPaymentComplete(order) {
-  return ['verified', 'collected', 'paid'].includes(normalizePaymentStatus(order));
-}
-
 function selectedPageCountForOrder(order) {
   return Number(order?.selectedPageCount || order?.printablePageCount || order?.pages || 0);
 }
 
 function assertOrderCanStartPayment(order) {
-  if (isOrderCancelled(order) && !isPaymentComplete(order)) {
+  if (isCancelledOrder(order) && !isPaymentComplete(order)) {
     const error = new Error('Order was cancelled before payment. Payment cannot be started.');
     error.statusCode = 409;
     throw error;
@@ -358,7 +332,7 @@ export const verifyRazorpayPayment = asyncHandler(async (req, res) => {
       };
     }
 
-    if (isOrderCancelled(latestOrder)) {
+    if (isCancelledOrder(latestOrder)) {
       const cancelledPayment = await updatePayment(payment.id, {
         status: 'cancelled',
         providerPaymentId: razorpay_payment_id,
@@ -531,7 +505,7 @@ export const razorpayWebhook = asyncHandler(async (req, res) => {
         providerPayload: event
       }, client);
 
-      const failedOrder = isOrderCancelled(order)
+      const failedOrder = isCancelledOrder(order)
         ? order
         : await updateOrderPayment(order.id, 'failed', 'Payment Failed', client);
       return { payment: failedPayment, order: failedOrder, failed: true };
@@ -542,7 +516,7 @@ export const razorpayWebhook = asyncHandler(async (req, res) => {
       return { payment, order, alreadyProcessed: true };
     }
 
-    if (isOrderCancelled(order)) {
+    if (isCancelledOrder(order)) {
       const cancelledPayment = await updatePayment(payment.id, {
         status: 'cancelled',
         providerPaymentId: paymentId,
