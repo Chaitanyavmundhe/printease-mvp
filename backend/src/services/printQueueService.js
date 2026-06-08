@@ -23,6 +23,7 @@ import {
   verifyPrintFilesReadiness
 } from './printJobReadinessService.js';
 import { createPrintJobFilesForOrder } from './printQueue/printJobFilesService.js';
+import { PRINT_JOB_STATUSES } from '../constants/statuses.js';
 
 export async function queuePrintJobIfPaymentReady(orderId, hubId, client) {
   const orderWithDocument = await findOrderWithDocumentForHub(orderId, hubId, client);
@@ -101,7 +102,7 @@ export async function queuePrintJobIfPaymentReady(orderId, hubId, client) {
     printJobId: printJob.id,
     agentId: targetAgent?.id || null,
     eventType: 'queued_after_payment_ready',
-    newStatus: 'queued',
+    newStatus: PRINT_JOB_STATUSES.QUEUED,
     message: paymentReadyMessage(
       paymentStatus,
       targetAgent

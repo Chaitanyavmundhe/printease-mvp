@@ -26,6 +26,7 @@ import { getSupabaseBucketName } from '../config/supabase.js';
 import { hashAgentSecret } from '../utils/agentCrypto.js';
 import { buildHubAgentAnalytics, decorateAgent, decoratePrinter } from '../utils/hubAgentAnalytics.js';
 import { generateId } from '../utils/generateCode.js';
+import { PRINT_JOB_STATUSES, PAIRING_STATUSES } from '../constants/statuses.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 
 function getHubId(req) {
@@ -196,7 +197,7 @@ export const rejectAgentPairing = asyncHandler(async (req, res) => {
   }
 
   const session = await findPairingSessionById(pairingSessionId);
-  if (!session || session.status !== 'pending' || new Date(session.expiresAt).getTime() <= Date.now()) {
+  if (!session || session.status !== PAIRING_STATUSES.PENDING || new Date(session.expiresAt).getTime() <= Date.now()) {
     return res.status(409).json({ success: false, message: 'Pairing session cannot be rejected' });
   }
 
@@ -339,7 +340,7 @@ export const sendOrderToAgent = asyncHandler(async (req, res) => {
       printJobId: job.id,
       agentId: selectedAgent.id,
       eventType: 'queued',
-      newStatus: 'queued',
+      newStatus: PRINT_JOB_STATUSES.QUEUED,
       message: 'Hub queued order for PrintEase agent',
       rawStatus: {
         orderId: order.id,

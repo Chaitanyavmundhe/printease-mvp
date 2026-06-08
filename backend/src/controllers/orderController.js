@@ -15,7 +15,7 @@ import {
   updateGuestDocumentsTokenHash,
   withTransaction
 } from '../db/repository.js';
-import { createGuestToken, hashGuestToken, getGuestExpiry } from '../services/guestAccessService.js';
+import { assertGuestCanUseDocument, getGuestTokenHashFromRequest, getGuestExpiry } from '../services/guestAccessService.js';
 import { calculatePrintPricing } from '../utils/calculatePrice.js';
 import { generateId, generateOrderCode, generateShortCode } from '../utils/generateCode.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
@@ -96,6 +96,12 @@ export const createOrder = asyncHandler(async (req, res) => {
       
       try {
         assertCanUseDocumentForOrder({ user: req.user, document });
+        if (!req.user?.id) {
+          assertGuestCanUseDocument({ 
+            guestTokenHash: getGuestTokenHashFromRequest(req), 
+            document 
+          });
+        }
       } catch (error) {
         return res.status(error.statusCode || 403).json({ success: false, message: error.message });
       }
@@ -212,8 +218,7 @@ export const createOrder = asyncHandler(async (req, res) => {
     });
   }
 
-  const orderAccessToken = isLimitedLoginlessOrder ? createGuestToken() : null;
-  const guestTokenHash = orderAccessToken ? hashGuestToken(orderAccessToken) : null;
+  const guestTokenHash = isLimitedLoginlessOrder ? getGuestTokenHashFromRequest(req) : null;
   const expiresAt = isLimitedLoginlessOrder ? getGuestExpiry() : null;
 
   const result = await withTransaction(async (client) => {
@@ -223,7 +228,7 @@ export const createOrder = asyncHandler(async (req, res) => {
       userId: req.user?.id || null,
       customerType: isLimitedLoginlessOrder ? 'limited' : 'registered',
       expiresAt,
-      guestToken: orderAccessToken,
+      guestToken: null,
       guestTokenHash,
       guestName: null,
       guestPhone: null,

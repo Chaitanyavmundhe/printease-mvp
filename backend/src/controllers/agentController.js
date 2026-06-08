@@ -26,14 +26,15 @@ import { createAgentToken as createRawAgentToken, createPairingCode, hashAgentSe
 import { generateId } from '../utils/generateCode.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { toAgentJobPayload } from '../services/agentJobPayloadService.js';
+import { PRINT_JOB_STATUSES, PAIRING_STATUSES } from '../constants/statuses.js';
 
 const JOB_STATUS_TO_ORDER_STATUS = {
-  accepted: 'Sent to Agent',
-  downloading: 'Sent to Agent',
-  printing: 'Printing',
-  completed: 'Ready for Pickup',
-  failed: 'Printing Failed',
-  cancelled: 'Cancelled'
+  [PRINT_JOB_STATUSES.ACCEPTED]: 'Sent to Agent',
+  [PRINT_JOB_STATUSES.DOWNLOADING]: 'Sent to Agent',
+  [PRINT_JOB_STATUSES.PRINTING]: 'Printing',
+  [PRINT_JOB_STATUSES.COMPLETED]: 'Ready for Pickup',
+  [PRINT_JOB_STATUSES.FAILED]: 'Printing Failed',
+  [PRINT_JOB_STATUSES.CANCELLED]: 'Cancelled'
 };
 
 function getPairingExpiry() {
@@ -98,27 +99,19 @@ export const confirmPairing = asyncHandler(async (req, res) => {
     return res.status(404).json({ success: false, message: 'Pairing session not found' });
   }
 
-  if (session.status === 'rejected') {
-    return res.status(403).json({
-      success: false,
-      paired: false,
-      message: 'Pairing was rejected'
-    });
+  if (session.status === PAIRING_STATUSES.REJECTED) {
+    return res.status(403).json({ success: false, message: 'Pairing request was rejected' });
   }
 
   if (new Date(session.expiresAt).getTime() <= Date.now()) {
     return res.status(410).json({ success: false, paired: false, message: 'Pairing session expired' });
   }
 
-  if (session.status === 'pending') {
-    return res.status(202).json({
-      success: true,
-      paired: false,
-      message: 'Waiting for hub approval'
-    });
+  if (session.status === PAIRING_STATUSES.PENDING) {
+    return res.status(202).json({ success: true, message: 'Waiting for hub approval', status: 'pending' });
   }
 
-  if (session.status !== 'claimed') {
+  if (session.status !== PAIRING_STATUSES.CLAIMED) {
     return res.status(409).json({
       success: false,
       paired: false,
@@ -208,7 +201,7 @@ function normalizePrinterCondition(input, accepting) {
   const value = String(input || '').trim().toLowerCase();
   if (accepting === false || value.includes('not accepting')) return 'paused';
   if (['idle', 'available', 'enabled', 'accepting'].includes(value)) return 'available';
-  if (['printing', 'processing'].includes(value)) return 'printing';
+  if ([PRINT_JOB_STATUSES.PRINTING, 'processing'].includes(value)) return PRINT_JOB_STATUSES.PRINTING;
   if (['paused', 'disabled', 'stopped'].includes(value)) return 'paused';
   if (['offline', 'unable', 'disconnected'].includes(value)) return 'offline';
   return 'unknown';
@@ -315,7 +308,7 @@ export const acceptJob = asyncHandler((req, res) => {
   return updateJobFromAgent({
     req,
     res,
-    nextStatus: 'accepted',
+    nextStatus: PRINT_JOB_STATUSES.ACCEPTED,
     eventType: 'accepted',
     message: 'Agent accepted print job'
   });
@@ -325,7 +318,7 @@ export const markDownloading = asyncHandler((req, res) => {
   return updateJobFromAgent({
     req,
     res,
-    nextStatus: 'downloading',
+    nextStatus: PRINT_JOB_STATUSES.DOWNLOADING,
     eventType: 'downloading',
     message: 'Agent started downloading document'
   });
@@ -335,7 +328,7 @@ export const markPrinting = asyncHandler((req, res) => {
   return updateJobFromAgent({
     req,
     res,
-    nextStatus: 'printing',
+    nextStatus: PRINT_JOB_STATUSES.PRINTING,
     eventType: 'printing',
     message: 'Agent started printing'
   });
@@ -345,7 +338,7 @@ export const markCompleted = asyncHandler((req, res) => {
   return updateJobFromAgent({
     req,
     res,
-    nextStatus: 'completed',
+    nextStatus: PRINT_JOB_STATUSES.COMPLETED,
     eventType: 'completed',
     message: 'Agent completed print job'
   });
@@ -355,7 +348,7 @@ export const markFailed = asyncHandler((req, res) => {
   return updateJobFromAgent({
     req,
     res,
-    nextStatus: 'failed',
+    nextStatus: PRINT_JOB_STATUSES.FAILED,
     eventType: 'failed',
     message: req.body.reasonText || 'Agent reported print failure'
   });
@@ -365,7 +358,7 @@ export const markCancelled = asyncHandler((req, res) => {
   return updateJobFromAgent({
     req,
     res,
-    nextStatus: 'cancelled',
+    nextStatus: PRINT_JOB_STATUSES.CANCELLED,
     eventType: 'cancelled',
     message: req.body.reasonText || 'Agent stopped print job after hub cancellation'
   });
