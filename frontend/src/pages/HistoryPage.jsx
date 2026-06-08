@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Calendar, ChevronDown, Download, FileText, Filter, IndianRupee, Printer, RefreshCw, Search, Store, X, Info } from "lucide-react";
+import { Calendar, ChevronDown, Download, Eye, FileText, Filter, IndianRupee, Printer, RefreshCw, Search, Store, X, Info } from "lucide-react";
 import Card from "../components/Card";
 import StatusBadge from "../components/StatusBadge";
 import { createDocumentSignedDownload, getUserHistory } from "../services/api";
@@ -155,6 +155,7 @@ export default function HistoryPage({ orders = [], currentUser, lastUpdatedAt, o
   const [paymentMethod, setPaymentMethod] = useState("all");
   const [hubFilter, setHubFilter] = useState("all");
   const [downloadError, setDownloadError] = useState("");
+  const [documentPreview, setDocumentPreview] = useState(null);
 
   useEffect(() => {
     if (!currentUser || currentUser.role !== "user") {
@@ -288,12 +289,22 @@ export default function HistoryPage({ orders = [], currentUser, lastUpdatedAt, o
     });
   }, [dateFrom, dateTo, hubFilter, paymentMethod, search, status, visibleSource]);
 
-  async function downloadDocument(document) {
+  async function downloadDocument(document, mode = "download") {
     if (!document?.document_id) return;
     setDownloadError("");
     try {
       const data = await createDocumentSignedDownload(document.document_id);
-      if (data.signedUrl) window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+      if (!data.signedUrl) throw new Error("Signed document link was not returned.");
+      
+      if (mode === "view") {
+        setDocumentPreview({
+          url: data.signedUrl,
+          name: document.file_name || "Document preview",
+        });
+        return;
+      }
+      
+      window.open(data.signedUrl, "_blank", "noopener,noreferrer");
     } catch (err) {
       setDownloadError(err.message || "Could not create signed download link.");
     }
@@ -330,14 +341,24 @@ export default function HistoryPage({ orders = [], currentUser, lastUpdatedAt, o
                         Printable {document.printable_pages || "-"} • Copies {document.copies || 1} • Charged pages {document.charged_pages || "-"}
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      disabled={!document.document_id}
-                      onClick={() => downloadDocument(document)}
-                      className="inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400"
-                    >
-                      <Download size={15} /> View / Download
-                    </button>
+                    <div className="flex flex-wrap items-center gap-2 mt-3 sm:mt-0">
+                      <button
+                        type="button"
+                        disabled={!document.document_id}
+                        onClick={() => downloadDocument(document, "view")}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400"
+                      >
+                        <Eye size={15} /> View
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!document.document_id}
+                        onClick={() => downloadDocument(document, "download")}
+                        className="inline-flex items-center justify-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400"
+                      >
+                        <Download size={15} /> Download
+                      </button>
+                    </div>
                   </div>
                   <div className="mt-4 border-t pt-4">
                     <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Settings used for this document</p>
@@ -563,6 +584,25 @@ export default function HistoryPage({ orders = [], currentUser, lastUpdatedAt, o
               </button>
             </div>
             {renderOrderDetails(mobileDetailOrder)}
+          </div>
+        </div>
+      )}
+
+      {documentPreview && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm sm:p-6 lg:p-8">
+          <div className="flex h-full w-full max-w-5xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b bg-white p-4">
+              <div>
+                <h3 className="font-bold">{documentPreview.name}</h3>
+                <p className="text-xs text-slate-500">Document Preview</p>
+              </div>
+              <button type="button" onClick={() => setDocumentPreview(null)} className="rounded-full border bg-slate-50 p-2 hover:bg-slate-100" aria-label="Close preview">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="flex-1 bg-slate-100 p-2 sm:p-4">
+              <iframe title={documentPreview.name} src={documentPreview.url} className="h-full w-full rounded-2xl border bg-white shadow-sm" />
+            </div>
           </div>
         </div>
       )}
