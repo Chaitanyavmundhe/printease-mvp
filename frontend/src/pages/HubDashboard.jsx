@@ -756,10 +756,10 @@ export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus,
             {orderSearch && <p className="mt-2 text-xs text-slate-500">{filteredOrders.length} of {ordersForHub.length} orders shown</p>}
           </div>
         </div>
-        <div className="mt-6 overflow-x-auto">
-          <table className="w-full min-w-[840px] table-fixed text-left text-sm">
-            <thead>
-              <tr className="border-b text-xs uppercase tracking-wide text-slate-500">
+        <div className="mt-6 max-h-[420px] overflow-y-auto overflow-x-auto border rounded-2xl">
+          <table className="w-full min-w-[840px] table-fixed text-left text-sm border-collapse">
+            <thead className="sticky top-0 bg-white z-10 shadow-sm border-b">
+              <tr className="border-b text-xs uppercase tracking-wide text-slate-500 bg-slate-50">
                 <th className="w-24 px-2 py-3">Order</th>
                 <th className="w-36 px-2 py-3">Customer</th>
                 <th className="w-52 px-2 py-3">Document</th>

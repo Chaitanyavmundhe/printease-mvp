@@ -1,8 +1,11 @@
-import { Component, useEffect, useMemo, useRef, useState } from "react";
+import { Component, useEffect, useMemo, useRef, useState, lazy, Suspense } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { emitOrderChanged } from "./utils/appEvents";
 import Navbar from "./components/Navbar";
 import BackendStatus from "./components/BackendStatus";
+import { hubActivityStore } from "./state/hubActivityStore";
+
+const HubHistoryPage = lazy(() => import("./pages/HubHistoryPage"));
 import HomePage from "./pages/HomePage";
 import AuthPage from "./pages/AuthPage";
 import UserDashboard from "./pages/UserDashboard";
@@ -50,6 +53,7 @@ const ROUTES = {
   orderHistory: "/order-history",
   usageHistory: "/usage-history",
   platformStats: "/platform-metrics-dashboard",
+  hubHistory: "/hub/history",
 };
 
 function getPageFromPath(pathname) {
@@ -674,6 +678,17 @@ export default function App() {
     if (!currentHub) return [];
     return orders.filter((item) => item.centreCode === currentHub.code || item.centreId === currentHub.id);
   }, [orders, currentHub]);
+
+  useEffect(() => {
+    hubActivityStore.setState({
+      hubOrders,
+      lastLoadedAt: lastOrdersUpdatedAt
+    });
+  }, [hubOrders, lastOrdersUpdatedAt]);
+
+  useEffect(() => {
+    hubActivityStore.refresh = () => loadOrdersForSession(currentUser, centres);
+  }, [currentUser, centres]);
 
   const prioritizedCentres = useMemo(() => {
     const usageByCentre = new Map();
@@ -2163,6 +2178,18 @@ export default function App() {
                 />
               ) : (
                 <RouteNotice title="Print Hub Login Required" message="Please login as a print hub to view this dashboard." actionLabel="Login as Print Hub" onAction={() => startLogin("hub")} />
+              )
+            }
+          />
+          <Route
+            path={ROUTES.hubHistory}
+            element={
+              currentUser?.role === "hub" ? (
+                <Suspense fallback={<div className="text-center py-10 font-medium text-slate-500">Loading Hub History...</div>}>
+                  <HubHistoryPage navigate={navigate} />
+                </Suspense>
+              ) : (
+                <RouteNotice title="Print Hub Login Required" message="Please login as a print hub to view history." actionLabel="Login as Print Hub" onAction={() => startLogin("hub")} />
               )
             }
           />
