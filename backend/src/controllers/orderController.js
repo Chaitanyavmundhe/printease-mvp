@@ -27,6 +27,8 @@ import {
   isCancelledOrder,
   isPaymentComplete
 } from '../services/orderUtils.js';
+import { assertGuestPrintLimit } from '../services/guestPrintLimitService.js';
+import { assertCanUseDocumentForOrder } from '../services/orderDocumentAccessService.js';
 import crypto from 'crypto';
 import {
   normalizePrintOptions,
@@ -89,21 +91,11 @@ export const createOrder = asyncHandler(async (req, res) => {
 
     if (currentDocumentId) {
       document = await findDocumentById(currentDocumentId);
-
-      if (!document) {
-        return res.status(404).json({ success: false, message: 'Uploaded document not found' });
-      }
-
-      if (!document.userId && req.user?.role !== 'admin' && req.user?.id) {
-        return res.status(403).json({ success: false, message: 'This document is not linked to your account. Please upload it again.' });
-      }
-
-      if (
-        document.userId &&
-        req.user?.role !== 'admin' &&
-        document.userId !== req.user?.id
-      ) {
-        return res.status(403).json({ success: false, message: 'You are not allowed to use this uploaded document' });
+      
+      try {
+        assertCanUseDocumentForOrder({ user: req.user, document });
+      } catch (error) {
+        return res.status(error.statusCode || 403).json({ success: false, message: error.message });
       }
     }
 
@@ -206,11 +198,15 @@ export const createOrder = asyncHandler(async (req, res) => {
   const createdAt = new Date().toISOString();
   const isLimitedLoginlessOrder = !req.user?.id;
 
-  if (isLimitedLoginlessOrder && totalPrintablePages > 5) {
-    return res.status(403).json({
+  try {
+    assertGuestPrintLimit({ user: req.user, pricedFiles });
+  } catch (error) {
+    return res.status(error.statusCode || 403).json({
       success: false,
-      code: 'LOGIN_REQUIRED_FOR_MORE_THAN_5_PAGES',
-      message: 'Login is required to print more than 5 pages.'
+      code: error.code,
+      message: error.message,
+      limit: error.limit,
+      requestedPages: error.requestedPages
     });
   }
 
