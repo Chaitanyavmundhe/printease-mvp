@@ -5,6 +5,7 @@ import { generateId } from '../utils/generateCode.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { getSupabaseAdminClient, getSupabaseBucketName } from '../config/supabase.js';
 import { getPdfPageCount } from '../utils/pdfPageCount.js';
+import { createGuestToken, hashGuestToken, getGuestExpiry } from '../services/guestAccessService.js';
 
 function safeFileName(name) {
   const ext = path.extname(name || '').toLowerCase();
@@ -80,6 +81,19 @@ export const uploadDocument = asyncHandler(async (req, res) => {
     });
   }
 
+  let guestToken = null;
+  let guestTokenHash = null;
+  let expiresAt = null;
+
+  if (!req.user) {
+    guestToken = req.headers['x-order-access-token'] || req.query.token;
+    if (!guestToken) {
+      guestToken = createGuestToken();
+    }
+    guestTokenHash = hashGuestToken(guestToken);
+    expiresAt = getGuestExpiry();
+  }
+
   const document = await createDocument({
     id: documentId,
     userId: req.user?.id || null,
@@ -91,12 +105,15 @@ export const uploadDocument = asyncHandler(async (req, res) => {
     storagePath,
     fileSha256,
     pageCount,
+    guestTokenHash,
+    expiresAt,
     createdAt: new Date().toISOString()
   });
 
   res.status(201).json({
     success: true,
     message: 'Document uploaded securely',
-    document
+    document,
+    guestToken
   });
 });

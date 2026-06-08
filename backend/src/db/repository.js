@@ -527,9 +527,11 @@ export async function createDocument(document) {
        storage_path,
        file_sha256,
        page_count,
+       guest_token_hash,
+       expires_at,
        created_at
      )
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, coalesce($11, now()))
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, coalesce($13, now()))
      returning *`,
     [
       document.id,
@@ -542,6 +544,8 @@ export async function createDocument(document) {
       document.storagePath || null,
       document.fileSha256 || null,
       document.pageCount || null,
+      document.guestTokenHash || null,
+      document.expiresAt || null,
       document.createdAt || null
     ]
   );
@@ -558,14 +562,15 @@ export async function findDocumentById(documentId, client) {
 
 export async function createOrder(order, client) {
   const result = await executor(client).query(
-     `insert into print_orders (
-        id, order_code, user_id, hub_id, document_name, document_url, pages, copies,
-        color_type, side_type, watermark_enabled, print_options, selected_page_count,
-        printable_page_count, sheet_count, amount, total_amount_paise, payment_status,
-        status, pickup_code, created_at, customer_type, expires_at,
-        guest_token, guest_name, guest_phone, price_snapshot, print_config_snapshot
-      )
-      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13, $14, $15, $16, $17, $18, $19, $20, coalesce($21, now()), $22, $23, $24, $25, $26, $27::jsonb, $28::jsonb)
+      `insert into print_orders (
+         id, order_code, user_id, hub_id, document_name, document_url, pages, copies,
+         color_type, side_type, watermark_enabled, print_options, selected_page_count,
+         printable_page_count, sheet_count, amount, total_amount_paise, payment_status,
+         status, pickup_code, created_at, customer_type, expires_at,
+         guest_token, guest_name, guest_phone, price_snapshot, print_config_snapshot,
+         guest_token_hash
+       )
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13, $14, $15, $16, $17, $18, $19, $20, coalesce($21, now()), $22, $23, $24, $25, $26, $27::jsonb, $28::jsonb, $29)
       returning *, hub_id as centre_id`,
      [
       order.id,
@@ -595,7 +600,8 @@ export async function createOrder(order, client) {
       order.guestName || null,
       order.guestPhone || null,
       order.priceSnapshot ? JSON.stringify(order.priceSnapshot) : null,
-      order.printConfigSnapshot ? JSON.stringify(order.printConfigSnapshot) : null
+      order.printConfigSnapshot ? JSON.stringify(order.printConfigSnapshot) : null,
+      order.guestTokenHash || null
     ]
   );
 
@@ -672,6 +678,7 @@ export async function findDocumentAccessContext(documentId, user, guestToken, cl
        po.hub_id,
        po.order_code,
        po.guest_token,
+       po.guest_token_hash,
        d.file_name,
        d.file_type,
        d.file_size,
@@ -696,7 +703,16 @@ export async function findDocumentAccessContext(documentId, user, guestToken, cl
   const isAdmin = user?.role === 'admin';
   const isOwner = user?.role === 'user' && row.order_user_id === user.id;
   const isHubOwner = user?.role === 'hub' && row.hub_id === (user.centreId || user.hubId);
-  const isGuestOwner = !row.order_user_id && guestToken && row.guest_token === guestToken;
+  
+  let isGuestOwner = false;
+  if (!row.order_user_id && guestToken) {
+    if (row.guest_token === guestToken) isGuestOwner = true;
+    else if (row.guest_token_hash && typeof guestToken === 'string') {
+      const crypto = await import('crypto');
+      const hash = crypto.createHash('sha256').update(guestToken).digest('hex');
+      if (row.guest_token_hash === hash) isGuestOwner = true;
+    }
+  }
 
   return {
     allowed: Boolean(isAdmin || isOwner || isHubOwner || isGuestOwner),
@@ -1899,5 +1915,19 @@ export async function deleteCentreByOwner(ownerId, client) {
   await executor(client).query(
     `delete from print_hubs where owner_id = $1`,
     [ownerId]
+  );
+}
+
+export async function updateGuestDocumentsTokenHash(documentIds, guestTokenHash, expiresAt, client) {
+  if (!documentIds || documentIds.length === 0) return;
+  
+  const placeholders = documentIds.map((_, i) => `$${i + 3}`).join(', ');
+  const params = [guestTokenHash, expiresAt, ...documentIds];
+  
+  await executor(client).query(
+    `UPDATE documents 
+     SET guest_token_hash = $1, expires_at = $2 
+     WHERE id IN (${placeholders}) AND user_id IS NULL`,
+    params
   );
 }

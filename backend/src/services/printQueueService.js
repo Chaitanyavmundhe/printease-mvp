@@ -22,6 +22,7 @@ import {
   optionsForDeliveredPdf,
   verifyPrintFilesReadiness
 } from './printJobReadinessService.js';
+import { createPrintJobFilesForOrder } from './printQueue/printJobFilesService.js';
 
 export async function queuePrintJobIfPaymentReady(orderId, hubId, client) {
   const orderWithDocument = await findOrderWithDocumentForHub(orderId, hubId, client);
@@ -88,6 +89,13 @@ export async function queuePrintJobIfPaymentReady(orderId, hubId, client) {
     printOptions: optionsForDeliveredPdf(firstFile.printOptions || orderWithDocument.print_options || {}, firstPrintReadyFile?.transformed),
     sourceBackendUrl: OFFICIAL_BACKEND_URL
   }, client);
+
+  // Phase 10: Populate new multi-file execution table in the background
+  await createPrintJobFilesForOrder({
+    printJobId: printJob.id,
+    orderFiles,
+    client
+  });
 
   await insertPrintJobEvent({
     printJobId: printJob.id,

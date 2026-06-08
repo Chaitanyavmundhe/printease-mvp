@@ -12,8 +12,10 @@ import {
   listOrdersByUser,
   updateOrderPayment,
   updateOrderStatus as saveOrderStatus,
+  updateGuestDocumentsTokenHash,
   withTransaction
 } from '../db/repository.js';
+import { createGuestToken, hashGuestToken, getGuestExpiry } from '../services/guestAccessService.js';
 import { calculatePrintPricing } from '../utils/calculatePrice.js';
 import { generateId, generateOrderCode, generateShortCode } from '../utils/generateCode.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
@@ -210,8 +212,9 @@ export const createOrder = asyncHandler(async (req, res) => {
     });
   }
 
-  const orderAccessToken = isLimitedLoginlessOrder ? crypto.randomBytes(32).toString('hex') : null;
-  const expiresAt = isLimitedLoginlessOrder ? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() : null;
+  const orderAccessToken = isLimitedLoginlessOrder ? createGuestToken() : null;
+  const guestTokenHash = orderAccessToken ? hashGuestToken(orderAccessToken) : null;
+  const expiresAt = isLimitedLoginlessOrder ? getGuestExpiry() : null;
 
   const result = await withTransaction(async (client) => {
     const order = await saveOrder({
@@ -221,6 +224,7 @@ export const createOrder = asyncHandler(async (req, res) => {
       customerType: isLimitedLoginlessOrder ? 'limited' : 'registered',
       expiresAt,
       guestToken: orderAccessToken,
+      guestTokenHash,
       guestName: null,
       guestPhone: null,
       priceSnapshot: { amount: totalAmount, totalAmountPaise, breakdown: pricedFiles.map(f => f.price) },
@@ -265,6 +269,13 @@ export const createOrder = asyncHandler(async (req, res) => {
           createdAt
         }, client);
       orderFiles.push(orderFile);
+    }
+
+    if (isLimitedLoginlessOrder && guestTokenHash) {
+      const documentIds = pricedFiles.filter(f => f.document).map(f => f.document.id);
+      if (documentIds.length > 0) {
+        await updateGuestDocumentsTokenHash(documentIds, guestTokenHash, expiresAt, client);
+      }
     }
 
     return { order, orderFiles };
