@@ -25,7 +25,7 @@ BEGIN
   SELECT udt_name INTO cur_type FROM information_schema.columns WHERE table_name = 'print_order_files' AND column_name = 'order_id' LIMIT 1;
   IF cur_type IS NOT NULL AND cur_type <> ref_type THEN
     IF ref_type = 'uuid' THEN
-      EXECUTE $$SELECT count(*) FROM print_order_files WHERE order_id IS NOT NULL AND order_id !~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'$$ INTO bad_count;
+      EXECUTE $sql$SELECT count(*) FROM print_order_files WHERE order_id IS NOT NULL AND order_id !~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'$sql$ INTO bad_count;
       IF bad_count > 0 THEN
         RAISE EXCEPTION 'migration aborted: print_order_files.order_id contains % non-UUID values', bad_count;
       END IF;
@@ -44,7 +44,7 @@ BEGIN
   SELECT udt_name INTO cur_type FROM information_schema.columns WHERE table_name = 'document_access_logs' AND column_name = 'order_id' LIMIT 1;
   IF cur_type IS NOT NULL AND cur_type <> ref_type THEN
     IF ref_type = 'uuid' THEN
-      EXECUTE $$SELECT count(*) FROM document_access_logs WHERE order_id IS NOT NULL AND order_id !~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'$$ INTO bad_count;
+      EXECUTE $sql$SELECT count(*) FROM document_access_logs WHERE order_id IS NOT NULL AND order_id !~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'$sql$ INTO bad_count;
       IF bad_count > 0 THEN
         RAISE EXCEPTION 'migration aborted: document_access_logs.order_id contains % non-UUID values', bad_count;
       END IF;
@@ -63,7 +63,7 @@ BEGIN
   SELECT udt_name INTO cur_type FROM information_schema.columns WHERE table_name = 'payments' AND column_name = 'order_id' LIMIT 1;
   IF cur_type IS NOT NULL AND cur_type <> ref_type THEN
     IF ref_type = 'uuid' THEN
-      EXECUTE $$SELECT count(*) FROM payments WHERE order_id IS NOT NULL AND order_id !~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'$$ INTO bad_count;
+      EXECUTE $sql$SELECT count(*) FROM payments WHERE order_id IS NOT NULL AND order_id !~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'$sql$ INTO bad_count;
       IF bad_count > 0 THEN
         RAISE EXCEPTION 'migration aborted: payments.order_id contains % non-UUID values', bad_count;
       END IF;
@@ -82,7 +82,7 @@ BEGIN
   SELECT udt_name INTO cur_type FROM information_schema.columns WHERE table_name = 'print_jobs' AND column_name = 'order_id' LIMIT 1;
   IF cur_type IS NOT NULL AND cur_type <> ref_type THEN
     IF ref_type = 'uuid' THEN
-      EXECUTE $$SELECT count(*) FROM print_jobs WHERE order_id IS NOT NULL AND order_id !~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'$$ INTO bad_count;
+      EXECUTE $sql$SELECT count(*) FROM print_jobs WHERE order_id IS NOT NULL AND order_id !~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'$sql$ INTO bad_count;
       IF bad_count > 0 THEN
         RAISE EXCEPTION 'migration aborted: print_jobs.order_id contains % non-UUID values', bad_count;
       END IF;
