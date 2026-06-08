@@ -761,7 +761,7 @@ export default function App() {
     setEmail(value);
     if (!usernameEdited) {
       setUsernameState(getUsernameBaseCandidates(name, value)[0]);
-      suggestUniqueUsername(name, value);
+      // Backend availability check is handled by the debounced useEffect (250ms)
     }
   }
 
@@ -769,7 +769,7 @@ export default function App() {
     setName(value);
     if (!usernameEdited) {
       setUsernameState(getUsernameBaseCandidates(value, email)[0]);
-      suggestUniqueUsername(value, email);
+      // Backend availability check is handled by the debounced useEffect (250ms)
     }
   }
 
