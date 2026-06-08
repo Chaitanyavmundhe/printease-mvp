@@ -141,7 +141,19 @@ export default function Navbar({
             icon={currentUser?.role === "hub" ? <Building2 size={18} /> : <History size={18} />}
             onClick={() => navigate(currentUser?.role === "hub" ? "hubDashboard" : currentUser ? "history" : "auth")}
           />
-          <MobileNavButton label="Profile" active={profileOpen} icon={<User size={18} />} onClick={() => setProfileOpen(!profileOpen)} />
+          <MobileNavButton
+            label="Profile"
+            active={page === "profile" || profileOpen}
+            icon={<User size={18} />}
+            onClick={() => {
+              if (currentUser) {
+                openProfile();
+                setProfileOpen(false);
+              } else {
+                setProfileOpen(!profileOpen);
+              }
+            }}
+          />
         </div>
       </nav>
     </>
