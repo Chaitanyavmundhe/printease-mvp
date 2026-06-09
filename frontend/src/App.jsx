@@ -2112,6 +2112,11 @@ export default function App() {
                   startDirectUpload={startDirectUpload}
                   selectCentreAndUpload={selectCentreAndUpload}
                   selectCentreByCode={selectCentreByCode}
+                  currentHub={currentHub}
+                  hubOrders={hubOrders}
+                  updateOrderStatus={updateOrderStatus}
+                  refreshOrders={() => loadOrdersForSession(currentUser, centres)}
+                  onOrderSaved={applySavedOrderUpdate}
                 />
               }
             />
