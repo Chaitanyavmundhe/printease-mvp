@@ -1,12 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
-import { BarChart3, Copy, Download, Eye, FileText, IndianRupee, Link2, PauseCircle, Printer, QrCode, RefreshCw, Send, Settings, ShieldCheck, Wifi, X, XCircle, Search, Filter, ArrowUpDown } from "lucide-react";
-import HubOrderConfigModal from "../components/HubOrderConfigModal";
-import InlineDocumentFrame from "../components/InlineDocumentFrame";
+import { useMemo, useState } from "react";
+import { BarChart3, Download, Eye, FileText, IndianRupee, Printer, ShieldCheck, X, Search, Filter, ArrowUpDown } from "lucide-react";
 import Card from "../components/Card";
 import Metric from "../components/Metric";
 import StatusBadge from "../components/StatusBadge";
-import { hubStatusOptions } from "../data/demoData";
-import { apiRequest, collectManualPayment, downloadDocumentBlob, getHubAgentSummary, getOrderDocuments, pairAgent, sendOrderToAgent } from "../services/api";
+import { downloadDocumentBlob, getOrderDocuments } from "../services/api";
 
 function normalizeStatus(status) {
   return String(status || "").toLowerCase().replace(/\s+/g, "_");
@@ -58,11 +55,6 @@ function isPaymentPending(order) {
 }
 
 const CLOSED_STATUSES = new Set(["collected", "refund_requested", "printing_failed", "cancelled"]);
-const AGENT_LOCKED_STATUSES = new Set(["sent_to_agent", "queued_for_printing", "printing", "paused", "ready_for_pickup", "collected", "printing_failed", "cancelled"]);
-
-const ROUTEABLE_PRINTER_STATUSES = new Set(["idle", "available", "enabled", "accepting"]);
-const BLOCKED_PRINTER_STATUSES = new Set(["paused", "disabled", "stopped", "offline", "unable", "disconnected", "not_accepting"]);
-const PUBLIC_APP_URL = "https://printhubdesi.vercel.app";
 
 function getHubPricing(hub) {
   const pricing = hub?.pricing || {};
