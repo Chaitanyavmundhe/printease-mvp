@@ -66,6 +66,13 @@ create table if not exists print_hubs (
   color_single numeric(10, 2) not null default 2,
   color_double numeric(10, 2) not null default 3,
   watermark_charge numeric(10, 2) not null default 2,
+  location_enabled boolean not null default false,
+  latitude numeric(10,7),
+  longitude numeric(10,7),
+  address_text text,
+  area text,
+  city text,
+  map_updated_at timestamptz,
   created_at timestamptz not null default now()
 );
 
@@ -75,6 +82,17 @@ alter table print_hubs add column if not exists color_single numeric(10, 2) not 
 alter table print_hubs add column if not exists color_double numeric(10, 2) not null default 3;
 alter table print_hubs add column if not exists watermark_charge numeric(10, 2) not null default 2;
 alter table print_hubs add column if not exists upi_qr_image_url text;
+alter table print_hubs add column if not exists location_enabled boolean not null default false;
+alter table print_hubs add column if not exists latitude numeric(10,7);
+alter table print_hubs add column if not exists longitude numeric(10,7);
+alter table print_hubs add column if not exists address_text text;
+alter table print_hubs add column if not exists area text;
+alter table print_hubs add column if not exists city text;
+alter table print_hubs add column if not exists map_updated_at timestamptz;
+
+create index if not exists idx_print_hubs_location_enabled
+on print_hubs(location_enabled)
+where location_enabled = true;
 
 do $$
 begin
