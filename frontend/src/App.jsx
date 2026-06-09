@@ -238,6 +238,8 @@ function toCurrentUser(user, centre) {
   const hubId = user.hubId || user.centreId || centre?.id || null;
 
   return {
+    ...user,
+    ...(centre || {}),
     id: user.id,
     role,
     name: user.name,
@@ -612,6 +614,7 @@ export default function App() {
           ...restoredUser,
           ...(signedInCentre
             ? {
+                ...signedInCentre,
                 centreId: signedInCentre.id,
                 hubId: signedInCentre.id,
                 centreCode: signedInCentre.code,

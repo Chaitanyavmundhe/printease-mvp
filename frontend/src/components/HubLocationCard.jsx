@@ -41,6 +41,12 @@ export default function HubLocationCard({ currentCentre }) {
       const lat = latitude.trim() ? Number(latitude) : null;
       const lng = longitude.trim() ? Number(longitude) : null;
 
+      if (locationEnabled && (lat === null || lng === null)) {
+        setSaveError("Latitude and longitude are required when map exposure is enabled.");
+        setSaving(false);
+        return;
+      }
+
       const data = await apiRequest("/api/centres/me/location", {
         method: "PATCH",
         body: JSON.stringify({
@@ -55,6 +61,18 @@ export default function HubLocationCard({ currentCentre }) {
 
       if (data?.success) {
         setSaveMessage("Location saved successfully.");
+        // If parent centre state exists, update it too so refresh is not required
+        if (currentCentre && currentCentre.onLocationUpdate) {
+          currentCentre.onLocationUpdate({
+            locationEnabled,
+            latitude: lat,
+            longitude: lng,
+            addressText: addressText.trim() || null,
+            area: area.trim() || null,
+            city: city.trim() || null,
+            mapUpdatedAt: data.centre?.mapUpdatedAt || new Date().toISOString()
+          });
+        }
       } else {
         setSaveError(data?.message || "Failed to save location.");
       }
@@ -129,6 +147,11 @@ export default function HubLocationCard({ currentCentre }) {
           {locationEnabled ? <ToggleRight size={36} /> : <ToggleLeft size={36} />}
         </button>
       </div>
+
+      {/* Privacy advisory */}
+      <p className="mb-4 text-xs text-slate-500 italic">
+        ⚠️ Only enable this if you want customers to see your shop on the map. Your coordinates will be publicly visible when enabled.
+      </p>
 
       {/* Address fields */}
       <div className="space-y-3 mb-4">

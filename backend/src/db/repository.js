@@ -56,6 +56,12 @@ export function mapCentre(row) {
       colorDouble: number(row.color_double) ?? 3,
       watermarkCharge: number(row.watermark_charge) ?? 2
     },
+    bwSingle: number(row.bw_single) ?? 1,
+    bwDouble: number(row.bw_double) ?? 1.5,
+    colorSingle: number(row.color_single) ?? 2,
+    colorDouble: number(row.color_double) ?? 3,
+    watermarkCharge: number(row.watermark_charge) ?? 2,
+    printerOnline: Boolean(row.printer_online),
     locationEnabled,
     latitude: locationEnabled ? (row.latitude === null || row.latitude === undefined ? null : Number(row.latitude)) : null,
     longitude: locationEnabled ? (row.longitude === null || row.longitude === undefined ? null : Number(row.longitude)) : null,
@@ -350,7 +356,13 @@ const centreSelect = `
     c.address_text,
     c.area,
     c.city,
-    c.map_updated_at
+    c.map_updated_at,
+    exists (
+      select 1 from printers p 
+      where (p.hub_id = c.id or p.centre_id = c.id)
+      and p.is_active = true 
+      and p.status in ('available', 'idle', 'accepting')
+    ) as printer_online
   from print_hubs c
   left join users u on u.id = c.owner_id
 `;

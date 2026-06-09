@@ -44,6 +44,11 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+function safeDomId(value) {
+  return String(value ?? "")
+    .replace(/[^a-zA-Z0-9_-]/g, "-");
+}
+
 function buildPopupHtml(centre) {
   const statusColor = centre.printerOnline ? "#16a34a" : "#d97706";
   const statusLabel = centre.printerOnline ? "Available" : "Unavailable";
@@ -51,6 +56,7 @@ function buildPopupHtml(centre) {
   const addr = addrParts.map(escapeHtml).join(", ");
   const safeName = escapeHtml(centre.name);
   const safeCode = escapeHtml(centre.code);
+  const popupButtonId = `map-upload-${safeDomId(centre.id || centre.code)}`;
 
   return `
     <div style="min-width:200px;max-width:260px;font-family:inherit">
@@ -64,14 +70,14 @@ function buildPopupHtml(centre) {
         <div>Color Single: ₹${centre.colorSingle ?? "—"}/page</div>
         <div>Color Double: ₹${centre.colorDouble ?? "—"}/page</div>
       </div>
-      <a href="#upload-${safeCode}" id="map-upload-${safeCode}" style="display:block;text-align:center;background:#0f172a;color:#fff;border-radius:8px;padding:7px 0;font-size:13px;font-weight:600;text-decoration:none;cursor:pointer">
+      <a href="#upload-${safeCode}" id="${popupButtonId}" style="display:block;text-align:center;background:#0f172a;color:#fff;border-radius:8px;padding:7px 0;font-size:13px;font-weight:600;text-decoration:none;cursor:pointer">
         ↑ Upload to this Centre
       </a>
     </div>
   `;
 }
 
-export default function CentreMapModal({ centres, onClose, onSelectCentre }) {
+export default function CentreMapModal({ centres, onClose, onSelectCentre, focusCentre }) {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const [userLocation, setUserLocation] = useState(null);
@@ -114,7 +120,8 @@ export default function CentreMapModal({ centres, onClose, onSelectCentre }) {
       // Listen for upload button click inside popup
       marker.on("popupopen", () => {
         setTimeout(() => {
-          const btn = document.getElementById(`map-upload-${centre.id}`);
+          const btnId = `map-upload-${safeDomId(centre.id || centre.code)}`;
+          const btn = document.getElementById(btnId);
           if (btn) {
             btn.addEventListener("click", (e) => {
               e.preventDefault();
@@ -137,6 +144,11 @@ export default function CentreMapModal({ centres, onClose, onSelectCentre }) {
       mapInstanceRef.current = null;
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!mapInstanceRef.current || !focusCentre || focusCentre.latitude == null || focusCentre.longitude == null) return;
+    mapInstanceRef.current.setView([focusCentre.latitude, focusCentre.longitude], 16);
+  }, [focusCentre]);
 
   function locateMe() {
     if (!navigator.geolocation) {
