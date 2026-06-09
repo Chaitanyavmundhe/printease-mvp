@@ -525,7 +525,7 @@ create table if not exists printer_print_profiles (
   back_side_rotation text default 'auto',
   reverse_page_order boolean default false,
   scale_mode text default 'fit-to-page',
-  collate boolean default true,
+  "collate" boolean default true,
   last_tested_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),

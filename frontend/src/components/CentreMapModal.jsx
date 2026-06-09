@@ -35,15 +35,27 @@ const unavailableIcon = new L.Icon({
   className: "leaflet-marker-unavailable",
 });
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
 function buildPopupHtml(centre) {
   const statusColor = centre.printerOnline ? "#16a34a" : "#d97706";
   const statusLabel = centre.printerOnline ? "Available" : "Unavailable";
-  const addr = [centre.addressText, centre.area, centre.city].filter(Boolean).join(", ");
+  const addrParts = [centre.addressText, centre.area, centre.city].filter(Boolean);
+  const addr = addrParts.map(escapeHtml).join(", ");
+  const safeName = escapeHtml(centre.name);
+  const safeCode = escapeHtml(centre.code);
 
   return `
     <div style="min-width:200px;max-width:260px;font-family:inherit">
-      <div style="font-weight:700;font-size:15px;margin-bottom:4px">${centre.name}</div>
-      <div style="font-size:12px;color:#64748b;margin-bottom:6px">Code: <b>${centre.code}</b></div>
+      <div style="font-weight:700;font-size:15px;margin-bottom:4px">${safeName}</div>
+      <div style="font-size:12px;color:#64748b;margin-bottom:6px">Code: <b>${safeCode}</b></div>
       <span style="display:inline-block;background:${statusColor}20;color:${statusColor};font-size:11px;font-weight:600;border-radius:999px;padding:2px 10px;margin-bottom:8px">${statusLabel}</span>
       ${addr ? `<div style="font-size:12px;color:#475569;margin-bottom:8px">📍 ${addr}</div>` : ""}
       <div style="background:#f8fafc;border-radius:8px;padding:8px;font-size:11px;color:#334155;margin-bottom:10px">
@@ -52,7 +64,7 @@ function buildPopupHtml(centre) {
         <div>Color Single: ₹${centre.colorSingle ?? "—"}/page</div>
         <div>Color Double: ₹${centre.colorDouble ?? "—"}/page</div>
       </div>
-      <a href="#upload-${centre.id}" id="map-upload-${centre.id}" style="display:block;text-align:center;background:#0f172a;color:#fff;border-radius:8px;padding:7px 0;font-size:13px;font-weight:600;text-decoration:none;cursor:pointer">
+      <a href="#upload-${safeCode}" id="map-upload-${safeCode}" style="display:block;text-align:center;background:#0f172a;color:#fff;border-radius:8px;padding:7px 0;font-size:13px;font-weight:600;text-decoration:none;cursor:pointer">
         ↑ Upload to this Centre
       </a>
     </div>

@@ -5,6 +5,7 @@ import InlineDocumentFrame from "../components/InlineDocumentFrame";
 import Card from "../components/Card";
 import Metric from "../components/Metric";
 import StatusBadge from "../components/StatusBadge";
+import HubLocationCard from "../components/HubLocationCard";
 import { hubStatusOptions } from "../data/demoData";
 import { apiRequest, collectManualPayment, downloadDocumentBlob, getHubAgentSummary, getOrderDocuments, pairAgent, sendOrderToAgent } from "../services/api";
 
@@ -700,6 +701,8 @@ export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus,
           )}
         </div>
       </Card>
+
+      <HubLocationCard currentCentre={currentHub} />
 
       <Card>
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">

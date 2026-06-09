@@ -2273,7 +2273,7 @@ export async function upsertPrinterProfile(hubId, platform, printerName, profile
       back_side_rotation,
       reverse_page_order,
       scale_mode,
-      collate,
+      "collate",
       last_tested_at,
       updated_at
     ) values (
@@ -2286,7 +2286,7 @@ export async function upsertPrinterProfile(hubId, platform, printerName, profile
       back_side_rotation = excluded.back_side_rotation,
       reverse_page_order = excluded.reverse_page_order,
       scale_mode = excluded.scale_mode,
-      collate = excluded.collate,
+      "collate" = excluded."collate",
       last_tested_at = excluded.last_tested_at,
       updated_at = now()
     returning *`,

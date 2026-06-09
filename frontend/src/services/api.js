@@ -162,6 +162,13 @@ export function getHubAgentSummary() {
   return apiRequest("/api/hub-agents/summary");
 }
 
+export function updateHubLocation(payload) {
+  return apiRequest("/api/centres/me/location", {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
 export function registerDesktopAgent(payload = {}) {
   return apiRequest("/api/hub-agents/desktop/register", {
     method: "POST",
