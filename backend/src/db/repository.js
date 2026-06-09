@@ -35,6 +35,8 @@ export function mapUser(row) {
 export function mapCentre(row) {
   if (!row) return null;
 
+  const locationEnabled = Boolean(row.location_enabled);
+
   return {
     id: row.id,
     name: row.name || row.hub_name,
@@ -54,6 +56,13 @@ export function mapCentre(row) {
       colorDouble: number(row.color_double) ?? 3,
       watermarkCharge: number(row.watermark_charge) ?? 2
     },
+    locationEnabled,
+    latitude: locationEnabled ? (row.latitude === null || row.latitude === undefined ? null : Number(row.latitude)) : null,
+    longitude: locationEnabled ? (row.longitude === null || row.longitude === undefined ? null : Number(row.longitude)) : null,
+    addressText: row.address_text || null,
+    area: row.area || null,
+    city: row.city || null,
+    mapUpdatedAt: timestamp(row.map_updated_at),
     createdAt: timestamp(row.created_at)
   };
 }
@@ -334,7 +343,14 @@ const centreSelect = `
     c.color_double,
     c.watermark_charge,
     c.created_at,
-    u.name as owner_name
+    u.name as owner_name,
+    c.location_enabled,
+    case when c.location_enabled then c.latitude else null end as latitude,
+    case when c.location_enabled then c.longitude else null end as longitude,
+    c.address_text,
+    c.area,
+    c.city,
+    c.map_updated_at
   from print_hubs c
   left join users u on u.id = c.owner_id
 `;
@@ -517,6 +533,34 @@ export async function updateCentrePaymentMethod(centreId, upiId) {
   const result = await query(
     'update print_hubs set upi_id = coalesce($2, upi_id), upi_qr_image_url = coalesce($3, upi_qr_image_url) where id = $1 returning id',
     [centreId, nextUpiId, nextQrImageUrl]
+  );
+
+  if (!result.rows[0]) return null;
+  return findCentreById(result.rows[0].id);
+}
+
+export async function updateHubLocation(centreId, fields) {
+  const result = await query(
+    `update print_hubs
+     set
+       location_enabled = $2,
+       latitude = $3,
+       longitude = $4,
+       address_text = $5,
+       area = $6,
+       city = $7,
+       map_updated_at = now()
+     where id = $1
+     returning id`,
+    [
+      centreId,
+      Boolean(fields.locationEnabled),
+      fields.latitude ?? null,
+      fields.longitude ?? null,
+      fields.addressText ?? null,
+      fields.area ?? null,
+      fields.city ?? null
+    ]
   );
 
   if (!result.rows[0]) return null;
