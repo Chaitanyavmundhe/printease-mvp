@@ -78,6 +78,30 @@ export async function applyOrderConfigurationChange({ orderId, hubId, actor, new
       throw new Error('No files found for this order');
     }
 
+    const existingFileIds = new Set(existingFiles.map((file) => String(file.id)));
+    const requestedFileIds = new Set();
+
+    for (const fileConfig of newFilesConfig || []) {
+      if (!fileConfig || typeof fileConfig !== 'object') {
+        throw new Error('Each file configuration must be an object');
+      }
+
+      const fileId = String(fileConfig.id || '').trim();
+      if (!fileId) {
+        throw new Error('Each file configuration must include a file id');
+      }
+
+      if (requestedFileIds.has(fileId)) {
+        throw new Error(`Duplicate file configuration submitted for ${fileId}`);
+      }
+
+      if (!existingFileIds.has(fileId)) {
+        throw new Error(`File ${fileId} does not belong to this order`);
+      }
+
+      requestedFileIds.add(fileId);
+    }
+
     // Save previous snapshot of options/price for audit log
     const previousConfig = order.printConfigSnapshot || order.printOptions;
     const previousPriceSnapshot = order.priceSnapshot;

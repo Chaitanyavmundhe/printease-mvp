@@ -205,5 +205,105 @@ describe('orderConfigurationService', () => {
         expect.any(Object)
       );
     });
+
+    it('rejects configuration updates for file IDs outside the order', async () => {
+      const mockOrder = {
+        id: 'order_1',
+        centreId: 'hub_1',
+        paymentStatus: 'pending',
+        status: 'pending'
+      };
+
+      const mockHub = {
+        id: 'hub_1',
+        pricing: {
+          bwSingle: 1,
+          bwDouble: 1.5,
+          colorSingle: 2,
+          colorDouble: 3,
+          watermarkCharge: 2
+        }
+      };
+
+      repository.findOrderByIdOrCode.mockResolvedValueOnce(mockOrder);
+      repository.findCentreById.mockResolvedValueOnce(mockHub);
+      repository.listOrderFiles.mockResolvedValueOnce([
+        {
+          id: 'file_1',
+          documentId: 'doc_1',
+          originalPageCount: 10,
+          copies: 1,
+          printOptions: {}
+        }
+      ]);
+
+      await expect(
+        applyOrderConfigurationChange({
+          orderId: 'order_1',
+          hubId: 'hub_1',
+          actor: { role: 'hub', userId: 'user_1' },
+          newFilesConfig: [
+            {
+              id: 'file_other',
+              copies: 2
+            }
+          ],
+          note: 'Invalid file'
+        })
+      ).rejects.toThrow('File file_other does not belong to this order');
+
+      expect(repository.updateOrderFileConfiguration).not.toHaveBeenCalled();
+      expect(repository.updateOrderConfiguration).not.toHaveBeenCalled();
+      expect(repository.createOrderConfigEvent).not.toHaveBeenCalled();
+    });
+
+    it('rejects duplicate file configuration IDs', async () => {
+      const mockOrder = {
+        id: 'order_1',
+        centreId: 'hub_1',
+        paymentStatus: 'pending',
+        status: 'pending'
+      };
+
+      const mockHub = {
+        id: 'hub_1',
+        pricing: {
+          bwSingle: 1,
+          bwDouble: 1.5,
+          colorSingle: 2,
+          colorDouble: 3,
+          watermarkCharge: 2
+        }
+      };
+
+      repository.findOrderByIdOrCode.mockResolvedValueOnce(mockOrder);
+      repository.findCentreById.mockResolvedValueOnce(mockHub);
+      repository.listOrderFiles.mockResolvedValueOnce([
+        {
+          id: 'file_1',
+          documentId: 'doc_1',
+          originalPageCount: 10,
+          copies: 1,
+          printOptions: {}
+        }
+      ]);
+
+      await expect(
+        applyOrderConfigurationChange({
+          orderId: 'order_1',
+          hubId: 'hub_1',
+          actor: { role: 'hub', userId: 'user_1' },
+          newFilesConfig: [
+            { id: 'file_1', copies: 2 },
+            { id: 'file_1', copies: 3 }
+          ],
+          note: 'Duplicate file'
+        })
+      ).rejects.toThrow('Duplicate file configuration submitted for file_1');
+
+      expect(repository.updateOrderFileConfiguration).not.toHaveBeenCalled();
+      expect(repository.updateOrderConfiguration).not.toHaveBeenCalled();
+      expect(repository.createOrderConfigEvent).not.toHaveBeenCalled();
+    });
   });
 });
