@@ -82,6 +82,7 @@ export async function toAgentJobPayload(job) {
     jobId: job.id,
     orderId: job.orderId,
     orderCode: order?.orderCode || null,
+    reprintOfOrderId: order?.reprintOfOrderId || null,
     hubId: job.hubId,
     agentId: job.agentId,
     sourceBackendUrl: OFFICIAL_BACKEND_URL,

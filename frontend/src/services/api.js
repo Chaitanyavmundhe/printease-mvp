@@ -267,6 +267,13 @@ export function getOrderDocuments(orderId) {
   return apiRequest(`/api/orders/${encodeURIComponent(orderId)}/documents`);
 }
 
+export function reprintOrder(orderId, options = {}) {
+  return apiRequest(`/api/orders/${encodeURIComponent(orderId)}/reprint`, {
+    method: "POST",
+    body: JSON.stringify(options),
+  });
+}
+
 export function getUserHistory({ force = false, userId = "me" } = {}) {
   return getCachedJson(
     `user-history:${userId}`,
