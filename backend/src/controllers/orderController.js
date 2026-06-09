@@ -21,6 +21,7 @@ import { generateId, generateOrderCode, generateShortCode } from '../utils/gener
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { queuePrintJobIfPaymentReady } from '../services/printQueueService.js';
 import { processManualCollection } from '../services/manualCollectionService.js';
+import { createReprintOrder } from '../services/reprintOrderService.js';
 import { buildSubmittedPrintOptions } from '../services/orderPrintOptionsService.js';
 import { pricingMetadata } from '../services/orderPricingPresenter.js';
 import {
@@ -461,4 +462,16 @@ export const updateOrderStatus = asyncHandler(async (req, res) => {
     order: result.order,
     cancelledPrintJobs: result.cancelledPrintJobs
   });
+});
+
+export const reprintOrder = asyncHandler(async (req, res) => {
+  const allowDocumentReuse = req.body.allowDocumentReuse !== false;
+  const result = await createReprintOrder({
+    originalOrderId: req.params.id,
+    actor: req.user,
+    allowDocumentReuse
+  });
+
+  const statusCode = result.success ? 201 : 200;
+  res.status(statusCode).json(result);
 });

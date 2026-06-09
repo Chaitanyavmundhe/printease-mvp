@@ -2259,3 +2259,98 @@ export async function lockOrderConfiguration(orderId, reason, client) {
   );
   return mapOrder(result.rows[0]);
 }
+
+export async function upsertPrinterProfile(hubId, platform, printerName, profile) {
+  const result = await query(
+    `insert into printer_print_profiles (
+      hub_id,
+      os_platform,
+      printer_name,
+      system_printer_id,
+      default_orientation,
+      default_duplex_binding,
+      landscape_duplex_binding,
+      back_side_rotation,
+      reverse_page_order,
+      scale_mode,
+      collate,
+      last_tested_at,
+      updated_at
+    ) values (
+      $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, now(), now()
+    ) on conflict (hub_id, os_platform, printer_name) do update set
+      system_printer_id = excluded.system_printer_id,
+      default_orientation = excluded.default_orientation,
+      default_duplex_binding = excluded.default_duplex_binding,
+      landscape_duplex_binding = excluded.landscape_duplex_binding,
+      back_side_rotation = excluded.back_side_rotation,
+      reverse_page_order = excluded.reverse_page_order,
+      scale_mode = excluded.scale_mode,
+      collate = excluded.collate,
+      last_tested_at = excluded.last_tested_at,
+      updated_at = now()
+    returning *`,
+    [
+      hubId,
+      platform,
+      printerName,
+      profile.systemPrinterId || printerName,
+      profile.defaultOrientation || 'auto',
+      profile.defaultDuplexBinding || 'auto',
+      profile.landscapeDuplexBinding || null,
+      profile.backSideRotation || 'auto',
+      profile.reversePageOrder || false,
+      profile.scaleMode || 'fit-to-page',
+      profile.collate ?? true
+    ]
+  );
+  return result.rows[0];
+}
+
+export async function getPrinterProfile(hubId, platform, printerName) {
+  const result = await query(
+    `select * from printer_print_profiles
+     where hub_id = $1 and os_platform = $2 and printer_name = $3`,
+    [hubId, platform, printerName]
+  );
+  if (!result.rows[0]) return null;
+  const row = result.rows[0];
+  return {
+    id: row.id,
+    hubId: row.hub_id,
+    printerName: row.printer_name,
+    systemPrinterId: row.system_printer_id,
+    osPlatform: row.os_platform,
+    defaultOrientation: row.default_orientation,
+    defaultDuplexBinding: row.default_duplex_binding,
+    landscapeDuplexBinding: row.landscape_duplex_binding,
+    backSideRotation: row.back_side_rotation,
+    reversePageOrder: row.reverse_page_order,
+    scaleMode: row.scale_mode,
+    collate: row.collate,
+    lastTestedAt: row.last_tested_at
+  };
+}
+
+export async function getPrinterProfilesByName(hubId, printerName) {
+  const result = await query(
+    `select * from printer_print_profiles
+     where hub_id = $1 and printer_name = $2`,
+    [hubId, printerName]
+  );
+  return result.rows.map(row => ({
+    id: row.id,
+    hubId: row.hub_id,
+    printerName: row.printer_name,
+    systemPrinterId: row.system_printer_id,
+    osPlatform: row.os_platform,
+    defaultOrientation: row.default_orientation,
+    defaultDuplexBinding: row.default_duplex_binding,
+    landscapeDuplexBinding: row.landscape_duplex_binding,
+    backSideRotation: row.back_side_rotation,
+    reversePageOrder: row.reverse_page_order,
+    scaleMode: row.scale_mode,
+    collate: row.collate,
+    lastTestedAt: row.last_tested_at
+  }));
+}

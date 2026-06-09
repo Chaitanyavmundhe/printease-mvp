@@ -7,12 +7,16 @@ import {
   updatePrinterProtocol,
   updatePrinterStatus
 } from '../controllers/printerController.js';
+import { getProfile, updateProfile } from '../controllers/printerProfileController.js';
 import { authMiddleware } from '../middleware/authMiddleware.js';
 import { roleMiddleware } from '../middleware/roleMiddleware.js';
 
 const router = express.Router();
 
 router.use(authMiddleware, roleMiddleware('hub'));
+
+router.get('/profiles', getProfile);
+router.put('/profiles', updateProfile);
 
 router.post('/', addPrinter);
 router.get('/mine', getMyCentrePrinters);

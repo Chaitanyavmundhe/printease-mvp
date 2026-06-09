@@ -52,6 +52,11 @@ export async function toAgentJobPayload(job) {
     listOrderFiles(job.orderId)
   ]);
 
+  const { getPrinterProfilesByName } = await import('../db/repository.js');
+  const printerProfiles = job.printerName 
+    ? await getPrinterProfilesByName(job.hubId, job.printerName) 
+    : [];
+
   const files = await Promise.all(orderFiles.map(async (file) => {
     const printReadyFile = await getPrintReadyFile(order, file);
     const fileUrl = printReadyFile?.fileUrl
@@ -93,6 +98,7 @@ export async function toAgentJobPayload(job) {
     approvedForPrint: true,
     printable: true,
     printerName: job.printerName || null,
+    printerProfiles,
     status: job.status,
     configVersion: order?.configVersion || 1,
     printConfigSnapshot: order?.printConfigSnapshot || null,

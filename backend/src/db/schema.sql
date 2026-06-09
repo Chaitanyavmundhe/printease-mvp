@@ -159,6 +159,10 @@ create table if not exists print_orders (
 );
 
 alter table print_orders add column if not exists total_amount_paise integer;
+alter table print_orders add column if not exists reprint_of_order_id text references print_orders(id) on delete set null;
+alter table print_orders add column if not exists reprint_source text;
+alter table print_orders add column if not exists source_document_status text;
+alter table print_orders add column if not exists original_order_code_snapshot text;
 
 update print_orders
 set total_amount_paise = round(amount * 100)::integer
@@ -508,3 +512,22 @@ alter table print_hubs add column if not exists city text;
 alter table print_hubs add column if not exists map_updated_at timestamptz;
 
 create index if not exists idx_print_hubs_location_enabled on print_hubs(location_enabled) where location_enabled = true;
+
+create table if not exists printer_print_profiles (
+  id text primary key default gen_random_uuid()::text,
+  hub_id text not null references print_hubs(id) on delete cascade,
+  printer_name text not null,
+  system_printer_id text,
+  os_platform text not null,
+  default_orientation text default 'auto',
+  default_duplex_binding text default 'auto',
+  landscape_duplex_binding text,
+  back_side_rotation text default 'auto',
+  reverse_page_order boolean default false,
+  scale_mode text default 'fit-to-page',
+  collate boolean default true,
+  last_tested_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique(hub_id, os_platform, printer_name)
+);
