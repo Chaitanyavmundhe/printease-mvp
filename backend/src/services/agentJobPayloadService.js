@@ -94,6 +94,8 @@ export async function toAgentJobPayload(job) {
     printable: true,
     printerName: job.printerName || null,
     status: job.status,
+    configVersion: order?.configVersion || 1,
+    printConfigSnapshot: order?.printConfigSnapshot || null,
     createdAt: job.createdAt
   };
 }

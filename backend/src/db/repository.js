@@ -126,6 +126,14 @@ export function mapOrder(row) {
     paymentStatus: row.payment_status,
     status: row.status,
     pickupCode: row.pickup_code,
+    configVersion: row.config_version !== undefined ? number(row.config_version) : 1,
+    latestConfiguredByRole: row.latest_configured_by_role || null,
+    latestConfiguredByUserId: row.latest_configured_by_user_id || null,
+    latestConfiguredByHubId: row.latest_configured_by_hub_id || null,
+    latestConfiguredAt: row.latest_configured_at ? timestamp(row.latest_configured_at) : null,
+    latestConfigSource: row.latest_config_source || null,
+    configLockedAt: row.config_locked_at ? timestamp(row.config_locked_at) : null,
+    configLockReason: row.config_lock_reason || null,
     createdAt: timestamp(row.created_at)
   };
 }
@@ -2076,4 +2084,134 @@ export async function updateGuestDocumentsTokenHash(documentIds, guestTokenHash,
      WHERE id IN (${placeholders}) AND user_id IS NULL`,
     params
   );
+}
+
+export async function updateOrderConfiguration(orderId, updates, client) {
+  const result = await executor(client).query(
+    `update print_orders
+     set config_version = config_version + 1,
+         latest_configured_by_role = $2,
+         latest_configured_by_user_id = $3,
+         latest_configured_by_hub_id = $4,
+         latest_configured_at = now(),
+         latest_config_source = $5,
+         print_config_snapshot = $6::jsonb,
+         price_snapshot = $7::jsonb,
+         total_amount_paise = $8,
+         amount = $9,
+         pages = $10,
+         copies = $11,
+         selected_page_count = $12,
+         printable_page_count = $13,
+         sheet_count = $14
+     where id = $1
+     returning *, hub_id as centre_id`,
+    [
+      orderId,
+      updates.latestConfiguredByRole,
+      updates.latestConfiguredByUserId || null,
+      updates.latestConfiguredByHubId || null,
+      updates.latestConfigSource,
+      updates.printConfigSnapshot ? JSON.stringify(updates.printConfigSnapshot) : null,
+      updates.priceSnapshot ? JSON.stringify(updates.priceSnapshot) : null,
+      updates.totalAmountPaise,
+      updates.amount,
+      updates.pages || 0,
+      updates.copies || 0,
+      updates.selectedPageCount || 0,
+      updates.printablePageCount || 0,
+      updates.sheetCount || 0
+    ]
+  );
+  return mapOrder(result.rows[0]);
+}
+
+export async function updateOrderFileConfiguration(orderFileId, updates, client) {
+  const result = await executor(client).query(
+    `update print_order_files
+     set copies = $2,
+         selected_pages = $3,
+         selected_page_count = $4,
+         printable_page_count = $5,
+         sheet_count = $6,
+         print_options = $7::jsonb,
+         line_amount_paise = $8
+     where id = $1
+     returning *`,
+    [
+      orderFileId,
+      updates.copies,
+      updates.selectedPages,
+      updates.selectedPageCount,
+      updates.printablePageCount,
+      updates.sheetCount,
+      updates.printOptions ? JSON.stringify(updates.printOptions) : null,
+      updates.lineAmountPaise
+    ]
+  );
+  return mapOrderFile(result.rows[0]);
+}
+
+export async function createOrderConfigEvent(event, client) {
+  const result = await executor(client).query(
+    `insert into print_order_config_events (
+       order_id, actor_role, actor_user_id, actor_hub_id, event_type,
+       previous_config, new_config, previous_price_snapshot, new_price_snapshot,
+       previous_amount_paise, new_amount_paise, note
+     )
+     values ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9::jsonb, $10, $11, $12)
+     returning *`,
+    [
+      event.orderId,
+      event.actorRole,
+      event.actorUserId || null,
+      event.actorHubId || null,
+      event.eventType,
+      event.previousConfig ? JSON.stringify(event.previousConfig) : null,
+      event.newConfig ? JSON.stringify(event.newConfig) : null,
+      event.previousPriceSnapshot ? JSON.stringify(event.previousPriceSnapshot) : null,
+      event.newPriceSnapshot ? JSON.stringify(event.newPriceSnapshot) : null,
+      event.previousAmountPaise || null,
+      event.newAmountPaise || null,
+      event.note || null
+    ]
+  );
+  return result.rows[0];
+}
+
+export async function getOrderConfigEvents(orderId, client) {
+  const result = await executor(client).query(
+    `select * from print_order_config_events
+     where order_id = $1
+     order by created_at asc`,
+    [orderId]
+  );
+  return result.rows.map(row => ({
+    id: row.id,
+    orderId: row.order_id,
+    actorRole: row.actor_role,
+    actorUserId: row.actor_user_id,
+    actorHubId: row.actor_hub_id,
+    eventType: row.event_type,
+    previousConfig: row.previous_config,
+    newConfig: row.new_config,
+    previousPriceSnapshot: row.previous_price_snapshot,
+    newPriceSnapshot: row.new_price_snapshot,
+    previousAmountPaise: row.previous_amount_paise,
+    newAmountPaise: row.new_amount_paise,
+    note: row.note,
+    createdAt: timestamp(row.created_at)
+  }));
+}
+
+export async function lockOrderConfiguration(orderId, reason, client) {
+  const result = await executor(client).query(
+    `update print_orders
+     set config_locked_at = now(),
+         config_lock_reason = $2
+     where id = $1
+     returning *, hub_id as centre_id`,
+    [orderId, reason]
+  );
+  return mapOrder(result.rows[0]);
 }

@@ -1,4 +1,4 @@
-import { getUserPrintHistory, getUserPrintHistoryCompact, getOrderForUser } from '../db/repository.js';
+import { getUserPrintHistory, getUserPrintHistoryCompact, getOrderForUser, getOrderConfigEvents } from '../db/repository.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 
 function normalizeStatus(value) {
@@ -84,7 +84,7 @@ function addTimelineItem(items, label, time, type = null) {
   items.push({ label, time, type });
 }
 
-function buildTimeline(order, payment, printJobs) {
+function buildTimeline(order, payment, printJobs, configEvents = []) {
   const items = [];
   addTimelineItem(items, 'Order created', order.createdAt, 'order_created');
   addTimelineItem(
@@ -93,6 +93,17 @@ function buildTimeline(order, payment, printJobs) {
     payment?.verifiedAt,
     'payment_completed'
   );
+
+  for (const event of configEvents) {
+    const actorLabel = event.actorRole === 'hub' ? 'Shopkeeper' : 'Customer';
+    const notePart = event.note ? ` (${event.note})` : '';
+    addTimelineItem(
+      items,
+      `${actorLabel} adjusted options (v${order.configVersion || 1})${notePart}`,
+      event.createdAt,
+      'config_override'
+    );
+  }
 
   for (const job of printJobs) {
     addTimelineItem(items, 'Ready to print', job.createdAt, 'print_job_created');
@@ -130,7 +141,7 @@ function toCompactOrder(order, payment) {
   };
 }
 
-function toHistoryOrder(order, files, payment, printJobs) {
+function toHistoryOrder(order, files, payment, printJobs, configEvents = []) {
   const documents = buildDocuments(order, files);
   const printConfig = buildPrintConfig(order, files);
   const primaryDocument = documents[0] || {};
@@ -174,7 +185,7 @@ function toHistoryOrder(order, files, payment, printJobs) {
           failed_at: latestPrintJob.failedAt
         }
       : null,
-    timeline: buildTimeline(order, payment, printJobs)
+    timeline: buildTimeline(order, payment, printJobs, configEvents)
   };
 }
 
@@ -256,7 +267,8 @@ export const getOrderDetail = asyncHandler(async (req, res) => {
   }
 
   const { order, files, payment, printJobs } = result;
-  const detail = toHistoryOrder(order, files, payment, printJobs);
+  const configEvents = await getOrderConfigEvents(order.id);
+  const detail = toHistoryOrder(order, files, payment, printJobs, configEvents);
 
   res.set('Cache-Control', 'private, max-age=300');
   res.json({ success: true, order: detail });
