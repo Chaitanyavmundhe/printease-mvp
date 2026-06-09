@@ -359,7 +359,7 @@ const centreSelect = `
     c.map_updated_at,
     exists (
       select 1 from printers p 
-      where (p.hub_id = c.id or p.centre_id = c.id)
+      where p.hub_id = c.id
       and p.is_active = true 
       and p.status in ('available', 'idle', 'accepting')
     ) as printer_online
