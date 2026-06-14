@@ -31,6 +31,7 @@ import { toAgentJobPayload } from '../services/agentJobPayloadService.js';
 import { resolveDownloadUrl } from '../services/agentJobPayloadService.js';
 import { PRINT_JOB_STATUSES, PAIRING_STATUSES } from '../constants/statuses.js';
 import { getPrintReadyFile } from '../utils/printReadyPdf.js';
+import { recalculateOrderPricingByDocument } from '../services/orderConfigurationService.js';
 
 const JOB_STATUS_TO_ORDER_STATUS = {
   [PRINT_JOB_STATUSES.ACCEPTED]: 'Sent to Agent',
@@ -439,6 +440,14 @@ export const reportPreparationResult = asyncHandler(async (req, res) => {
 
   if (!result) {
     return res.status(404).json({ success: false, message: 'Document not found' });
+  }
+
+  try {
+    if (preparationStatus === 'prepared') {
+      await recalculateOrderPricingByDocument(documentId);
+    }
+  } catch (err) {
+    console.error(`[AgentController] Error recalculating pricing for document ${documentId}:`, err);
   }
 
   res.json({ success: true, document: result });

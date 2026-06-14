@@ -6,6 +6,7 @@ import {
   findPaymentByProviderOrderId,
   updateOrderPayment,
   updatePayment,
+  listOrderFiles,
   withTransaction
 } from '../db/repository.js';
 import { queuePrintJobIfPaymentReady } from '../services/printQueueService.js';
@@ -50,6 +51,15 @@ function assertOrderCanStartPayment(order) {
   if (isCancelledOrder(order) && !isPaymentComplete(order)) {
     const error = new Error('Order was cancelled before payment. Payment cannot be started.');
     error.statusCode = 409;
+    throw error;
+  }
+}
+
+async function assertOrderIsFullyPrepared(orderId) {
+  const files = await listOrderFiles(orderId);
+  if (files.some(f => f.document?.requiresDesktopPreparation && f.document?.preparationStatus === 'pending')) {
+    const error = new Error('Documents are being prepared for accurate page counts. Please wait.');
+    error.statusCode = 400;
     throw error;
   }
 }
@@ -134,6 +144,7 @@ export const createManualPaymentRequest = asyncHandler(async (req, res) => {
   }
 
   assertOrderCanStartPayment(order);
+  await assertOrderIsFullyPrepared(order.id);
 
   const paymentStatus = normalizePaymentStatus(order);
   if (['verified', 'collected', 'paid'].includes(paymentStatus)) {
@@ -192,6 +203,7 @@ export const createRazorpayOrder = asyncHandler(async (req, res) => {
   }
 
   assertOrderCanStartPayment(order);
+  await assertOrderIsFullyPrepared(order.id);
 
   const paymentStatus = normalizePaymentStatus(order);
   if (['verified', 'collected', 'paid'].includes(paymentStatus)) {
@@ -394,6 +406,7 @@ export const createRazorpayUpiQr = asyncHandler(async (req, res) => {
   }
 
   assertOrderCanStartPayment(order);
+  await assertOrderIsFullyPrepared(order.id);
 
   const paymentStatus = normalizePaymentStatus(order);
   if (['verified', 'collected', 'paid'].includes(paymentStatus)) {

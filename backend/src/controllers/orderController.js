@@ -139,15 +139,12 @@ export const createOrder = asyncHandler(async (req, res) => {
   const pricedFiles = [];
   try {
     for (const file of resolvedFiles) {
-      if (file.document?.preparationStatus === 'pending') {
-        const error = new Error('Document is being prepared for accurate page count.');
-        error.statusCode = 400;
-        throw error;
-      }
+      const isPending = file.document?.preparationStatus === 'pending';
+      const trustedPageCount = isPending 
+        ? 1 
+        : (file.document?.preparedPageCount ?? file.document?.pageCount ?? Number(file.pages ?? pages));
 
-      const trustedPageCount = file.document?.preparedPageCount ?? file.document?.pageCount ?? Number(file.pages ?? pages);
-
-      if (!Number.isFinite(trustedPageCount) || trustedPageCount <= 0) {
+      if (!isPending && (!Number.isFinite(trustedPageCount) || trustedPageCount <= 0)) {
         throw new Error('Each file must have a valid PDF page count');
       }
 

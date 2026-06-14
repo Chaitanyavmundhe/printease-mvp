@@ -207,6 +207,8 @@ export function mapOrderFile(row) {
           fileKind: row.file_kind || null,
           requiresDesktopPreparation: Boolean(row.requires_desktop_preparation),
           pageCount: row.page_count === null || row.page_count === undefined ? null : Number(row.page_count),
+          preparedPageCount: row.prepared_page_count === null || row.prepared_page_count === undefined ? null : Number(row.prepared_page_count),
+          preparationStatus: row.preparation_status || 'prepared',
           createdAt: timestamp(row.document_created_at)
         }
       : null,
@@ -723,6 +725,14 @@ export async function findDocumentById(documentId, client) {
   return mapDocument(result.rows[0]);
 }
 
+export async function findOrderIdsByDocumentId(documentId, client) {
+  const result = await executor(client).query(
+    `select order_id from print_order_files where document_id = $1`,
+    [documentId]
+  );
+  return result.rows.map(r => r.order_id);
+}
+
 export async function createOrder(order, client) {
   const result = await executor(client).query(
       `insert into print_orders (
@@ -829,6 +839,8 @@ export async function listOrderFiles(orderId, client) {
        d.file_kind,
        d.requires_desktop_preparation,
        d.page_count,
+       d.prepared_page_count,
+       d.preparation_status,
        d.created_at as document_created_at
      from print_order_files pof
      join documents d on d.id = pof.document_id
@@ -864,6 +876,8 @@ export async function listPendingPaymentOrderFilesForAgentPredownload(hubId, { l
        d.file_kind,
        d.requires_desktop_preparation,
        d.page_count,
+       d.prepared_page_count,
+       d.preparation_status,
        d.created_at as document_created_at
      from print_orders po
      join print_order_files pof on pof.order_id = po.id
