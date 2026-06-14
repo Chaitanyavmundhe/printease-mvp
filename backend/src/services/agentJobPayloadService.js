@@ -96,7 +96,11 @@ export async function toAgentJobPayload(job) {
         afterOrderSettings,
         orderInfo
       },
-      printReady: Boolean(printReadyFile?.transformed)
+      printReady: Boolean(printReadyFile?.transformed),
+      fileKind: file.document?.fileKind || null,
+      conversionSource: file.document?.conversionSource || null,
+      conversionPlacement: file.document?.conversionPlacement || null,
+      requiresDesktopPreparation: Boolean(file.document?.requiresDesktopPreparation)
     };
   })).then((items) => items.filter((file) => file.fileUrl));
 

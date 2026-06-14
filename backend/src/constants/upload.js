@@ -31,6 +31,24 @@ export const PRINTABLE_UPLOAD_MIME_TYPES = new Set([
   'application/json',
 ]);
 
+export const DESKTOP_PREPARABLE_MIME_TYPES = new Set([
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'application/vnd.oasis.opendocument.text',
+  'application/vnd.oasis.opendocument.spreadsheet',
+  'application/vnd.oasis.opendocument.presentation',
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'text/plain',
+  'text/csv',
+  'application/json'
+]);
+
 export function isAllowedUploadMimeType(mimeType) {
   return ALLOWED_UPLOAD_MIME_TYPES.has(String(mimeType || '').toLowerCase());
 }
@@ -41,4 +59,8 @@ export function formatAllowedUploadTypes() {
 
 export function isPrintableUploadMimeType(mimeType) {
   return PRINTABLE_UPLOAD_MIME_TYPES.has(String(mimeType || '').toLowerCase());
+}
+
+export function isDesktopPreparableMimeType(mimeType) {
+  return DESKTOP_PREPARABLE_MIME_TYPES.has(String(mimeType || '').toLowerCase());
 }

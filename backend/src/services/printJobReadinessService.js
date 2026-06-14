@@ -1,4 +1,4 @@
-import { isPrintableUploadMimeType } from '../constants/upload.js';
+import { isPrintableUploadMimeType, isDesktopPreparableMimeType } from '../constants/upload.js';
 
 export function normalize(value) {
   return String(value || '').trim().toLowerCase();
@@ -53,13 +53,16 @@ export function verifyPrintFilesReadiness(orderFiles, orderWithDocument) {
   const fileSha256 = firstFile?.document?.printReadySha256 || firstFile?.document?.fileSha256 || orderWithDocument?.document_file_sha256;
   const fileType = firstFile?.document?.printReadyStoragePath ? 'application/pdf' : (firstFile?.document?.fileType || orderWithDocument?.document_file_type || 'application/pdf');
 
-  const allFilesPrintable = orderFiles.every((file) => (
-    (file.document?.storagePath || file.document?.printReadyStoragePath) &&
-    (file.document?.fileSha256 || file.document?.printReadySha256) &&
-    (file.document?.printReadyStoragePath || isPrintableUploadMimeType(file.document?.fileType || 'application/pdf'))
-  ));
+  const allFilesPrintable = orderFiles.every((file) => {
+    const isDocAvailable = Boolean(file.document?.storagePath || file.document?.printReadyStoragePath);
+    const hasHash = Boolean(file.document?.fileSha256 || file.document?.printReadySha256);
+    const isPrintReady = Boolean(file.document?.printReadyStoragePath);
+    const mimeType = file.document?.fileType || 'application/pdf';
+    return isDocAvailable && hasHash && (isPrintReady || isPrintableUploadMimeType(mimeType) || isDesktopPreparableMimeType(mimeType));
+  });
 
-  const isReady = Boolean(storagePath && fileSha256 && isPrintableUploadMimeType(fileType) && allFilesPrintable && isPrintableOrderStatus(orderWithDocument?.status));
+  const isFirstFilePrintable = Boolean(firstFile?.document?.printReadyStoragePath) || isPrintableUploadMimeType(fileType) || isDesktopPreparableMimeType(fileType);
+  const isReady = Boolean(storagePath && fileSha256 && isFirstFilePrintable && allFilesPrintable && isPrintableOrderStatus(orderWithDocument?.status));
 
   return {
     isReady,
