@@ -12,6 +12,34 @@ import { calculatePrintPricing } from '../utils/calculatePrice.js';
 import { pricingMetadata } from '../services/orderPricingPresenter.js';
 import { getSupabaseAdminClient, getSupabaseBucketName } from '../config/supabase.js';
 
+function centreWithCurrentPricing(centre) {
+  const pricing = centre?.pricing || {};
+  return {
+    ...centre,
+    pricing: {
+      bwSingle: pricing.bwSingle ?? centre?.bwSingle ?? 1,
+      bwDouble: pricing.bwDouble ?? centre?.bwDouble ?? 1.5,
+      colorSingle: pricing.colorSingle ?? centre?.colorSingle ?? 2,
+      colorDouble: pricing.colorDouble ?? centre?.colorDouble ?? 3,
+      watermarkCharge: pricing.watermarkCharge ?? centre?.watermarkCharge ?? 2,
+    },
+  };
+}
+
+function getOptionColorMode(printOptions = {}) {
+  return printOptions.colorMode === 'color' || printOptions.color_mode === 'color' ? 'color' : 'bw';
+}
+
+function getOptionSideType(printOptions = {}) {
+  const sides = String(printOptions.sides || printOptions.sideType || printOptions.side_type || '').toLowerCase();
+  if (printOptions.duplex === true || sides === 'double' || sides.startsWith('two_sided')) return 'double';
+  return 'single';
+}
+
+function getOptionPagesPerSheet(printOptions = {}) {
+  return printOptions.pagesPerSheet || printOptions.pages_per_sheet || 1;
+}
+
 export async function canReprintOrder({ originalOrder, actor }) {
   if (!originalOrder) return false;
   
@@ -66,6 +94,7 @@ export async function createReprintOrder({ originalOrderId, actor, allowDocument
   if (!centre) {
     throw new Error('Original hub is no longer available');
   }
+  const currentCentre = centreWithCurrentPricing(centre);
 
   let allDocumentsAvailable = true;
   const pricedFiles = [];
@@ -94,14 +123,14 @@ export async function createReprintOrder({ originalOrderId, actor, allowDocument
 
     // Re-price based on CURRENT hub pricing
     const price = calculatePrintPricing({
-      centre,
+      centre: currentCentre,
       originalPageCount: file.originalPageCount,
       selectedPages: file.selectedPages,
       copies: file.copies,
-      colorType: file.printOptions.colorMode === "color" ? "color" : "bw",
-      sideType: file.printOptions.duplex || file.printOptions.sides?.startsWith("two_sided") ? "double" : "single",
+      colorType: getOptionColorMode(file.printOptions),
+      sideType: getOptionSideType(file.printOptions),
       paperSize: file.printOptions.paperSize || "A4",
-      pagesPerSheet: file.printOptions.pagesPerSheet || 1,
+      pagesPerSheet: getOptionPagesPerSheet(file.printOptions),
       watermarkEnabled: Boolean(file.printOptions.watermark?.enabled)
     });
 

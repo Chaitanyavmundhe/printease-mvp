@@ -364,6 +364,24 @@ const centreSelect = `
       where p.hub_id = c.id
       and p.is_active = true 
       and p.status in ('available', 'idle', 'accepting')
+    ) or exists (
+      select 1
+      from agents a
+      where a.hub_id = c.id
+        and a.revoked_at is null
+        and a.paused = false
+        and a.last_seen_at > now() - interval '2 minutes'
+        and lower(coalesce(a.status, '')) in ('online', 'active')
+    ) or exists (
+      select 1
+      from agent_printers ap
+      join agents a on a.id = ap.agent_id
+      where ap.hub_id = c.id
+        and a.hub_id = c.id
+        and a.revoked_at is null
+        and a.paused = false
+        and a.last_seen_at > now() - interval '2 minutes'
+        and lower(coalesce(ap.status, ap.condition, '')) in ('online', 'available', 'idle', 'accepting')
     ) as printer_online
   from print_hubs c
   left join users u on u.id = c.owner_id
