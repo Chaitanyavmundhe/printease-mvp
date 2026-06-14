@@ -23,6 +23,7 @@
   "license": "MIT",
   "dependencies": {
     "@supabase/supabase-js": "^2.107.0",
+    "adm-zip": "^0.5.17",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",

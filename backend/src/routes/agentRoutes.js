@@ -12,7 +12,8 @@ import {
   markFailed,
   markPrinting,
   startPairing,
-  syncPrinters
+  syncPrinters,
+  reportPreparationResult
 } from '../controllers/agentController.js';
 import { agentAuthMiddleware } from '../middleware/agentAuthMiddleware.js';
 import { agentPairingRateLimit } from '../middleware/rateLimitMiddleware.js';
@@ -33,5 +34,7 @@ router.post('/jobs/:jobId/printing', agentAuthMiddleware, markPrinting);
 router.post('/jobs/:jobId/completed', agentAuthMiddleware, markCompleted);
 router.post('/jobs/:jobId/failed', agentAuthMiddleware, markFailed);
 router.post('/jobs/:jobId/cancelled', agentAuthMiddleware, markCancelled);
+
+router.post('/preparation-result', agentAuthMiddleware, reportPreparationResult);
 
 export default router;

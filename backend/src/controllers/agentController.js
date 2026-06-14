@@ -13,6 +13,7 @@ import {
   updateAgentHeartbeat,
   updateOrderStatus,
   updatePrintJobStatus,
+  updateDocumentPreparation,
   withTransaction
 } from '../db/repository.js';
 import {
@@ -309,6 +310,8 @@ export const getPredownloadCandidates = asyncHandler(async (req, res) => {
       fileSha256: printReadyFile?.fileSha256 || candidate.file.document?.fileSha256 || null,
       fileUrl: await resolveDownloadUrl(sourceFileUrl),
       printReady: Boolean(printReadyFile?.transformed),
+      requiresDesktopPreparation: candidate.file.document?.requiresDesktopPreparation || false,
+      preparationStatus: candidate.file.document?.preparationStatus || 'prepared'
     };
   }));
 
@@ -417,4 +420,26 @@ export const markCancelled = asyncHandler((req, res) => {
     eventType: 'cancelled',
     message: req.body.reasonText || 'Agent stopped print job after hub cancellation'
   });
+});
+
+export const reportPreparationResult = asyncHandler(async (req, res) => {
+  const { documentId, preparedPageCount, preparationStatus, errorCode, errorMessage } = req.body;
+
+  if (!documentId) {
+    return res.status(400).json({ success: false, message: 'documentId is required' });
+  }
+
+  const result = await updateDocumentPreparation(documentId, {
+    preparedPageCount,
+    preparationStatus,
+    preparationErrorCode: errorCode,
+    preparationErrorMessage: errorMessage,
+    preparedAt: new Date().toISOString()
+  });
+
+  if (!result) {
+    return res.status(404).json({ success: false, message: 'Document not found' });
+  }
+
+  res.json({ success: true, document: result });
 });

@@ -3,6 +3,7 @@ import path from 'path';
 import { createDocument } from '../db/repository.js';
 import { generateId } from '../utils/generateCode.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
+import { getPptxSlideCount } from '../utils/pptxParser.js';
 import { getSupabaseAdminClient, getSupabaseBucketName } from '../config/supabase.js';
 import { getPdfPageCount } from '../utils/pdfPageCount.js';
 import { createGuestToken, hashGuestToken, getGuestExpiry } from '../services/guestAccessService.js';
@@ -72,7 +73,26 @@ export const uploadDocument = asyncHandler(async (req, res) => {
         console.debug('Could not read page count from printReadyFile:', error?.message);
       }
     }
+  } else if (mainFile.mimetype === 'image/jpeg' || mainFile.mimetype === 'image/png' || mainFile.mimetype === 'image/webp') {
+    pageCount = 1;
+  } else if (mainFile.mimetype === 'application/vnd.openxmlformats-officedocument.presentationml.presentation') {
+    const slideCount = getPptxSlideCount(mainFile.buffer);
+    if (slideCount) {
+      pageCount = slideCount;
+    } else {
+      pageCount = null;
+    }
+  } else if (
+    mainFile.mimetype.includes('officedocument') ||
+    mainFile.mimetype.includes('msword') ||
+    mainFile.mimetype.includes('ms-excel')
+  ) {
+    pageCount = null;
   }
+
+  const isOfficeFormat = mainFile.mimetype.includes('officedocument') || mainFile.mimetype.includes('msword') || mainFile.mimetype.includes('ms-excel');
+  const needsDesktopPrep = req.body.requiresDesktopPreparation === 'true' || (isOfficeFormat && pageCount === null);
+  const preparationStatus = needsDesktopPrep ? 'pending' : 'prepared';
 
   const documentId = generateId();
   const originalName = mainFile.originalname || 'document.pdf';
@@ -156,8 +176,13 @@ export const uploadDocument = asyncHandler(async (req, res) => {
     conversionPlacement: req.body.conversionPlacement || null,
     conversionReasonCode: req.body.conversionReasonCode || null,
     fileKind: req.body.fileKind || null,
-    requiresDesktopPreparation: req.body.requiresDesktopPreparation === 'true',
+    requiresDesktopPreparation: needsDesktopPrep,
     pageCount,
+    preparedPageCount: null,
+    preparationStatus,
+    preparationErrorCode: null,
+    preparationErrorMessage: null,
+    preparedAt: null,
     guestTokenHash,
     expiresAt,
     createdAt: new Date().toISOString()

@@ -160,6 +160,11 @@ alter table documents add column if not exists conversion_placement text;
 alter table documents add column if not exists conversion_reason_code text;
 alter table documents add column if not exists file_kind text;
 alter table documents add column if not exists requires_desktop_preparation boolean default false;
+alter table documents add column if not exists prepared_page_count integer;
+alter table documents add column if not exists preparation_status text default 'prepared' check (preparation_status in ('pending', 'prepared', 'failed'));
+alter table documents add column if not exists preparation_error_code text;
+alter table documents add column if not exists preparation_error_message text;
+alter table documents add column if not exists prepared_at timestamptz;
 
 update documents
 set file_size_bytes = file_size

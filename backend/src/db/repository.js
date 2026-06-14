@@ -96,12 +96,18 @@ export function mapDocument(row) {
     conversionSource: row.conversion_source || null,
     conversionPlacement: row.conversion_placement || null,
     conversionReasonCode: row.conversion_reason_code || null,
-    fileKind: row.file_kind || null,
-    requiresDesktopPreparation: Boolean(row.requires_desktop_preparation),
+    fileKind: row.file_kind,
+    requiresDesktopPreparation: row.requires_desktop_preparation,
+    preparedPageCount: row.prepared_page_count,
+    preparationStatus: row.preparation_status,
+    preparationErrorCode: row.preparation_error_code,
+    preparationErrorMessage: row.preparation_error_message,
+    preparedAt: row.prepared_at,
     pageCount: row.page_count === null || row.page_count === undefined ? null : Number(row.page_count),
     createdAt: timestamp(row.created_at)
   };
 }
+
 
 export function mapOrder(row) {
   if (!row) return null;
@@ -647,9 +653,14 @@ export async function createDocument(document) {
        page_count,
        guest_token_hash,
        expires_at,
-       created_at
+       created_at,
+       prepared_page_count,
+       preparation_status,
+       preparation_error_code,
+       preparation_error_message,
+       prepared_at
      )
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, coalesce($20, now()))
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, coalesce($20, now()), $21, $22, $23, $24, $25)
      returning *`,
     [
       document.id,
@@ -671,11 +682,38 @@ export async function createDocument(document) {
       document.pageCount || null,
       document.guestTokenHash || null,
       document.expiresAt || null,
-      document.createdAt || null
+      document.createdAt || null,
+      document.preparedPageCount || null,
+      document.preparationStatus || 'prepared',
+      document.preparationErrorCode || null,
+      document.preparationErrorMessage || null,
+      document.preparedAt || null
     ]
   );
 
   return mapDocument(result.rows[0]);
+}
+
+export async function updateDocumentPreparation(id, data, client) {
+  const result = await executor(client).query(
+    `update documents
+     set prepared_page_count = $2,
+         preparation_status = $3,
+         preparation_error_code = $4,
+         preparation_error_message = $5,
+         prepared_at = coalesce($6, now())
+     where id = $1
+     returning *`,
+    [
+      id,
+      data.preparedPageCount,
+      data.preparationStatus,
+      data.preparationErrorCode || null,
+      data.preparationErrorMessage || null,
+      data.preparedAt || null
+    ]
+  );
+  return result.rows.length ? mapDocument(result.rows[0]) : null;
 }
 
 export async function findDocumentById(documentId, client) {
