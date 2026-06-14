@@ -3,6 +3,7 @@ import { OFFICIAL_BACKEND_URL } from '../config/agent.js';
 import { findOrderByIdOrCode, listOrderFiles, findCentreById, findUserById } from '../db/repository.js';
 import { getPrintReadyFile } from '../utils/printReadyPdf.js';
 import { optionsForDeliveredPdf } from './printJobReadinessService.js';
+import { toPrintReadyPdfName } from '../utils/fileNameUtils.js';
 
 export function parsePrivateStorageReference(fileUrl) {
   if (!String(fileUrl || '').startsWith('private://')) {
@@ -85,7 +86,7 @@ export async function toAgentJobPayload(job) {
       fileUrl,
       fileSha256: printReadyFile?.fileSha256 || file.document?.fileSha256,
       fileName: printReadyFile?.fileType === 'application/pdf'
-        ? file.document?.fileName?.replace(/\.[^.]+$/, '.pdf') || file.document?.fileName
+        ? toPrintReadyPdfName(file.document?.fileName)
         : file.document?.fileName,
       fileType: printReadyFile?.fileType || file.document?.fileType,
       pageCount: file.originalPageCount,
