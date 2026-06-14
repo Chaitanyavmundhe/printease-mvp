@@ -6,6 +6,7 @@ import Row from "../components/Row";
 import { calculateTotalAmount, getPricePerPage, countSelectedPages } from "../utils/price";
 import { countSelectedPagesPreview, estimatePrintablePages, estimateGuestLimitExceeded, estimateSheets, estimatePricePreview } from "../utils/printEstimate";
 import { ALLOWED_UPLOAD_ACCEPT, isAllowedUploadFile } from "../constants/upload";
+import { detectUploadFileKind } from "../utils/filePreparation/detectUploadFileKind";
 
 export default function UploadPage({
   currentUser,
@@ -399,6 +400,13 @@ export default function UploadPage({
   );
 
   const handlePaymentClick = () => {
+    // Check for Office files before allowing payment
+    for (const file of displayFiles) {
+      if (file.fileObject && detectUploadFileKind(file.fileObject) === 'office') {
+        window.alert("This document must be prepared before pricing. Please convert to PDF first.");
+        return;
+      }
+    }
     if (!isMulti) {
       if (copies === "" || Number(copies) <= 0) {
         window.alert("Please enter a valid number of copies (at least 1).");

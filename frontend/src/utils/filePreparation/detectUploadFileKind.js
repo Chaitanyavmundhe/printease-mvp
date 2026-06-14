@@ -39,7 +39,7 @@ export function detectUploadFileKind(file) {
   return 'unsupported';
 }
 
-export function canBrowserTryImageToPdf(file, { maxBytes = 15 * 1024 * 1024 } = {}) {
+export function canBrowserTryImageToPdf(file, { maxBytes = 20 * 1024 * 1024 } = {}) {
   const kind = detectUploadFileKind(file);
   if (kind !== 'image') return false;
 

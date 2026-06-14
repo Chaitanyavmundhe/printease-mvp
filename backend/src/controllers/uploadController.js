@@ -25,7 +25,11 @@ function looksLikePdf(buffer) {
 
 export const uploadDocument = asyncHandler(async (req, res) => {
   const mainFile = req.files?.document?.[0] || req.file;
-  const printReadyFile = req.files?.printReadyFile?.[0];
+  let printReadyFile = req.files?.printReadyFile?.[0];
+  
+  if (printReadyFile && (printReadyFile.mimetype !== 'application/pdf' || !looksLikePdf(printReadyFile.buffer))) {
+    printReadyFile = null;
+  }
 
   if (!mainFile) {
     return res.status(400).json({ success: false, message: 'No file uploaded' });

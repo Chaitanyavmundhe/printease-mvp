@@ -36,6 +36,27 @@ export const getCentreByCode = asyncHandler(async (req, res) => {
     return res.status(404).json({ success: false, message: 'Centre not found' });
   }
 
+  const { listPrintJobsByHub } = await import('../db/repository.js');
+  const jobs = await listPrintJobsByHub(centre.id);
+  const queuedJobs = jobs.filter(j => ['queued', 'assigned', 'accepted', 'downloading', 'printing'].includes(String(j.status).toLowerCase()));
+  
+  let queuedOfficeCount = 0;
+  let queuedEstimatedSeconds = 0;
+  
+  for (const job of queuedJobs) {
+    // Rough estimate: 5s per copy + 2s per job
+    queuedEstimatedSeconds += (job.copies || 1) * 5 + 2;
+    if (job.fileType && (job.fileType.includes('officedocument') || job.fileType.includes('msword') || job.fileType.includes('ms-excel'))) {
+      queuedOfficeCount += 1;
+    }
+  }
+
+  centre.hubLoad = {
+    queuedEstimatedSeconds,
+    queuedOfficeCount,
+    isOnline: centre.printerOnline
+  };
+
   res.json({ success: true, centre });
 });
 

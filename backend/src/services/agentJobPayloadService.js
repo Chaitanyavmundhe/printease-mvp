@@ -84,7 +84,9 @@ export async function toAgentJobPayload(job) {
       documentId: file.documentId,
       fileUrl,
       fileSha256: printReadyFile?.fileSha256 || file.document?.fileSha256,
-      fileName: file.document?.fileName,
+      fileName: printReadyFile?.fileType === 'application/pdf'
+        ? file.document?.fileName?.replace(/\.[^.]+$/, '.pdf') || file.document?.fileName
+        : file.document?.fileName,
       fileType: printReadyFile?.fileType || file.document?.fileType,
       pageCount: file.originalPageCount,
       selectedPages: file.selectedPages,

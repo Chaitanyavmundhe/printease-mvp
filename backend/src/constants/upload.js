@@ -43,7 +43,6 @@ export const DESKTOP_PREPARABLE_MIME_TYPES = new Set([
   'application/vnd.oasis.opendocument.presentation',
   'image/jpeg',
   'image/png',
-  'image/webp',
   'text/plain',
   'text/csv',
   'application/json'

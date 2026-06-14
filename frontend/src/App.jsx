@@ -1361,10 +1361,10 @@ export default function App() {
           try {
             const prepResult = await prepareBrowserPrintReadyFile(file, {
               hubId: selectedCentre?.id || selectedCentre?.code,
-              hubLoad: {
+              hubLoad: selectedCentre?.hubLoad || {
                 queuedEstimatedSeconds: 0,
                 queuedOfficeCount: 0,
-                isOnline: true
+                isOnline: selectedCentre?.printerOnline ?? true
               },
               userPreference: 'auto'
             });
