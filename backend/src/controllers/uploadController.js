@@ -64,7 +64,9 @@ export const uploadDocument = asyncHandler(async (req, res) => {
     try {
       pageCount = await getPdfPageCount(printReadyFile.buffer);
     } catch (error) {
-      console.warn('Could not read page count from printReadyFile:', error);
+      if (process.env.NODE_ENV !== 'production') {
+        console.debug('Could not read page count from printReadyFile:', error?.message);
+      }
     }
   }
 

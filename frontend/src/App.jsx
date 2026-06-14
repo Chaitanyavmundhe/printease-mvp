@@ -1343,7 +1343,7 @@ export default function App() {
       return;
     }
     if (!filesToUpload.length && !reprintSourceDocuments.length) {
-      setPaymentError("Please upload a PDF document first.");
+      setPaymentError("Please upload a supported document first.");
       navigate("upload");
       return;
     }
@@ -1373,7 +1373,9 @@ export default function App() {
             }
             fileMeta = prepResult;
           } catch (e) {
-             console.warn("Browser preparation failed, continuing with original:", e);
+             if (import.meta.env.DEV) {
+               console.debug("Browser preparation skipped; uploading original file.", e);
+             }
           }
 
           const formData = new FormData();
@@ -1386,7 +1388,7 @@ export default function App() {
              formData.append("conversionSource", fileMeta.conversionSource || 'none');
              formData.append("conversionPlacement", fileMeta.conversionPlacement || 'none');
              formData.append("conversionReasonCode", fileMeta.decision?.reasonCode || 'unknown');
-             formData.append("fileKind", fileMeta.decision?.fileInfo?.kind || 'unknown');
+             formData.append("fileKind", fileMeta.fileKind || fileMeta.decision?.kind || 'unknown');
              formData.append("requiresDesktopPreparation", fileMeta.conversionPlacement === 'desktop' ? 'true' : 'false');
              if (printReadyFile) {
                formData.append("printReadyFileType", "application/pdf");

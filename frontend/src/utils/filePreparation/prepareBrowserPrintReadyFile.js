@@ -31,6 +31,7 @@ export async function prepareBrowserPrintReadyFile(file, context = {}) {
       printReadyFile: null,
       conversionPlacement: CONVERSION_PLACEMENT.NONE,
       conversionSource: 'none',
+      fileKind: kind,
       decision,
     };
   }
@@ -42,6 +43,7 @@ export async function prepareBrowserPrintReadyFile(file, context = {}) {
       printReadyFile,
       conversionPlacement: CONVERSION_PLACEMENT.BROWSER,
       conversionSource: 'browser-image-to-pdf',
+      fileKind: kind,
       decision,
     };
   }
@@ -51,6 +53,7 @@ export async function prepareBrowserPrintReadyFile(file, context = {}) {
     printReadyFile: null,
     conversionPlacement: decision.placement,
     conversionSource: decision.placement === CONVERSION_PLACEMENT.DESKTOP ? 'desktop-required' : 'manual-or-unsupported',
+    fileKind: kind,
     decision,
   };
 }

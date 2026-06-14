@@ -51,7 +51,7 @@ export const DEFAULT_POLICY_LIMITS = Object.freeze({
   hubBusyOfficeQueueCount: 5,
 
   // Browser image conversion should be small to avoid freezing Android devices.
-  maxBrowserImageBytes: 15 * MB,
+  maxBrowserImageBytes: 20 * MB,
   maxBrowserImagePixels: 25_000_000,
 
   // Browser text rendering is okay only for small simple files.

@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import { PDFDocument, StandardFonts, degrees, rgb } from 'pdf-lib';
 import { getSupabaseAdminClient, getSupabaseBucketName } from '../config/supabase.js';
 import { parsePageRange } from './printOptions.js';
-import { isPrintableUploadMimeType } from '../constants/upload.js';
+import { isPrintableUploadMimeType, isDesktopPreparableMimeType } from '../constants/upload.js';
 import { convertPrintableUploadToPdf } from './printablePdfConversion.js';
 
 function parsePrivateStorageReference(fileUrl) {
@@ -138,6 +138,15 @@ export async function getPrintReadyFile(order, orderFile) {
   const sourceType = isPreConverted ? 'application/pdf' : (orderFile.document?.fileType || 'application/pdf');
 
   if (!isPrintableUploadMimeType(sourceType)) {
+    if (isDesktopPreparableMimeType(sourceType)) {
+      return {
+        fileUrl: `private://${bucket}/${sourcePath}`,
+        fileSha256: orderFile.document?.fileSha256,
+        fileType: sourceType,
+        transformed: false,
+        requiresDesktopPreparation: true
+      };
+    }
     return null;
   }
 
