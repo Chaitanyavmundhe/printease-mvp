@@ -358,6 +358,7 @@ const centreSelect = `
     c.area,
     c.city,
     c.map_updated_at,
+    c.after_order_settings,
     exists (
       select 1 from printers p 
       where p.hub_id = c.id
