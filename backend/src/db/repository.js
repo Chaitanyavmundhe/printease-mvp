@@ -2145,13 +2145,26 @@ export async function findNextPrintJobForAgent(agentId, hubId, client) {
            and d.storage_path <> ''
            and d.file_sha256 is not null
            and d.file_sha256 <> ''
-           and lower(coalesce(d.file_type, '')) in (
-             'application/pdf',
-             'image/jpeg',
-             'image/png',
-             'text/plain',
-             'text/csv',
-             'application/json'
+           and (
+             lower(coalesce(d.file_type, '')) in (
+               'application/pdf',
+               'image/jpeg',
+               'image/png',
+               'image/webp',
+               'text/plain',
+               'text/csv',
+               'application/json',
+               'application/msword',
+               'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+               'application/vnd.ms-excel',
+               'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+               'application/vnd.ms-powerpoint',
+               'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+               'application/vnd.oasis.opendocument.text',
+               'application/vnd.oasis.opendocument.spreadsheet',
+               'application/vnd.oasis.opendocument.presentation'
+             )
+             or d.print_ready_storage_path is not null
            )
        )
      order by pj.created_at asc
