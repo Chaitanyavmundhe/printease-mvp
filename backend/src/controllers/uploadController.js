@@ -24,20 +24,23 @@ function looksLikePdf(buffer) {
 }
 
 export const uploadDocument = asyncHandler(async (req, res) => {
-  if (!req.file) {
+  const mainFile = req.files?.document?.[0] || req.file;
+  const printReadyFile = req.files?.printReadyFile?.[0];
+
+  if (!mainFile) {
     return res.status(400).json({ success: false, message: 'No file uploaded' });
   }
 
-  if (!isAllowedUploadMimeType(req.file.mimetype)) {
+  if (!isAllowedUploadMimeType(mainFile.mimetype)) {
     return res.status(400).json({
       success: false,
       message: `Unsupported file type. Allowed types: ${formatAllowedUploadTypes()}`
     });
   }
 
-  const isPdf = req.file.mimetype === 'application/pdf';
+  const isPdf = mainFile.mimetype === 'application/pdf';
 
-  if (isPdf && !looksLikePdf(req.file.buffer)) {
+  if (isPdf && !looksLikePdf(mainFile.buffer)) {
     return res.status(400).json({
       success: false,
       message: 'Uploaded file is not a valid PDF.'
@@ -50,30 +53,36 @@ export const uploadDocument = asyncHandler(async (req, res) => {
 
   if (isPdf) {
     try {
-      pageCount = await getPdfPageCount(req.file.buffer);
+      pageCount = await getPdfPageCount(mainFile.buffer);
     } catch (error) {
       return res.status(400).json({
         success: false,
         message: error.message || 'Could not read PDF page count. Please upload a valid, uncorrupted PDF.'
       });
     }
+  } else if (printReadyFile && printReadyFile.mimetype === 'application/pdf') {
+    try {
+      pageCount = await getPdfPageCount(printReadyFile.buffer);
+    } catch (error) {
+      console.warn('Could not read page count from printReadyFile:', error);
+    }
   }
 
   const documentId = generateId();
-  const originalName = req.file.originalname || 'document.pdf';
+  const originalName = mainFile.originalname || 'document.pdf';
   const cleanedName = safeFileName(originalName);
   const userFolder = req.user?.id || `limited/${documentId}`;
   const storagePath = `${userFolder}/${documentId}-${Date.now()}-${cleanedName}`;
 
   const fileSha256 = crypto
     .createHash('sha256')
-    .update(req.file.buffer)
+    .update(mainFile.buffer)
     .digest('hex');
 
   const { error: uploadError } = await supabase.storage
     .from(bucket)
-    .upload(storagePath, req.file.buffer, {
-      contentType: req.file.mimetype,
+    .upload(storagePath, mainFile.buffer, {
+      contentType: mainFile.mimetype,
       upsert: false
     });
 
@@ -84,6 +93,32 @@ export const uploadDocument = asyncHandler(async (req, res) => {
       message: 'Failed to upload document to secure storage',
       error: uploadError.message
     });
+  }
+
+  let printReadyStoragePath = null;
+  let printReadySha256 = null;
+
+  if (printReadyFile) {
+    const prCleanedName = safeFileName(printReadyFile.originalname || 'print-ready.pdf');
+    printReadyStoragePath = `${userFolder}/${documentId}-${Date.now()}-pr-${prCleanedName}`;
+    printReadySha256 = crypto
+      .createHash('sha256')
+      .update(printReadyFile.buffer)
+      .digest('hex');
+
+    const { error: prUploadError } = await supabase.storage
+      .from(bucket)
+      .upload(printReadyStoragePath, printReadyFile.buffer, {
+        contentType: printReadyFile.mimetype,
+        upsert: false
+      });
+
+    if (prUploadError) {
+      console.error('Supabase print-ready upload failed:', prUploadError);
+      // We will proceed without printReadyFile if it fails
+      printReadyStoragePath = null;
+      printReadySha256 = null;
+    }
   }
 
   let guestToken = null;
@@ -103,12 +138,17 @@ export const uploadDocument = asyncHandler(async (req, res) => {
     id: documentId,
     userId: req.user?.id || null,
     fileName: originalName,
-    fileType: req.file.mimetype,
-    fileSize: req.file.size,
-    fileSizeBytes: req.file.size,
+    fileType: mainFile.mimetype,
+    fileSize: mainFile.size,
+    fileSizeBytes: mainFile.size,
     fileUrl: `private://${bucket}/${storagePath}`,
     storagePath,
     fileSha256,
+    printReadyStoragePath,
+    printReadySha256,
+    conversionSource: req.body.conversionSource || null,
+    conversionPlacement: req.body.conversionPlacement || null,
+    conversionReasonCode: req.body.conversionReasonCode || null,
     pageCount,
     guestTokenHash,
     expiresAt,

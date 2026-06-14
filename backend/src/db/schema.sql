@@ -153,6 +153,11 @@ alter table documents add column if not exists storage_path text;
 alter table documents add column if not exists page_count integer;
 alter table documents add column if not exists file_type text;
 alter table documents add column if not exists file_size_bytes bigint;
+alter table documents add column if not exists print_ready_storage_path text;
+alter table documents add column if not exists print_ready_sha256 text;
+alter table documents add column if not exists conversion_source text;
+alter table documents add column if not exists conversion_placement text;
+alter table documents add column if not exists conversion_reason_code text;
 
 update documents
 set file_size_bytes = file_size

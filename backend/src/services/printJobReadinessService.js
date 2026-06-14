@@ -49,14 +49,14 @@ export function verifyPrintFilesReadiness(orderFiles, orderWithDocument) {
   }
 
   const firstFile = orderFiles[0];
-  const storagePath = firstFile?.document?.storagePath || orderWithDocument?.document_storage_path;
-  const fileSha256 = firstFile?.document?.fileSha256 || orderWithDocument?.document_file_sha256;
-  const fileType = firstFile?.document?.fileType || orderWithDocument?.document_file_type || 'application/pdf';
+  const storagePath = firstFile?.document?.printReadyStoragePath || firstFile?.document?.storagePath || orderWithDocument?.document_storage_path;
+  const fileSha256 = firstFile?.document?.printReadySha256 || firstFile?.document?.fileSha256 || orderWithDocument?.document_file_sha256;
+  const fileType = firstFile?.document?.printReadyStoragePath ? 'application/pdf' : (firstFile?.document?.fileType || orderWithDocument?.document_file_type || 'application/pdf');
 
   const allFilesPrintable = orderFiles.every((file) => (
-    file.document?.storagePath &&
-    file.document?.fileSha256 &&
-    isPrintableUploadMimeType(file.document?.fileType || 'application/pdf')
+    (file.document?.storagePath || file.document?.printReadyStoragePath) &&
+    (file.document?.fileSha256 || file.document?.printReadySha256) &&
+    (file.document?.printReadyStoragePath || isPrintableUploadMimeType(file.document?.fileType || 'application/pdf'))
   ));
 
   const isReady = Boolean(storagePath && fileSha256 && isPrintableUploadMimeType(fileType) && allFilesPrintable && isPrintableOrderStatus(orderWithDocument?.status));
@@ -67,6 +67,8 @@ export function verifyPrintFilesReadiness(orderFiles, orderWithDocument) {
     storagePath,
     fileSha256,
     fileType,
-    allFilesPrintable
+    allFilesPrintable,
+    conversionSource: firstFile?.document?.conversionSource || null,
+    conversionPlacement: firstFile?.document?.conversionPlacement || null
   };
 }

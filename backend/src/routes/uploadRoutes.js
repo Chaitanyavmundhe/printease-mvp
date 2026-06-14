@@ -6,6 +6,9 @@ import { uploadRateLimit } from '../middleware/rateLimitMiddleware.js';
 
 const router = express.Router();
 
-router.post('/', uploadRateLimit, optionalAuthMiddleware, upload.single('document'), uploadDocument);
+router.post('/', uploadRateLimit, optionalAuthMiddleware, upload.fields([
+  { name: 'document', maxCount: 1 },
+  { name: 'printReadyFile', maxCount: 1 }
+]), uploadDocument);
 
 export default router;

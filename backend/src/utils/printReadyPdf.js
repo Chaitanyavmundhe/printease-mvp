@@ -122,22 +122,25 @@ async function buildPrintablePdf(sourceBytes, order, orderFile) {
 export async function getPrintReadyFile(order, orderFile) {
   const privateReference = parsePrivateStorageReference(orderFile.document?.fileUrl);
   const bucket = privateReference?.bucket || getSupabaseBucketName();
-  const sourcePath = privateReference?.storagePath || orderFile.document?.storagePath;
+  const sourcePath = orderFile.document?.printReadyStoragePath || privateReference?.storagePath || orderFile.document?.storagePath;
+  const isPreConverted = Boolean(orderFile.document?.printReadyStoragePath);
 
   if (!sourcePath) {
     return null;
   }
 
-  if (!isPrintableUploadMimeType(orderFile.document?.fileType || 'application/pdf')) {
+  const sourceType = isPreConverted ? 'application/pdf' : (orderFile.document?.fileType || 'application/pdf');
+
+  if (!isPrintableUploadMimeType(sourceType)) {
     return null;
   }
 
   if (!needsPrintReadyPdf(orderFile)) {
     return {
       fileUrl: `private://${bucket}/${sourcePath}`,
-      fileSha256: orderFile.document?.fileSha256,
-      fileType: orderFile.document?.fileType || 'application/pdf',
-      transformed: false
+      fileSha256: orderFile.document?.printReadySha256 || orderFile.document?.fileSha256,
+      fileType: sourceType,
+      transformed: isPreConverted
     };
   }
 

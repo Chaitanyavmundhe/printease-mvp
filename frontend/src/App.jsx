@@ -34,6 +34,7 @@ import {
   readSupabaseSessionFromUrl,
 } from "./utils/supabaseAuth";
 import { handleDesktopAutoRegistration } from "./utils/desktopAutoRegistration";
+import { prepareBrowserPrintReadyFile } from "./utils/filePreparation/prepareBrowserPrintReadyFile";
 
 const ROUTES = {
   home: "/",
@@ -1355,8 +1356,31 @@ export default function App() {
       const uploadedDocuments = [];
       if (filesToUpload.length) {
         for (const file of filesToUpload) {
+          let printReadyFile = null;
+          let fileMeta = null;
+          try {
+            const prepResult = await prepareBrowserPrintReadyFile(file, {
+              hubId: selectedCentre?.id || selectedCentre?.code
+            });
+            if (prepResult?.printReadyFile) {
+               printReadyFile = prepResult.printReadyFile;
+            }
+            fileMeta = prepResult?.decision || {};
+          } catch (e) {
+             console.warn("Browser preparation failed, continuing with original:", e);
+          }
+
           const formData = new FormData();
           formData.append("document", file);
+          
+          if (printReadyFile) {
+             formData.append("printReadyFile", printReadyFile);
+          }
+          if (fileMeta) {
+             formData.append("conversionSource", fileMeta.placement === 'browser' ? 'browser-image-to-pdf' : 'none');
+             formData.append("conversionPlacement", fileMeta.placement || 'none');
+             formData.append("conversionReasonCode", fileMeta.reasonCode || 'unknown');
+          }
 
           const uploadData = await apiRequest("/api/uploads", {
             method: "POST",
