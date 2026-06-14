@@ -71,7 +71,7 @@ export function calculatePrintPricing({
   pagesPerSheet = 1,
   paperSize = 'A4',
   watermarkEnabled = false,
-  chargeBy = 'page'
+  chargeBy = 'sheet'
 }) {
   if (!centre) throw new Error('Centre not found');
 

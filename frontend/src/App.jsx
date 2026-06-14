@@ -1329,7 +1329,7 @@ export default function App() {
     navigate("upload");
   }
 
-  async function preparePayment() {
+  async function preparePayment(preparedFilesByIndex = {}) {
     if (!selectedCentre) {
       setPaymentError("Please select a printing centre first.");
       navigate("centre");
@@ -1355,10 +1355,25 @@ export default function App() {
     try {
       const uploadedDocuments = [];
       if (filesToUpload.length) {
-        for (const file of filesToUpload) {
+        for (let index = 0; index < filesToUpload.length; index += 1) {
+          const file = filesToUpload[index];
+          const preparedState = preparedFilesByIndex?.[index];
+          if (preparedState?.status && preparedState.status !== "ready") {
+            throw new Error(preparedState.errorMessage || preparedState.message || "Document is not ready for payment yet.");
+          }
+
           let printReadyFile = null;
           let fileMeta = null;
-          try {
+          if (preparedState) {
+            printReadyFile = preparedState.printReadyFile || null;
+            fileMeta = {
+              conversionSource: preparedState.conversionSource || (printReadyFile ? "browser" : "none"),
+              conversionPlacement: preparedState.conversionPlacement || (printReadyFile ? "browser" : "none"),
+              decision: preparedState.decision || { reasonCode: "PREPARED_BEFORE_PAYMENT", kind: preparedState.fileKind },
+              fileKind: preparedState.fileKind,
+            };
+          } else {
+            try {
             const prepResult = await prepareBrowserPrintReadyFile(file, {
               hubId: selectedCentre?.id || selectedCentre?.code,
               hubLoad: selectedCentre?.hubLoad || {
@@ -1372,10 +1387,11 @@ export default function App() {
                printReadyFile = prepResult.printReadyFile;
             }
             fileMeta = prepResult;
-          } catch (e) {
+            } catch (e) {
              if (import.meta.env.DEV) {
                console.debug("Browser preparation skipped; uploading original file.", e);
              }
+            }
           }
 
           const formData = new FormData();
@@ -1389,7 +1405,7 @@ export default function App() {
              formData.append("conversionPlacement", fileMeta.conversionPlacement || 'none');
              formData.append("conversionReasonCode", fileMeta.decision?.reasonCode || 'unknown');
              formData.append("fileKind", fileMeta.fileKind || fileMeta.decision?.kind || 'unknown');
-             formData.append("requiresDesktopPreparation", fileMeta.conversionPlacement === 'desktop' ? 'true' : 'false');
+             formData.append("requiresDesktopPreparation", "false");
              if (printReadyFile) {
                formData.append("printReadyFileType", "application/pdf");
              }
