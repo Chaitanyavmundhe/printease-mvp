@@ -1752,7 +1752,7 @@ export async function revokeAgent(agentId, hubId, client) {
 
 function normalizeAgentPrinterStatus(rawStatus) {
   const normalized = String(rawStatus || '').toLowerCase().trim();
-  if (['idle', 'ready', 'available', 'online'].includes(normalized)) return 'available';
+  if (['idle', 'ready', 'available', 'online'].includes(normalized)) return 'idle';
   if (['printing', 'busy', 'processing'].includes(normalized)) return 'busy';
   if (['error', 'failed'].includes(normalized)) return 'error';
   return 'offline';
