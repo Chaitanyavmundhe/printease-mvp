@@ -1360,12 +1360,18 @@ export default function App() {
           let fileMeta = null;
           try {
             const prepResult = await prepareBrowserPrintReadyFile(file, {
-              hubId: selectedCentre?.id || selectedCentre?.code
+              hubId: selectedCentre?.id || selectedCentre?.code,
+              hubLoad: {
+                queuedEstimatedSeconds: 0,
+                queuedOfficeCount: 0,
+                isOnline: true
+              },
+              userPreference: 'auto'
             });
             if (prepResult?.printReadyFile) {
                printReadyFile = prepResult.printReadyFile;
             }
-            fileMeta = prepResult?.decision || {};
+            fileMeta = prepResult;
           } catch (e) {
              console.warn("Browser preparation failed, continuing with original:", e);
           }
@@ -1377,9 +1383,14 @@ export default function App() {
              formData.append("printReadyFile", printReadyFile);
           }
           if (fileMeta) {
-             formData.append("conversionSource", fileMeta.placement === 'browser' ? 'browser-image-to-pdf' : 'none');
-             formData.append("conversionPlacement", fileMeta.placement || 'none');
-             formData.append("conversionReasonCode", fileMeta.reasonCode || 'unknown');
+             formData.append("conversionSource", fileMeta.conversionSource || 'none');
+             formData.append("conversionPlacement", fileMeta.conversionPlacement || 'none');
+             formData.append("conversionReasonCode", fileMeta.decision?.reasonCode || 'unknown');
+             formData.append("fileKind", fileMeta.decision?.fileInfo?.kind || 'unknown');
+             formData.append("requiresDesktopPreparation", fileMeta.conversionPlacement === 'desktop' ? 'true' : 'false');
+             if (printReadyFile) {
+               formData.append("printReadyFileType", "application/pdf");
+             }
           }
 
           const uploadData = await apiRequest("/api/uploads", {
