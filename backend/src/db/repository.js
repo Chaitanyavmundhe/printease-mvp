@@ -749,6 +749,64 @@ export async function listOrderFiles(orderId, client) {
   return result.rows.map(mapOrderFile);
 }
 
+export async function listPendingPaymentOrderFilesForAgentPredownload(hubId, { limit = 20 } = {}, client) {
+  const boundedLimit = Math.min(50, Math.max(1, Number(limit) || 20));
+  const result = await executor(client).query(
+    `select
+       pof.*,
+       coalesce(pof.print_sequence, row_number() over (partition by pof.order_id order by pof.created_at, pof.id)) as print_sequence,
+       po.order_code,
+       po.pickup_code,
+       po.payment_status,
+       po.status as order_status,
+       d.file_name,
+       d.file_type,
+       d.file_size,
+       d.file_size_bytes,
+       d.file_sha256,
+       d.storage_path,
+       d.page_count,
+       d.created_at as document_created_at
+     from print_orders po
+     join print_order_files pof on pof.order_id = po.id
+     join documents d on d.id = pof.document_id
+     where po.hub_id = $1
+       and lower(coalesce(po.payment_status, '')) in ('pending', 'draft')
+       and lower(coalesce(po.status, '')) not in (
+         'cancelled',
+         'expired',
+         'refund requested',
+         'ready for pickup',
+         'collected'
+       )
+       and (po.expires_at is null or po.expires_at > now())
+       and d.storage_path is not null
+       and d.storage_path <> ''
+       and d.file_sha256 is not null
+       and d.file_sha256 <> ''
+       and lower(coalesce(d.file_type, '')) = 'application/pdf'
+       and not exists (
+         select 1
+         from print_jobs pj
+         where pj.order_id = po.id
+           and pj.hub_id = po.hub_id
+           and pj.status in ('queued', 'assigned', 'accepted', 'downloading', 'printing')
+       )
+     order by po.created_at desc, coalesce(pof.print_sequence, 999999), pof.created_at, pof.id
+     limit $2`,
+    [hubId, boundedLimit]
+  );
+
+  return result.rows.map((row) => ({
+    orderId: row.order_id,
+    orderCode: row.order_code || null,
+    pickupCode: row.pickup_code || null,
+    paymentStatus: row.payment_status || null,
+    orderStatus: row.order_status || null,
+    file: mapOrderFile(row),
+  }));
+}
+
 export async function findDocumentAccessContext(documentId, user, guestToken, client) {
   const result = await executor(client).query(
     `select

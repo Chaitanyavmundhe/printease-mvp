@@ -5,6 +5,7 @@ import {
   findOrderByIdOrCode,
   findPairingSessionByIdAndDevice,
   insertPrintJobEvent,
+  listPendingPaymentOrderFilesForAgentPredownload,
   listOrderFiles,
   markPairingSessionConfirmed,
   replaceAgentPrinters,
@@ -26,7 +27,9 @@ import { createAgentToken as createRawAgentToken, createPairingCode, hashAgentSe
 import { generateId } from '../utils/generateCode.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { toAgentJobPayload } from '../services/agentJobPayloadService.js';
+import { resolveDownloadUrl } from '../services/agentJobPayloadService.js';
 import { PRINT_JOB_STATUSES, PAIRING_STATUSES } from '../constants/statuses.js';
+import { getPrintReadyFile } from '../utils/printReadyPdf.js';
 
 const JOB_STATUS_TO_ORDER_STATUS = {
   [PRINT_JOB_STATUSES.ACCEPTED]: 'Sent to Agent',
@@ -271,6 +274,50 @@ export const getNextJob = asyncHandler(async (req, res) => {
   res.json({
     success: true,
     job: await toAgentJobPayload(job)
+  });
+});
+
+export const getPredownloadCandidates = asyncHandler(async (req, res) => {
+  const limit = Math.min(30, Math.max(1, Number(req.query.limit) || 15));
+  const candidates = await listPendingPaymentOrderFilesForAgentPredownload(req.agent.hubId, { limit });
+
+  const files = await Promise.all(candidates.map(async (candidate) => {
+    const order = {
+      id: candidate.orderId,
+      orderCode: candidate.orderCode,
+      pickupCode: candidate.pickupCode,
+    };
+    const printReadyFile = await getPrintReadyFile(order, candidate.file);
+    const sourceFileUrl = printReadyFile?.fileUrl || (
+      candidate.file.document?.storagePath
+        ? `private://${getSupabaseBucketName()}/${candidate.file.document.storagePath}`
+        : null
+    );
+
+    if (!sourceFileUrl) return null;
+
+    return {
+      orderId: candidate.orderId,
+      orderCode: candidate.orderCode,
+      pickupCode: candidate.pickupCode,
+      paymentStatus: candidate.paymentStatus,
+      orderStatus: candidate.orderStatus,
+      documentId: candidate.file.documentId,
+      orderFileId: candidate.file.id,
+      fileName: candidate.file.document?.fileName || 'document.pdf',
+      fileType: printReadyFile?.fileType || candidate.file.document?.fileType || 'application/pdf',
+      fileSha256: printReadyFile?.fileSha256 || candidate.file.document?.fileSha256 || null,
+      fileUrl: await resolveDownloadUrl(sourceFileUrl),
+      printReady: Boolean(printReadyFile?.transformed),
+    };
+  }));
+
+  // Guardrail: this endpoint is for local cache warm-up only. It never creates,
+  // assigns, or activates print_jobs, so the desktop cannot print before payment.
+  res.json({
+    success: true,
+    mode: 'predownload_only',
+    files: files.filter((file) => file?.documentId && file?.fileUrl && file?.fileSha256),
   });
 });
 
