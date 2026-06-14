@@ -73,6 +73,7 @@ create table if not exists print_hubs (
   area text,
   city text,
   map_updated_at timestamptz,
+  after_order_settings jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now()
 );
 
@@ -89,6 +90,7 @@ alter table print_hubs add column if not exists address_text text;
 alter table print_hubs add column if not exists area text;
 alter table print_hubs add column if not exists city text;
 alter table print_hubs add column if not exists map_updated_at timestamptz;
+alter table print_hubs add column if not exists after_order_settings jsonb not null default '{}'::jsonb;
 
 create index if not exists idx_print_hubs_location_enabled
 on print_hubs(location_enabled)

@@ -69,6 +69,7 @@ export function mapCentre(row) {
     area: row.area || null,
     city: row.city || null,
     mapUpdatedAt: timestamp(row.map_updated_at),
+    afterOrderSettings: row.after_order_settings || {},
     createdAt: timestamp(row.created_at)
   };
 }
@@ -549,6 +550,18 @@ export async function updateCentrePaymentMethod(centreId, upiId) {
 
   if (!result.rows[0]) return null;
   return findCentreById(result.rows[0].id);
+}
+
+export async function updateCentreAfterOrderSettings(centreId, afterOrderSettings, client) {
+  const result = await executor(client).query(
+    `update print_hubs
+     set after_order_settings = $2::jsonb
+     where id = $1
+     returning id`,
+    [centreId, JSON.stringify(afterOrderSettings)]
+  );
+  if (!result.rows[0]) return null;
+  return findCentreById(result.rows[0].id, client);
 }
 
 export async function updateHubLocation(centreId, fields) {

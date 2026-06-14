@@ -4,7 +4,8 @@ import {
   listCentres,
   updateCentrePaymentMethod,
   updateCentrePricing as saveCentrePricing,
-  deleteCentreByOwner
+  deleteCentreByOwner,
+  updateCentreAfterOrderSettings
 } from '../db/repository.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 
@@ -95,3 +96,52 @@ export const deleteMyCentre = asyncHandler(async (req, res) => {
   
   res.json({ success: true, message: 'Centre deleted successfully' });
 });
+
+export const updateAfterOrderSettings = asyncHandler(async (req, res) => {
+  const hubId = getHubId(req);
+  const existingCentre = await findCentreById(hubId);
+
+  if (!existingCentre) {
+    return res.status(404).json({ success: false, message: 'Centre not found for logged in owner' });
+  }
+
+  const { afterOrderSettings } = req.body;
+  if (!afterOrderSettings || typeof afterOrderSettings !== 'object') {
+    return res.status(400).json({ success: false, message: 'Invalid settings format. Must be an object.' });
+  }
+
+  // Basic validation of fields
+  const enabled = !!afterOrderSettings.enabled;
+  const type = ['blank', 'custom', 'watermark'].includes(afterOrderSettings.type) ? afterOrderSettings.type : 'blank';
+  const customText = typeof afterOrderSettings.customText === 'string' ? afterOrderSettings.customText.slice(0, 1000) : '';
+  
+  const watermarkMetadata = {
+    printerId: !!afterOrderSettings.watermarkMetadata?.printerId,
+    pickupCode: !!afterOrderSettings.watermarkMetadata?.pickupCode,
+    clientName: !!afterOrderSettings.watermarkMetadata?.clientName,
+    serialNo: !!afterOrderSettings.watermarkMetadata?.serialNo
+  };
+
+  const layout = {
+    fontSize: typeof afterOrderSettings.layout?.fontSize === 'number' ? Math.max(1, Math.min(100, afterOrderSettings.layout.fontSize)) : 12,
+    opacity: typeof afterOrderSettings.layout?.opacity === 'number' ? Math.max(0, Math.min(1, afterOrderSettings.layout.opacity)) : 0.5,
+    location: {
+      x: typeof afterOrderSettings.layout?.location?.x === 'number' ? Math.max(0, Math.min(2000, afterOrderSettings.layout.location.x)) : 100,
+      y: typeof afterOrderSettings.layout?.location?.y === 'number' ? Math.max(0, Math.min(2000, afterOrderSettings.layout.location.y)) : 100
+    },
+    orientation: typeof afterOrderSettings.layout?.orientation === 'number' ? Math.max(-360, Math.min(360, afterOrderSettings.layout.orientation)) : 0,
+    shape: ['text', 'box', 'circle'].includes(afterOrderSettings.layout?.shape) ? afterOrderSettings.layout.shape : 'text'
+  };
+
+  const sanitizedSettings = {
+    enabled,
+    type,
+    customText,
+    watermarkMetadata,
+    layout
+  };
+
+  const centre = await updateCentreAfterOrderSettings(hubId, sanitizedSettings);
+  res.json({ success: true, message: 'After-order page settings updated', centre });
+});
+

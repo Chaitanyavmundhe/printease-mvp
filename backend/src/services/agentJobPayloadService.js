@@ -1,6 +1,6 @@
 import { getSupabaseAdminClient } from '../config/supabase.js';
 import { OFFICIAL_BACKEND_URL } from '../config/agent.js';
-import { findOrderByIdOrCode, listOrderFiles } from '../db/repository.js';
+import { findOrderByIdOrCode, listOrderFiles, findCentreById, findUserById } from '../db/repository.js';
 import { getPrintReadyFile } from '../utils/printReadyPdf.js';
 import { optionsForDeliveredPdf } from './printJobReadinessService.js';
 
@@ -47,10 +47,27 @@ export async function toAgentJobPayload(job) {
   if (!job) return null;
 
   const signedFileUrl = await resolveDownloadUrl(job.fileUrl);
-  const [order, orderFiles] = await Promise.all([
+  const [order, orderFiles, hub] = await Promise.all([
     findOrderByIdOrCode(job.orderId),
-    listOrderFiles(job.orderId)
+    listOrderFiles(job.orderId),
+    findCentreById(job.hubId)
   ]);
+
+  let clientName = order?.guestName || order?.customerName || null;
+  if (!clientName && order?.userId) {
+    const user = await findUserById(order.userId).catch(() => null);
+    clientName = user?.name || null;
+  }
+
+  const orderInfo = {
+    orderId: job.orderId,
+    orderCode: order?.orderCode || null,
+    pickupCode: order?.pickupCode || null,
+    clientName,
+    jobId: job.id
+  };
+
+  const afterOrderSettings = hub?.afterOrderSettings || {};
 
   const { getPrinterProfilesByName } = await import('../db/repository.js');
   const printerProfiles = job.printerName 
@@ -73,10 +90,16 @@ export async function toAgentJobPayload(job) {
       selectedPages: file.selectedPages,
       selectedPageCount: file.selectedPageCount,
       copies: file.copies,
-      printOptions: optionsForDeliveredPdf(file.printOptions, printReadyFile?.transformed),
+      printOptions: {
+        ...optionsForDeliveredPdf(file.printOptions, printReadyFile?.transformed),
+        afterOrderSettings,
+        orderInfo
+      },
       printReady: Boolean(printReadyFile?.transformed)
     };
   })).then((items) => items.filter((file) => file.fileUrl));
+
+  const basePrintOptions = job.printOptions || files[0]?.printOptions || {};
 
   return {
     jobId: job.id,
@@ -94,7 +117,11 @@ export async function toAgentJobPayload(job) {
     copies: job.copies,
     paperSize: job.paperSize,
     colorMode: job.colorMode,
-    printOptions: job.printOptions || files[0]?.printOptions || {},
+    printOptions: {
+      ...basePrintOptions,
+      afterOrderSettings,
+      orderInfo
+    },
     paymentVerified: true,
     approvedForPrint: true,
     printable: true,
@@ -106,3 +133,4 @@ export async function toAgentJobPayload(job) {
     createdAt: job.createdAt
   };
 }
+
