@@ -1,4 +1,4 @@
-# Module: backend-manual-collection
+# Module: backend-agent-controller
 
 ## Current files
 - Path to current files

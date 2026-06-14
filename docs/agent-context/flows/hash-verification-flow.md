@@ -1,4 +1,4 @@
-# Flow: upload-document-flow
+# Flow: hash-verification-flow
 
 ## Purpose
 One sentence description of this flow.

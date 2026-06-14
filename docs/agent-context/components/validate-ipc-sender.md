@@ -1,4 +1,4 @@
-# Component: check-payment-ready-for-print
+# Component: validate-ipc-sender
 
 ## Size
 Tiny / Small / Medium

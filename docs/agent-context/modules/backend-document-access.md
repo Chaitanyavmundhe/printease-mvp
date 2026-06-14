@@ -1,4 +1,4 @@
-# Module: backend-manual-collection
+# Module: backend-document-access
 
 ## Current files
 - Path to current files

@@ -1,4 +1,4 @@
-# Module: backend-manual-collection
+# Module: desktop-main-process
 
 ## Current files
 - Path to current files

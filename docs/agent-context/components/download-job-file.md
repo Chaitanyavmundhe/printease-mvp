@@ -1,4 +1,4 @@
-# Component: check-payment-ready-for-print
+# Component: download-job-file
 
 ## Size
 Tiny / Small / Medium

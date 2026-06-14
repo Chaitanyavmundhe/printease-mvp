@@ -1,4 +1,4 @@
-# Component: check-payment-ready-for-print
+# Component: print-activity-state
 
 ## Size
 Tiny / Small / Medium

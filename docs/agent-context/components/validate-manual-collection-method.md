@@ -1,58 +1,52 @@
 # Component: validate-manual-collection-method
 
 ## Size
-Tiny
+Tiny / Small / Medium
 
 ## Domain
-Backend
+Backend / Desktop / Frontend / Security / Storage
 
 ## Flow
-Manual Collection
+Which business flow uses it
 
 ## Current File
-`backend/src/services/manualCollectionService.js`
+Where it currently lives
 
 ## Future File
-Keep here as an exported pure helper if it is split out.
+Where it should move later
 
 ## Purpose
-Allow only known offline collection methods and prevent invalid input becoming cash by default.
+One sentence
 
 ## Input
-- raw method string from request body
+Exact input fields
 
 ## Output
-- `CASH`
-- `MANUAL_UPI`
-- or an invalid-method error
+Exact output fields
 
 ## State Changed
-None
+None / DB / local config / printer / temp file
 
 ## Calls
-No external calls when kept pure.
+Functions/API it calls
 
 ## Called By
-- `processManualCollection`
-- `collectCashPayment`
+Who uses it
 
 ## Security Rules
-- Reject anything except `cash` and `manual_upi`.
-- Never default unknown values to `CASH`.
+Must-follow rules
 
 ## Failure Cases
-- invalid/missing method -> HTTP 400 from controller
+Expected errors
 
 ## Tests
-- invalid method returns 400
-- `cash` creates `CASH`
-- `manual_upi` creates `MANUAL_UPI`
+How to test
 
 ## When To Edit
-Only when adding a new offline collection method.
+Specific cases
 
 ## When Not To Edit
-Do not edit for Razorpay, upload, or print queue behavior.
+Unrelated cases
 
 ## Risk Level
-High
+Low / Medium / High / Critical

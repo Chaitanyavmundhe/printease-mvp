@@ -1,4 +1,4 @@
-# Component: check-payment-ready-for-print
+# Component: safe-approval-url
 
 ## Size
 Tiny / Small / Medium

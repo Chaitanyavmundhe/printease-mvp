@@ -1,4 +1,4 @@
-# Module: backend-manual-collection
+# Module: frontend-api-service
 
 ## Current files
 - Path to current files

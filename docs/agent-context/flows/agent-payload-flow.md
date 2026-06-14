@@ -1,68 +1,40 @@
-# Agent Payload Flow
+# Flow: agent-payload-flow
 
 ## Purpose
-Build the job payload the desktop agent receives after payment is ready and the backend creates or finds a print job.
+One sentence description of this flow.
 
 ## Actors
-- Backend
-- Supabase Storage
-- Desktop agent
+(e.g., User, Hub Owner, System, Desktop Agent)
 
 ## Entry points
-- `GET /api/agent/jobs/next`
-- `GET /api/desktop/print-jobs`
+Where does this flow start?
 
 ## Input
-- authenticated desktop agent token
-- `print_jobs` row
-- linked `print_order_files`
-- linked private documents
+What triggers it?
 
 ## Output
-- JSON payload with one job and a `files[]` array of signed PDF URLs, hashes, copies, and print options
+What is the final result?
 
 ## Source of truth
-- `print_jobs`
-- `print_orders`
-- `print_order_files`
-- `documents`
-- private Supabase Storage
+Database table / Local file / Memory
 
 ## State changes
-- normally none while building payload
-- signed URL is created with short TTL
+List of state changes during the flow
 
 ## Micro-components used
-- `toAgentJobPayload`
-- `resolveDownloadUrl`
-- `parsePrivateStorageReference`
-- `optionsForDeliveredPdf`
+- List of components
 
 ## Files involved
-- `backend/src/controllers/agentController.js`
-- `backend/src/services/agentJobPayloadService.js`
-- `backend/src/services/printJobReadinessService.js`
-- `backend/src/db/repository.js`
-- `backend/src/utils/printReadyPdf.js`
+- Path to files
 
 ## Security rules
-- Never send Supabase service role key to desktop.
-- Only backend creates signed URLs.
-- Keep signed URLs short-lived.
-- Include hashes so desktop can verify downloaded files.
-- Preserve `files[]`; do not collapse multi-file jobs to only the first file.
+- Must-follow rules
 
 ## Known risks
-- Missing `files[]` makes multi-file printing skip documents.
-- Missing hash disables tamper detection.
-- Wrong `printOptions` can print with incorrect settings.
-- Long-lived signed URLs increase document exposure.
+- Potential failure points
 
 ## Tiny tasks
-- Add focused tests for `toAgentJobPayload` with multi-file orders.
-- Add a contract test that every file has `fileUrl`, `fileSha256`, `copies`, and `printOptions`.
+- List of next tasks to extract or fix
 
 ## Tests
-- Seed a paid multi-file order and poll with desktop agent token.
-- Confirm payload includes all files.
-- Confirm desktop downloads and verifies every file before printing.
+- How to test this flow

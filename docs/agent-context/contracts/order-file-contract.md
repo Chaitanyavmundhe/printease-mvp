@@ -1,4 +1,4 @@
-# Contract: order-contract
+# Contract: order-file-contract
 
 ## Purpose
 What data structure does this define?

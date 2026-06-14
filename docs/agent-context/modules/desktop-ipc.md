@@ -1,4 +1,4 @@
-# Module: backend-manual-collection
+# Module: desktop-ipc
 
 ## Current files
 - Path to current files

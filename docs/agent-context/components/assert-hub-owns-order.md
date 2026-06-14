@@ -1,4 +1,4 @@
-# Component: check-payment-ready-for-print
+# Component: assert-hub-owns-order
 
 ## Size
 Tiny / Small / Medium

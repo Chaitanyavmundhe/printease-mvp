@@ -1,66 +1,40 @@
-# Draft Order Flow
+# Flow: draft-order-flow
 
 ## Purpose
-Create a priced draft/pending order from uploaded documents and print settings before payment is collected.
+One sentence description of this flow.
 
 ## Actors
-- User or loginless visitor
-- Backend
-- Hub
+(e.g., User, Hub Owner, System, Desktop Agent)
 
 ## Entry points
-- `POST /api/orders`
-- upload page Continue to Payment
+Where does this flow start?
 
 ## Input
-- centre code/hub ID
-- document IDs/files
-- selected pages, copies, color, side, orientation, DPI, watermark, paper settings
+What triggers it?
 
 ## Output
-- `print_orders` row
-- `print_order_files` rows
-- price snapshot and print config snapshot
-- guest access token for loginless order
+What is the final result?
 
 ## Source of truth
-- `print_orders`
-- `print_order_files`
-- `documents`
+Database table / Local file / Memory
 
 ## State changes
-- creates order metadata
-- creates per-file metadata
-- stores snapshots for future history
+List of state changes during the flow
 
 ## Micro-components used
-- price calculation
-- print options normalization
-- guest token creation
-- page-count validation
+- List of components
 
 ## Files involved
-- `backend/src/controllers/orderController.js`
-- `backend/src/db/repository.js`
-- `backend/src/utils/calculatePrice.js`
-- `backend/src/utils/printOptions.js`
+- Path to files
 
 ## Security rules
-- backend must use trusted PDF page counts
-- loginless orders require guest token for access
-- do not print until payment is ready
-- store snapshots; do not recalculate old history from current pricing
+- Must-follow rules
 
 ## Known risks
-- trusting frontend page count
-- mixing old unpaid order into new order
-- missing per-file snapshots
+- Potential failure points
 
 ## Tiny tasks
-- extract order payload validator
-- add tests for multi-file price snapshot
+- List of next tasks to extract or fix
 
 ## Tests
-- single-file order creates one order file
-- multi-file order creates all order files
-- loginless order gets guest token
+- How to test this flow

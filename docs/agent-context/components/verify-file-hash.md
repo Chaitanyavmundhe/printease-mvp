@@ -1,4 +1,4 @@
-# Component: check-payment-ready-for-print
+# Component: verify-file-hash
 
 ## Size
 Tiny / Small / Medium

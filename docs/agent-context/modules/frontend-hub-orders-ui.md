@@ -1,4 +1,4 @@
-# Module: backend-manual-collection
+# Module: frontend-hub-orders-ui
 
 ## Current files
 - Path to current files

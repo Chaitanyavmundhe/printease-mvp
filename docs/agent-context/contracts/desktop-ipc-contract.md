@@ -1,4 +1,4 @@
-# Contract: order-contract
+# Contract: desktop-ipc-contract
 
 ## Purpose
 What data structure does this define?

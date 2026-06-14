@@ -1,4 +1,4 @@
-# Component: check-payment-ready-for-print
+# Component: build-cups-options
 
 ## Size
 Tiny / Small / Medium

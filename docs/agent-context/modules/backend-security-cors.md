@@ -1,4 +1,4 @@
-# Module: backend-manual-collection
+# Module: backend-security-cors
 
 ## Current files
 - Path to current files

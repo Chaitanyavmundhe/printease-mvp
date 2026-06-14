@@ -1,4 +1,4 @@
-# Component: check-payment-ready-for-print
+# Component: validate-order-files-printable
 
 ## Size
 Tiny / Small / Medium

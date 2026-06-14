@@ -1,40 +1,40 @@
-# DESKTOP UPDATE FLOW
+# Flow: desktop-update-flow
 
 ## Purpose
-TBD
+One sentence description of this flow.
 
 ## Actors
-TBD
+(e.g., User, Hub Owner, System, Desktop Agent)
 
 ## Entry points
-TBD
+Where does this flow start?
 
 ## Input
-TBD
+What triggers it?
 
 ## Output
-TBD
+What is the final result?
 
 ## Source of truth
-TBD
+Database table / Local file / Memory
 
 ## State changes
-TBD
+List of state changes during the flow
+
+## Micro-components used
+- List of components
 
 ## Files involved
-TBD
+- Path to files
 
 ## Security rules
-TBD
-
-## Reusability opportunities
-TBD
+- Must-follow rules
 
 ## Known risks
-TBD
+- Potential failure points
 
-## Safe small follow-up tasks
-TBD
+## Tiny tasks
+- List of next tasks to extract or fix
 
 ## Tests
-TBD
+- How to test this flow

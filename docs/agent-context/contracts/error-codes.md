@@ -1,28 +1,18 @@
-# ERROR CODES
+# Contract: error-codes
 
-## Producer
-TBD
+## Purpose
+What data structure does this define?
 
-## Consumer
-TBD
+## Shape
+```json
+{
+  "field": "type"
+}
+```
 
-## Payload shape
-TBD
+## Used by
+- Flow 1
+- Module 1
 
-## Required fields
-TBD
-
-## Optional fields
-TBD
-
-## Legacy compatibility if any
-TBD
-
-## Validation rules
-TBD
-
-## Security rules
-TBD
-
-## Failure behavior
-TBD
+## Security considerations
+- Rules about this data

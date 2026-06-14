@@ -1,4 +1,4 @@
-# Flow: upload-document-flow
+# Flow: file-download-flow
 
 ## Purpose
 One sentence description of this flow.

@@ -1,67 +1,52 @@
 # Component: build-agent-job-payload
 
 ## Size
-Small
+Tiny / Small / Medium
 
 ## Domain
-Backend / Storage
+Backend / Desktop / Frontend / Security / Storage
 
 ## Flow
-Agent Payload
+Which business flow uses it
 
 ## Current File
-`backend/src/services/agentJobPayloadService.js`
+Where it currently lives
 
 ## Future File
-Already extracted.
+Where it should move later
 
 ## Purpose
-Build a desktop-safe print job payload with short-lived signed URLs for every file in the order.
+One sentence
 
 ## Input
-- `print_jobs` row
-- linked `print_order_files`
-- linked private document metadata
+Exact input fields
 
 ## Output
-- agent job payload with `files[]`
-- legacy single-file fields for compatibility
-- signed URLs
-- hashes and print options
+Exact output fields
 
 ## State Changed
-None, except creating temporary signed URLs in Supabase Storage.
+None / DB / local config / printer / temp file
 
 ## Calls
-- `findOrderByIdOrCode`
-- `listOrderFiles`
-- `getPrintReadyFile`
-- Supabase `createSignedUrl`
+Functions/API it calls
 
 ## Called By
-- `backend/src/controllers/agentController.js`
+Who uses it
 
 ## Security Rules
-- Never expose Supabase service role key.
-- Signed URLs must be short-lived.
-- Preserve SHA-256 hashes for desktop verification.
-- Preserve `files[]`; do not drop extra documents.
+Must-follow rules
 
 ## Failure Cases
-- signed URL creation fails
-- missing storage reference
-- no printable files
+Expected errors
 
 ## Tests
-- multi-file paid order returns all files
-- each file has signed URL and hash
-- service rejects/omits files without storage URLs
+How to test
 
 ## When To Edit
-When changing desktop agent payload shape or signed file delivery.
+Specific cases
 
 ## When Not To Edit
-Do not edit for local printing command options unless the payload contract changes.
+Unrelated cases
 
 ## Risk Level
-Critical
+Low / Medium / High / Critical
