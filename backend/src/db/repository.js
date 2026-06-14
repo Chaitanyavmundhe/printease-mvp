@@ -649,7 +649,7 @@ export async function createDocument(document) {
        expires_at,
        created_at
      )
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, coalesce($19, now()))
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, coalesce($20, now()))
      returning *`,
     [
       document.id,
@@ -1750,6 +1750,14 @@ export async function revokeAgent(agentId, hubId, client) {
   return mapAgent(result.rows[0]);
 }
 
+function normalizeAgentPrinterStatus(rawStatus) {
+  const normalized = String(rawStatus || '').toLowerCase().trim();
+  if (['idle', 'ready', 'available', 'online'].includes(normalized)) return 'idle';
+  if (['printing', 'busy', 'processing'].includes(normalized)) return 'busy';
+  if (['error', 'failed'].includes(normalized)) return 'error';
+  return 'offline';
+}
+
 export async function replaceAgentPrinters(agentId, hubId, printers = [], client) {
   await executor(client).query('delete from agent_printers where agent_id = $1 and hub_id = $2', [agentId, hubId]);
 
@@ -1768,7 +1776,7 @@ export async function replaceAgentPrinters(agentId, hubId, printers = [], client
         hubId,
         printer.printerName,
         printer.systemPrinterId || null,
-        printer.status || printer.condition || 'unknown',
+        normalizeAgentPrinterStatus(printer.status || printer.condition),
         printer.condition || printer.status || 'unknown',
         typeof printer.accepting === 'boolean' ? printer.accepting : null,
         Boolean(printer.isDefault),
