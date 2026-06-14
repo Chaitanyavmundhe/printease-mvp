@@ -37,8 +37,14 @@ function selectedPageNumbers(orderFile) {
 
 function needsPrintReadyPdf(orderFile) {
   const options = orderFile.printOptions || {};
-  const fileType = String(orderFile.document?.fileType || 'application/pdf').toLowerCase();
-  if (fileType !== 'application/pdf') return isPrintableUploadMimeType(fileType);
+  const isPreConverted = Boolean(orderFile.document?.printReadyStoragePath);
+  const fileType = isPreConverted ? 'application/pdf' : String(orderFile.document?.fileType || 'application/pdf').toLowerCase();
+  
+  if (fileType !== 'application/pdf') {
+    const enableBackendConversion = process.env.ENABLE_BACKEND_NON_PDF_CONVERSION === 'true';
+    if (!enableBackendConversion) return false;
+    return isPrintableUploadMimeType(fileType);
+  }
 
   const totalPages = Number(orderFile.originalPageCount || orderFile.document?.pageCount || 0);
   const selectedCount = Number(orderFile.selectedPageCount || 0);

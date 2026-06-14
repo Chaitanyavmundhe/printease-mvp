@@ -93,6 +93,13 @@ async function buildTextPdf(sourceBytes, fileName = 'document.txt') {
 }
 
 export async function convertPrintableUploadToPdf(sourceBytes, orderFile) {
+  const enableBackendConversion = process.env.ENABLE_BACKEND_NON_PDF_CONVERSION === 'true';
+  if (!enableBackendConversion) {
+    const error = new Error('Backend non-PDF conversion is disabled by policy.');
+    error.statusCode = 415;
+    throw error;
+  }
+
   const fileType = String(orderFile.document?.fileType || 'application/pdf').toLowerCase();
 
   if (fileType === 'image/jpeg') {

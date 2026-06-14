@@ -91,6 +91,13 @@ export function mapDocument(row) {
     fileUrl: row.file_url,
     storagePath: row.storage_path || null,
     fileSha256: row.file_sha256 || null,
+    printReadyStoragePath: row.print_ready_storage_path || null,
+    printReadySha256: row.print_ready_sha256 || null,
+    conversionSource: row.conversion_source || null,
+    conversionPlacement: row.conversion_placement || null,
+    conversionReasonCode: row.conversion_reason_code || null,
+    fileKind: row.file_kind || null,
+    requiresDesktopPreparation: Boolean(row.requires_desktop_preparation),
     pageCount: row.page_count === null || row.page_count === undefined ? null : Number(row.page_count),
     createdAt: timestamp(row.created_at)
   };
@@ -186,6 +193,13 @@ export function mapOrderFile(row) {
             : Number(row.file_size_bytes),
           fileSha256: row.file_sha256 || null,
           storagePath: row.storage_path || null,
+          printReadyStoragePath: row.print_ready_storage_path || null,
+          printReadySha256: row.print_ready_sha256 || null,
+          conversionSource: row.conversion_source || null,
+          conversionPlacement: row.conversion_placement || null,
+          conversionReasonCode: row.conversion_reason_code || null,
+          fileKind: row.file_kind || null,
+          requiresDesktopPreparation: Boolean(row.requires_desktop_preparation),
           pageCount: row.page_count === null || row.page_count === undefined ? null : Number(row.page_count),
           createdAt: timestamp(row.document_created_at)
         }
@@ -623,12 +637,19 @@ export async function createDocument(document) {
        file_url,
        storage_path,
        file_sha256,
+       print_ready_storage_path,
+       print_ready_sha256,
+       conversion_source,
+       conversion_placement,
+       conversion_reason_code,
+       file_kind,
+       requires_desktop_preparation,
        page_count,
        guest_token_hash,
        expires_at,
        created_at
      )
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, coalesce($13, now()))
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, coalesce($19, now()))
      returning *`,
     [
       document.id,
@@ -640,6 +661,13 @@ export async function createDocument(document) {
       document.fileUrl || null,
       document.storagePath || null,
       document.fileSha256 || null,
+      document.printReadyStoragePath || null,
+      document.printReadySha256 || null,
+      document.conversionSource || null,
+      document.conversionPlacement || null,
+      document.conversionReasonCode || null,
+      document.fileKind || null,
+      Boolean(document.requiresDesktopPreparation),
       document.pageCount || null,
       document.guestTokenHash || null,
       document.expiresAt || null,
@@ -755,6 +783,13 @@ export async function listOrderFiles(orderId, client) {
        d.file_size_bytes,
        d.file_sha256,
        d.storage_path,
+       d.print_ready_storage_path,
+       d.print_ready_sha256,
+       d.conversion_source,
+       d.conversion_placement,
+       d.conversion_reason_code,
+       d.file_kind,
+       d.requires_desktop_preparation,
        d.page_count,
        d.created_at as document_created_at
      from print_order_files pof
@@ -783,6 +818,13 @@ export async function listPendingPaymentOrderFilesForAgentPredownload(hubId, { l
        d.file_size_bytes,
        d.file_sha256,
        d.storage_path,
+       d.print_ready_storage_path,
+       d.print_ready_sha256,
+       d.conversion_source,
+       d.conversion_placement,
+       d.conversion_reason_code,
+       d.file_kind,
+       d.requires_desktop_preparation,
        d.page_count,
        d.created_at as document_created_at
      from print_orders po

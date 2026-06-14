@@ -149,6 +149,8 @@ export const uploadDocument = asyncHandler(async (req, res) => {
     conversionSource: req.body.conversionSource || null,
     conversionPlacement: req.body.conversionPlacement || null,
     conversionReasonCode: req.body.conversionReasonCode || null,
+    fileKind: req.body.fileKind || null,
+    requiresDesktopPreparation: req.body.requiresDesktopPreparation === 'true',
     pageCount,
     guestTokenHash,
     expiresAt,

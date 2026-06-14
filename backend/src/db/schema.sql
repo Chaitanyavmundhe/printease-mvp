@@ -158,6 +158,8 @@ alter table documents add column if not exists print_ready_sha256 text;
 alter table documents add column if not exists conversion_source text;
 alter table documents add column if not exists conversion_placement text;
 alter table documents add column if not exists conversion_reason_code text;
+alter table documents add column if not exists file_kind text;
+alter table documents add column if not exists requires_desktop_preparation boolean default false;
 
 update documents
 set file_size_bytes = file_size
