@@ -95,6 +95,12 @@ export const createOrder = asyncHandler(async (req, res) => {
 
     if (currentDocumentId) {
       document = await findDocumentById(currentDocumentId);
+      if (!document) {
+        return res.status(404).json({
+          success: false,
+          message: `Document ${index + 1} was not found. Please re-upload before payment.`
+        });
+      }
       
       try {
         assertCanUseDocumentForOrder({ user: req.user, document });
@@ -107,6 +113,11 @@ export const createOrder = asyncHandler(async (req, res) => {
       } catch (error) {
         return res.status(error.statusCode || 403).json({ success: false, message: error.message });
       }
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: `Document ${index + 1} is missing an ID. Please upload it again before payment.`
+      });
     }
 
     resolvedFiles.push({ ...submittedFile, document, index });
