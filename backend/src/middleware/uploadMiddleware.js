@@ -1,16 +1,20 @@
 import multer from 'multer';
+import {
+  MAX_UPLOAD_SIZE_BYTES,
+  formatAllowedUploadTypes,
+  isAllowedUploadMimeType
+} from '../constants/upload.js';
 
 const storage = multer.memoryStorage();
 
 export const upload = multer({
   storage,
   limits: {
-    fileSize: 10 * 1024 * 1024
+    fileSize: MAX_UPLOAD_SIZE_BYTES
   },
   fileFilter: (req, file, cb) => {
-    const allowedTypes = ['application/pdf'];
-    if (!allowedTypes.includes(file.mimetype)) {
-      const error = new Error('Only PDF files are supported for agent printing MVP');
+    if (!isAllowedUploadMimeType(file.mimetype)) {
+      const error = new Error(`Unsupported file type. Allowed types: ${formatAllowedUploadTypes()}`);
       error.statusCode = 400;
       return cb(error);
     }

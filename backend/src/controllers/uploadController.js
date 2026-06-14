@@ -6,6 +6,7 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import { getSupabaseAdminClient, getSupabaseBucketName } from '../config/supabase.js';
 import { getPdfPageCount } from '../utils/pdfPageCount.js';
 import { createGuestToken, hashGuestToken, getGuestExpiry } from '../services/guestAccessService.js';
+import { formatAllowedUploadTypes, isAllowedUploadMimeType } from '../constants/upload.js';
 
 function safeFileName(name) {
   const ext = path.extname(name || '').toLowerCase();
@@ -27,14 +28,16 @@ export const uploadDocument = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: 'No file uploaded' });
   }
 
-  if (req.file.mimetype !== 'application/pdf') {
+  if (!isAllowedUploadMimeType(req.file.mimetype)) {
     return res.status(400).json({
       success: false,
-      message: 'Only PDF files are supported for agent printing MVP'
+      message: `Unsupported file type. Allowed types: ${formatAllowedUploadTypes()}`
     });
   }
 
-  if (!looksLikePdf(req.file.buffer)) {
+  const isPdf = req.file.mimetype === 'application/pdf';
+
+  if (isPdf && !looksLikePdf(req.file.buffer)) {
     return res.status(400).json({
       success: false,
       message: 'Uploaded file is not a valid PDF.'
@@ -43,15 +46,17 @@ export const uploadDocument = asyncHandler(async (req, res) => {
 
   const supabase = getSupabaseAdminClient();
   const bucket = getSupabaseBucketName();
-  let pageCount;
+  let pageCount = 1;
 
-  try {
-    pageCount = await getPdfPageCount(req.file.buffer);
-  } catch (error) {
-    return res.status(400).json({
-      success: false,
-      message: error.message || 'Could not read PDF page count. Please upload a valid, uncorrupted PDF.'
-    });
+  if (isPdf) {
+    try {
+      pageCount = await getPdfPageCount(req.file.buffer);
+    } catch (error) {
+      return res.status(400).json({
+        success: false,
+        message: error.message || 'Could not read PDF page count. Please upload a valid, uncorrupted PDF.'
+      });
+    }
   }
 
   const documentId = generateId();

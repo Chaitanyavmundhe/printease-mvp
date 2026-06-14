@@ -1,3 +1,5 @@
+import { isPrintableUploadMimeType } from '../constants/upload.js';
+
 export function normalize(value) {
   return String(value || '').trim().toLowerCase();
 }
@@ -54,10 +56,10 @@ export function verifyPrintFilesReadiness(orderFiles, orderWithDocument) {
   const allFilesPrintable = orderFiles.every((file) => (
     file.document?.storagePath &&
     file.document?.fileSha256 &&
-    (file.document?.fileType || 'application/pdf') === 'application/pdf'
+    isPrintableUploadMimeType(file.document?.fileType || 'application/pdf')
   ));
 
-  const isReady = Boolean(storagePath && fileSha256 && fileType === 'application/pdf' && allFilesPrintable && isPrintableOrderStatus(orderWithDocument?.status));
+  const isReady = Boolean(storagePath && fileSha256 && isPrintableUploadMimeType(fileType) && allFilesPrintable && isPrintableOrderStatus(orderWithDocument?.status));
 
   return {
     isReady,

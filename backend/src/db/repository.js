@@ -802,7 +802,14 @@ export async function listPendingPaymentOrderFilesForAgentPredownload(hubId, { l
        and d.storage_path <> ''
        and d.file_sha256 is not null
        and d.file_sha256 <> ''
-       and lower(coalesce(d.file_type, '')) = 'application/pdf'
+       and lower(coalesce(d.file_type, '')) in (
+         'application/pdf',
+         'image/jpeg',
+         'image/png',
+         'text/plain',
+         'text/csv',
+         'application/json'
+       )
        and not exists (
          select 1
          from print_jobs pj
@@ -2041,7 +2048,14 @@ export async function findNextPrintJobForAgent(agentId, hubId, client) {
            and d.storage_path <> ''
            and d.file_sha256 is not null
            and d.file_sha256 <> ''
-           and lower(coalesce(d.file_type, '')) = 'application/pdf'
+           and lower(coalesce(d.file_type, '')) in (
+             'application/pdf',
+             'image/jpeg',
+             'image/png',
+             'text/plain',
+             'text/csv',
+             'application/json'
+           )
        )
      order by pj.created_at asc
      limit 1

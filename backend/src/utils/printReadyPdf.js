@@ -2,6 +2,8 @@ import crypto from 'crypto';
 import { PDFDocument, StandardFonts, degrees, rgb } from 'pdf-lib';
 import { getSupabaseAdminClient, getSupabaseBucketName } from '../config/supabase.js';
 import { parsePageRange } from './printOptions.js';
+import { isPrintableUploadMimeType } from '../constants/upload.js';
+import { convertPrintableUploadToPdf } from './printablePdfConversion.js';
 
 function parsePrivateStorageReference(fileUrl) {
   if (!String(fileUrl || '').startsWith('private://')) {
@@ -35,6 +37,9 @@ function selectedPageNumbers(orderFile) {
 
 function needsPrintReadyPdf(orderFile) {
   const options = orderFile.printOptions || {};
+  const fileType = String(orderFile.document?.fileType || 'application/pdf').toLowerCase();
+  if (fileType !== 'application/pdf') return isPrintableUploadMimeType(fileType);
+
   const totalPages = Number(orderFile.originalPageCount || orderFile.document?.pageCount || 0);
   const selectedCount = Number(orderFile.selectedPageCount || 0);
   const hasPageSubset = selectedCount > 0 && totalPages > 0 && selectedCount < totalPages;
@@ -104,12 +109,26 @@ async function buildPrintReadyPdf(sourceBytes, order, orderFile) {
   return targetPdf.save();
 }
 
+async function buildPrintablePdf(sourceBytes, order, orderFile) {
+  const fileType = String(orderFile.document?.fileType || 'application/pdf').toLowerCase();
+
+  if (fileType === 'application/pdf') {
+    return buildPrintReadyPdf(sourceBytes, order, orderFile);
+  }
+
+  return convertPrintableUploadToPdf(sourceBytes, orderFile);
+}
+
 export async function getPrintReadyFile(order, orderFile) {
   const privateReference = parsePrivateStorageReference(orderFile.document?.fileUrl);
   const bucket = privateReference?.bucket || getSupabaseBucketName();
   const sourcePath = privateReference?.storagePath || orderFile.document?.storagePath;
 
   if (!sourcePath) {
+    return null;
+  }
+
+  if (!isPrintableUploadMimeType(orderFile.document?.fileType || 'application/pdf')) {
     return null;
   }
 
@@ -132,7 +151,7 @@ export async function getPrintReadyFile(order, orderFile) {
   }
 
   const sourceBytes = new Uint8Array(await data.arrayBuffer());
-  const outputBytes = await buildPrintReadyPdf(sourceBytes, order, orderFile);
+  const outputBytes = await buildPrintablePdf(sourceBytes, order, orderFile);
   const outputBuffer = Buffer.from(outputBytes);
   const outputSha256 = crypto.createHash('sha256').update(outputBuffer).digest('hex');
   const outputPath = `print-ready/${orderFile.orderId}/${orderFile.id}.pdf`;

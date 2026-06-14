@@ -90,6 +90,7 @@ export async function toAgentJobPayload(job) {
       selectedPages: file.selectedPages,
       selectedPageCount: file.selectedPageCount,
       copies: file.copies,
+      printSequence: file.printSequence || null,
       printOptions: {
         ...optionsForDeliveredPdf(file.printOptions, printReadyFile?.transformed),
         afterOrderSettings,
@@ -133,4 +134,3 @@ export async function toAgentJobPayload(job) {
     createdAt: job.createdAt
   };
 }
-
