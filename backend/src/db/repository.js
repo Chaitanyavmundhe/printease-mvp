@@ -151,10 +151,6 @@ export function mapOrder(row) {
     guestPhone: row.guest_phone || null,
     priceSnapshot: row.price_snapshot || null,
     printConfigSnapshot: row.print_config_snapshot || null,
-    hubConfirmedTotalPaise: row.hub_confirmed_total_paise === null || row.hub_confirmed_total_paise === undefined
-      ? null
-      : Number(row.hub_confirmed_total_paise),
-    billHash: row.bill_hash || null,
     expiresAt: row.expires_at || null,
     paymentStatus: row.payment_status,
     status: row.status,
