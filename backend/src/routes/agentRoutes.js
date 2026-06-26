@@ -19,6 +19,7 @@ import {
 } from '../controllers/agentController.js';
 import { agentAuthMiddleware } from '../middleware/agentAuthMiddleware.js';
 import { agentPairingRateLimit } from '../middleware/rateLimitMiddleware.js';
+import { upload } from '../middleware/uploadMiddleware.js';
 
 const router = express.Router();
 
@@ -30,7 +31,7 @@ router.get('/config', agentAuthMiddleware, getAgentConfig);
 router.post('/printers', agentAuthMiddleware, syncPrinters);
 router.get('/jobs/predownload', agentAuthMiddleware, getPredownloadCandidates);
 router.get('/jobs/verify', agentAuthMiddleware, getPendingVerificationJobs);
-router.post('/jobs/:jobId/verify-result', agentAuthMiddleware, reportVerificationResult);
+router.post('/jobs/:jobId/verify-result', agentAuthMiddleware, upload.single('printReadyFile'), reportVerificationResult);
 router.get('/jobs/next', agentAuthMiddleware, getNextJob);
 router.post('/jobs/:jobId/accepted', agentAuthMiddleware, acceptJob);
 router.post('/jobs/:jobId/downloading', agentAuthMiddleware, markDownloading);
@@ -39,6 +40,6 @@ router.post('/jobs/:jobId/completed', agentAuthMiddleware, markCompleted);
 router.post('/jobs/:jobId/failed', agentAuthMiddleware, markFailed);
 router.post('/jobs/:jobId/cancelled', agentAuthMiddleware, markCancelled);
 
-router.post('/preparation-result', agentAuthMiddleware, reportPreparationResult);
+router.post('/preparation-result', agentAuthMiddleware, upload.single('printReadyFile'), reportPreparationResult);
 
 export default router;

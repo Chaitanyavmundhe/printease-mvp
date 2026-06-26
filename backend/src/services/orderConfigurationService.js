@@ -263,6 +263,167 @@ export async function applyOrderConfigurationChange({ orderId, hubId, actor, new
   });
 }
 
+function makeBillHash({ orderId, totalAmountPaise, pricedFiles }) {
+  return crypto
+    .createHash('sha256')
+    .update(JSON.stringify({
+      orderId,
+      totalAmountPaise,
+      files: pricedFiles.map((file) => ({
+        id: file.updatedFile.id,
+        printSequence: file.printSequence,
+        printOptions: file.normalizedPrintOptions,
+        lineAmountPaise: file.updatedFile.lineAmountPaise
+      }))
+    }))
+    .digest('hex');
+}
+
+async function markOrderBillConfirmed({ client, orderId, totalAmountPaise, pricedFiles }) {
+  const billHash = makeBillHash({ orderId, totalAmountPaise, pricedFiles });
+  const result = await executor(client).query(
+    `update print_orders
+     set status = 'bill_confirmed',
+         bill_status = 'confirmed'
+     where id = $1
+     returning *, hub_id as centre_id`,
+    [orderId]
+  );
+
+  return {
+    order: result.rows[0],
+    billHash
+  };
+}
+
+async function calculateAndPersistTrustedOrderBill({ client, order, source = 'desktop_agent_preparation' }) {
+  const existingFiles = await listOrderFiles(order.id, client);
+  if (!existingFiles || existingFiles.length === 0) return null;
+
+  if (existingFiles.some((file) => file.document?.requiresDesktopPreparation && file.document?.preparationStatus === 'pending')) {
+    return null;
+  }
+
+  const centre = await findCentreById(order.centreId, client);
+  if (!centre) return null;
+
+  const pricedFiles = [];
+
+  for (let index = 0; index < existingFiles.length; index++) {
+    const existingFile = existingFiles[index];
+    const mergedPrintOptions = existingFile.printOptions;
+    const copies = existingFile.copies;
+    const trustedPageCount = existingFile.document?.preparedPageCount ?? existingFile.document?.pageCount ?? existingFile.originalPageCount;
+
+    if (!Number.isFinite(Number(trustedPageCount)) || Number(trustedPageCount) <= 0) {
+      throw new Error(`Document ${existingFile.document?.fileName || existingFile.id} is missing a trusted page count`);
+    }
+
+    const normalizedOptions = normalizePrintOptions(mergedPrintOptions, trustedPageCount);
+    normalizedOptions.copies = copies;
+
+    const fileColorType = toLegacyColorType(normalizedOptions.colorMode);
+    const fileSideType = toLegacySideType(normalizedOptions.sides);
+    const pricedSelectedPages = normalizedOptions.pages.mode === 'custom'
+      ? normalizedOptions.pages.range
+      : 'all';
+
+    const price = calculatePrintPricing({
+      centre,
+      originalPageCount: trustedPageCount,
+      selectedPages: pricedSelectedPages,
+      copies,
+      colorType: fileColorType,
+      sideType: fileSideType,
+      paperSize: normalizedOptions.paperSize,
+      pagesPerSheet: normalizedOptions.pagesPerSheet,
+      watermarkEnabled: normalizedOptions.watermark.enabled
+    });
+
+    const updatedFile = await updateOrderFileConfiguration(existingFile.id, {
+      copies: price.copies,
+      selectedPages: price.selectedPages,
+      selectedPageCount: price.selectedPageCount,
+      printablePageCount: price.printablePageCount,
+      sheetCount: price.sheetCount,
+      printOptions: normalizedOptions,
+      lineAmountPaise: price.totalAmountPaise
+    }, client);
+
+    pricedFiles.push({
+      id: existingFile.id,
+      printSequence: existingFile.printSequence || (index + 1),
+      price,
+      normalizedPrintOptions: normalizedOptions,
+      updatedFile
+    });
+  }
+
+  const totalAmount = pricedFiles.reduce((sum, file) => sum + file.price.totalAmount, 0);
+  const totalAmountPaise = pricedFiles.reduce((sum, file) => sum + file.price.totalAmountPaise, 0);
+  const totalSelectedPages = pricedFiles.reduce((sum, file) => sum + file.price.selectedPageCount, 0);
+  const totalPrintablePages = pricedFiles.reduce((sum, file) => sum + file.price.printablePageCount, 0);
+  const totalSheetCount = pricedFiles.reduce((sum, file) => sum + file.price.sheetCount, 0);
+
+  const firstFile = pricedFiles[0];
+  const orderPrintOptions = pricedFiles.length === 1
+    ? firstFile.normalizedPrintOptions
+    : {
+        files: pricedFiles.map((file) => ({
+          documentId: file.updatedFile.documentId,
+          printSequence: file.printSequence,
+          printOptions: file.normalizedPrintOptions
+        }))
+      };
+
+  const newPriceSnapshot = {
+    amount: totalAmount,
+    totalAmountPaise,
+    breakdown: pricedFiles.map((file) => file.price)
+  };
+
+  const updatedOrder = await updateOrderConfiguration(order.id, {
+    latestConfiguredByRole: 'system',
+    latestConfiguredByUserId: null,
+    latestConfiguredByHubId: null,
+    latestConfigSource: source,
+    printConfigSnapshot: orderPrintOptions,
+    priceSnapshot: newPriceSnapshot,
+    totalAmountPaise,
+    amount: totalAmount,
+    pages: pricedFiles.length === 1 ? totalSelectedPages : totalPrintablePages,
+    copies: pricedFiles.length === 1 ? firstFile.price.copies : 1,
+    colorType: pricedFiles.length === 1 ? firstFile.price.colorMode : order.colorType,
+    sideType: pricedFiles.length === 1 ? firstFile.price.sides : order.sideType,
+    selectedPageCount: totalSelectedPages,
+    printablePageCount: totalPrintablePages,
+    sheetCount: totalSheetCount
+  }, client);
+
+  const normalizedStatus = String(order.status || '').toLowerCase();
+  if (normalizedStatus === 'awaiting_hub_bill_confirmation' || normalizedStatus === 'draft_uploaded') {
+    const confirmed = await markOrderBillConfirmed({
+      client,
+      orderId: order.id,
+      totalAmountPaise,
+      pricedFiles
+    });
+    return {
+      order: confirmed.order,
+      files: pricedFiles.map((file) => file.updatedFile),
+      priceSnapshot: newPriceSnapshot,
+      billHash: confirmed.billHash
+    };
+  }
+
+  return {
+    order: updatedOrder,
+    files: pricedFiles.map((file) => file.updatedFile),
+    priceSnapshot: newPriceSnapshot,
+    billHash: makeBillHash({ orderId: order.id, totalAmountPaise, pricedFiles })
+  };
+}
+
 export async function recalculateOrderPricingByDocument(documentId) {
   return await withTransaction(async (client) => {
     const orderIds = await findOrderIdsByDocumentId(documentId, client);
@@ -273,114 +434,37 @@ export async function recalculateOrderPricingByDocument(documentId) {
       const order = await findOrderByIdOrCode(orderId, client);
       if (!order) continue;
 
-      const existingFiles = await listOrderFiles(order.id, client);
-      if (!existingFiles || existingFiles.length === 0) continue;
-
-      // If any file in this order is still pending preparation, don't recalculate yet.
-      if (existingFiles.some(f => f.document?.requiresDesktopPreparation && f.document?.preparationStatus === 'pending')) {
-        continue;
-      }
-
-      const centre = await findCentreById(order.centreId, client);
-      if (!centre) continue;
-
-      const pricedFiles = [];
-
-      for (let index = 0; index < existingFiles.length; index++) {
-        const existingFile = existingFiles[index];
-        const mergedPrintOptions = existingFile.printOptions;
-        const copies = existingFile.copies;
-
-        const trustedPageCount = existingFile.document?.preparedPageCount ?? existingFile.document?.pageCount ?? existingFile.originalPageCount;
-        
-        // Normalize print options using existing utility
-        const normalizedOptions = normalizePrintOptions(mergedPrintOptions, trustedPageCount);
-        normalizedOptions.copies = copies;
-        
-        const fileColorType = toLegacyColorType(normalizedOptions.colorMode);
-        const fileSideType = toLegacySideType(normalizedOptions.sides);
-        const pricedSelectedPages = normalizedOptions.pages.mode === 'custom'
-          ? normalizedOptions.pages.range
-          : 'all';
-
-        const price = calculatePrintPricing({
-          centre,
-          originalPageCount: trustedPageCount,
-          selectedPages: pricedSelectedPages,
-          copies: copies,
-          colorType: fileColorType,
-          sideType: fileSideType,
-          paperSize: normalizedOptions.paperSize,
-          pagesPerSheet: normalizedOptions.pagesPerSheet,
-          watermarkEnabled: normalizedOptions.watermark.enabled
-        });
-
-        const updatedFile = await updateOrderFileConfiguration(existingFile.id, {
-          copies: price.copies,
-          selectedPages: price.selectedPages,
-          selectedPageCount: price.selectedPageCount,
-          printablePageCount: price.printablePageCount,
-          sheetCount: price.sheetCount,
-          printOptions: normalizedOptions,
-          lineAmountPaise: price.totalAmountPaise
-        }, client);
-
-        pricedFiles.push({
-          id: existingFile.id,
-          printSequence: existingFile.printSequence || (index + 1),
-          price,
-          normalizedPrintOptions: normalizedOptions,
-          updatedFile
-        });
-      }
-
-      const totalAmount = pricedFiles.reduce((sum, f) => sum + f.price.totalAmount, 0);
-      const totalAmountPaise = pricedFiles.reduce((sum, f) => sum + f.price.totalAmountPaise, 0);
-      const totalSelectedPages = pricedFiles.reduce((sum, f) => sum + f.price.selectedPageCount, 0);
-      const totalPrintablePages = pricedFiles.reduce((sum, f) => sum + f.price.printablePageCount, 0);
-      const totalSheetCount = pricedFiles.reduce((sum, f) => sum + f.price.sheetCount, 0);
-
-      const firstFile = pricedFiles[0];
-      const orderPrintOptions = pricedFiles.length === 1
-        ? firstFile.normalizedPrintOptions
-        : {
-            files: pricedFiles.map((f) => ({
-              documentId: f.updatedFile.documentId,
-              printSequence: f.printSequence,
-              printOptions: f.normalizedPrintOptions
-            }))
-          };
-
-      const newPriceSnapshot = {
-        amount: totalAmount,
-        totalAmountPaise,
-        breakdown: pricedFiles.map(f => f.price)
-      };
-
-      const updatedOrder = await updateOrderConfiguration(order.id, {
-        latestConfiguredByRole: 'system',
-        latestConfiguredByUserId: null,
-        latestConfiguredByHubId: null,
-        latestConfigSource: 'desktop_agent_preparation',
-        printConfigSnapshot: orderPrintOptions,
-        priceSnapshot: newPriceSnapshot,
-        totalAmountPaise,
-        amount: totalAmount,
-        pages: pricedFiles.length === 1 ? totalSelectedPages : totalPrintablePages,
-        copies: pricedFiles.length === 1 ? firstFile.price.copies : 1,
-        colorType: pricedFiles.length === 1 ? firstFile.price.colorMode : order.colorType,
-        sideType: pricedFiles.length === 1 ? firstFile.price.sides : order.sideType,
-        selectedPageCount: totalSelectedPages,
-        printablePageCount: totalPrintablePages,
-        sheetCount: totalSheetCount
-      }, client);
-
-      let finalOrder = updatedOrder;
-
-
-      results.push(finalOrder);
+      const result = await calculateAndPersistTrustedOrderBill({
+        client,
+        order,
+        source: 'desktop_agent_preparation'
+      });
+      if (result?.order) results.push(result.order);
     }
     return results;
   });
 }
 
+export async function confirmOrderBill({ orderId, hubId }) {
+  return await withTransaction(async (client) => {
+    const order = await findOrderByIdOrCode(orderId, client);
+    if (!order) {
+      throw new Error('Order not found');
+    }
+    if (order.centreId !== hubId) {
+      throw new Error('Order does not belong to this hub');
+    }
+
+    const result = await calculateAndPersistTrustedOrderBill({
+      client,
+      order,
+      source: 'hub_bill_confirmation'
+    });
+
+    if (!result?.order) {
+      throw new Error('Bill cannot be confirmed until all documents are prepared.');
+    }
+
+    return result.order;
+  });
+}

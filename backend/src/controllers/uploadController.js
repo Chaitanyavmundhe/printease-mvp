@@ -102,8 +102,15 @@ export const uploadDocument = asyncHandler(async (req, res) => {
     mainFile.mimetype === 'image/bmp' ||
     mainFile.mimetype === 'image/tiff';
   const hasTrustedPrintReadyPageCount = Boolean(printReadyFile && Number.isFinite(pageCount) && pageCount > 0);
-  const needsDesktopPrep = false;
-  const preparationStatus = 'prepared';
+  const requestedDesktopPrep = String(req.body.requiresDesktopPreparation || '').toLowerCase() === 'true';
+  // Never mark a document prepared unless the backend has a trusted PDF page count.
+  // Office/large-format documents are uploaded as originals and the paired hub
+  // desktop later converts them, uploads the PDF, and lets the backend verify it.
+  const needsDesktopPrep = Boolean(!hasTrustedPrintReadyPageCount && canDesktopPrepare && (requestedDesktopPrep || !pageCount));
+  const preparationStatus = needsDesktopPrep ? 'pending' : 'prepared';
+  if (needsDesktopPrep) {
+    pageCount = null;
+  }
 
   const documentId = generateId();
   const originalName = mainFile.originalname || 'document.pdf';

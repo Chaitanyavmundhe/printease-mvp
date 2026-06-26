@@ -98,7 +98,9 @@ export function mapDocument(row) {
     conversionReasonCode: row.conversion_reason_code || null,
     fileKind: row.file_kind,
     requiresDesktopPreparation: row.requires_desktop_preparation,
-    preparedPageCount: row.prepared_page_count,
+    preparedPageCount: row.prepared_page_count === null || row.prepared_page_count === undefined
+      ? null
+      : Number(row.prepared_page_count),
     preparationStatus: row.preparation_status,
     preparationErrorCode: row.preparation_error_code,
     preparationErrorMessage: row.preparation_error_message,
@@ -703,7 +705,9 @@ export async function updateDocumentPreparation(id, data, client) {
          preparation_status = $3,
          preparation_error_code = $4,
          preparation_error_message = $5,
-         prepared_at = coalesce($6, now())
+         prepared_at = coalesce($6, now()),
+         print_ready_storage_path = coalesce($7, print_ready_storage_path),
+         print_ready_sha256 = coalesce($8, print_ready_sha256)
      where id = $1
      returning *`,
     [
@@ -712,7 +716,9 @@ export async function updateDocumentPreparation(id, data, client) {
       data.preparationStatus,
       data.preparationErrorCode || null,
       data.preparationErrorMessage || null,
-      data.preparedAt || null
+      data.preparedAt || null,
+      data.printReadyStoragePath || null,
+      data.printReadySha256 || null
     ]
   );
   return result.rows.length ? mapDocument(result.rows[0]) : null;

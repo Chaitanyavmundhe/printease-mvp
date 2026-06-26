@@ -15,6 +15,8 @@ import {
   updateOrderStatus,
   updatePrintJobStatus,
   updateDocumentPreparation,
+  findDocumentById,
+  findOrderIdsByDocumentId,
   withTransaction
 } from '../db/repository.js';
 import {
@@ -33,6 +35,7 @@ import { resolveDownloadUrl } from '../services/agentJobPayloadService.js';
 import { PRINT_JOB_STATUSES, PAIRING_STATUSES } from '../constants/statuses.js';
 import { getPrintReadyFile } from '../utils/printReadyPdf.js';
 import { recalculateOrderPricingByDocument } from '../services/orderConfigurationService.js';
+import { verifyAndStoreHubConvertedDocument } from '../services/documentVerificationService.js';
 
 const JOB_STATUS_TO_ORDER_STATUS = {
   [PRINT_JOB_STATUSES.ACCEPTED]: 'queued_for_print',
@@ -42,6 +45,54 @@ const JOB_STATUS_TO_ORDER_STATUS = {
   [PRINT_JOB_STATUSES.FAILED]: 'failed',
   [PRINT_JOB_STATUSES.CANCELLED]: 'cancelled'
 };
+
+async function agentCanPrepareDocument(documentId, hubId) {
+  const orderIds = await findOrderIdsByDocumentId(documentId);
+  for (const orderId of orderIds) {
+    const order = await findOrderByIdOrCode(orderId);
+    if (order?.centreId === hubId) return true;
+  }
+  return false;
+}
+
+function normalizePreparationStatus(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (['pending', 'prepared', 'failed'].includes(normalized)) return normalized;
+  return null;
+}
+
+function normalizePreparedPageCount(value) {
+  if (value === '' || value === null || value === undefined) return null;
+  const numeric = Number(value);
+  if (!Number.isInteger(numeric) || numeric <= 0) return null;
+  return numeric;
+}
+
+async function validateAgentDocumentPreparationInput({ documentId, hubId, preparationStatus, hasPrintReadyFile }) {
+  if (!documentId) {
+    return { error: { status: 400, message: 'documentId is required' } };
+  }
+
+  const normalizedStatus = normalizePreparationStatus(preparationStatus);
+  if (!normalizedStatus) {
+    return { error: { status: 400, message: 'preparationStatus must be pending, prepared, or failed' } };
+  }
+
+  const document = await findDocumentById(documentId);
+  if (!document) {
+    return { error: { status: 404, message: 'Document not found' } };
+  }
+
+  if (!(await agentCanPrepareDocument(documentId, hubId))) {
+    return { error: { status: 403, message: 'Document does not belong to this hub' } };
+  }
+
+  if (normalizedStatus === 'prepared' && document.requiresDesktopPreparation && !hasPrintReadyFile) {
+    return { error: { status: 400, message: 'Converted print-ready PDF is required for desktop-prepared documents' } };
+  }
+
+  return { document, preparationStatus: normalizedStatus };
+}
 
 function getPairingExpiry() {
   return new Date(Date.now() + AGENT_PAIRING_TTL_SECONDS * 1000).toISOString();
@@ -425,10 +476,36 @@ export const markCancelled = asyncHandler((req, res) => {
 });
 
 export const reportPreparationResult = asyncHandler(async (req, res) => {
-  const { documentId, preparedPageCount, preparationStatus, errorCode, errorMessage } = req.body;
+  const { documentId, errorCode, errorMessage } = req.body;
+  const validation = await validateAgentDocumentPreparationInput({
+    documentId,
+    hubId: req.agent.hubId,
+    preparationStatus: req.body.preparationStatus,
+    hasPrintReadyFile: Boolean(req.file?.buffer)
+  });
 
-  if (!documentId) {
-    return res.status(400).json({ success: false, message: 'documentId is required' });
+  if (validation.error) {
+    return res.status(validation.error.status).json({ success: false, message: validation.error.message });
+  }
+
+  const preparationStatus = validation.preparationStatus;
+  let preparedPageCount = normalizePreparedPageCount(req.body.preparedPageCount);
+  let printReadyStoragePath = null;
+  let printReadySha256 = null;
+
+  if (req.file && req.file.buffer && preparationStatus === 'prepared') {
+    try {
+      const verification = await verifyAndStoreHubConvertedDocument({
+        documentId,
+        originalFileName: req.file.originalname,
+        pdfBuffer: req.file.buffer
+      });
+      preparedPageCount = verification.verifiedPageCount;
+      printReadyStoragePath = verification.printReadyStoragePath;
+      printReadySha256 = verification.printReadySha256;
+    } catch (error) {
+      return res.status(400).json({ success: false, message: error.message });
+    }
   }
 
   const result = await updateDocumentPreparation(documentId, {
@@ -436,6 +513,8 @@ export const reportPreparationResult = asyncHandler(async (req, res) => {
     preparationStatus,
     preparationErrorCode: errorCode,
     preparationErrorMessage: errorMessage,
+    printReadyStoragePath,
+    printReadySha256,
     preparedAt: new Date().toISOString()
   });
 
@@ -497,10 +576,36 @@ export const getPendingVerificationJobs = asyncHandler(async (req, res) => {
 
 export const reportVerificationResult = asyncHandler(async (req, res) => {
   const { jobId } = req.params; // jobId is orderId here
-  const { documentId, preparedPageCount, preparationStatus, errorCode, errorMessage, printReadySha256 } = req.body;
+  const { documentId, errorCode, errorMessage } = req.body;
+  const validation = await validateAgentDocumentPreparationInput({
+    documentId,
+    hubId: req.agent.hubId,
+    preparationStatus: req.body.preparationStatus,
+    hasPrintReadyFile: Boolean(req.file?.buffer)
+  });
 
-  if (!documentId) {
-    return res.status(400).json({ success: false, message: 'documentId is required' });
+  if (validation.error) {
+    return res.status(validation.error.status).json({ success: false, message: validation.error.message });
+  }
+
+  const preparationStatus = validation.preparationStatus;
+  let preparedPageCount = normalizePreparedPageCount(req.body.preparedPageCount);
+  let { printReadySha256 } = req.body;
+  let printReadyStoragePath = null;
+
+  if (req.file && req.file.buffer && preparationStatus === 'prepared') {
+    try {
+      const verification = await verifyAndStoreHubConvertedDocument({
+        documentId,
+        originalFileName: req.file.originalname,
+        pdfBuffer: req.file.buffer
+      });
+      preparedPageCount = verification.verifiedPageCount;
+      printReadyStoragePath = verification.printReadyStoragePath;
+      printReadySha256 = verification.printReadySha256;
+    } catch (error) {
+      return res.status(400).json({ success: false, message: error.message });
+    }
   }
   
   // 1. Update Document Preparation Status
@@ -509,6 +614,8 @@ export const reportVerificationResult = asyncHandler(async (req, res) => {
     preparationStatus,
     preparationErrorCode: errorCode,
     preparationErrorMessage: errorMessage,
+    printReadyStoragePath,
+    printReadySha256,
     preparedAt: new Date().toISOString()
   });
 
