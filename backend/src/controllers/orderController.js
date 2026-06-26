@@ -489,3 +489,42 @@ export const reprintOrder = asyncHandler(async (req, res) => {
   const statusCode = result.success ? 201 : 200;
   res.status(statusCode).json(result);
 });
+
+export const acceptMismatch = asyncHandler(async (req, res) => {
+  const result = await withTransaction(async (client) => {
+    const existingOrder = await findOrderByIdOrCode(req.params.id, client);
+    if (!existingOrder) {
+      return null;
+    }
+
+    if (!canAccessOrder(req.user, existingOrder, req)) {
+      throw new Error('You are not allowed to access this order');
+    }
+
+    if (existingOrder.bill_status !== 'mismatch') {
+      throw new Error('Order does not have a bill mismatch');
+    }
+
+    const updatedOrderResult = await client.query(
+      `UPDATE print_orders 
+       SET status = 'bill_confirmed', 
+           bill_status = 'confirmed'
+       WHERE id = $1
+       RETURNING *`,
+      [existingOrder.id]
+    );
+
+    return updatedOrderResult.rows[0];
+  });
+
+  if (!result) {
+    return res.status(404).json({ success: false, message: 'Order not found' });
+  }
+
+  res.json({
+    success: true,
+    message: 'Corrected bill accepted successfully',
+    order: result
+  });
+});
+

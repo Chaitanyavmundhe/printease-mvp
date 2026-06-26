@@ -25,11 +25,16 @@ export async function processManualCollection({
     }
 
     const normalizedPaymentStatus = String(order.paymentStatus || '').toLowerCase();
+    
+    if (normalizedPaymentStatus === 'not_requested' || normalizedPaymentStatus === 'draft') {
+      return { error: 'PAYMENT_NOT_REQUESTED', message: 'User has not created a payment request yet.' };
+    }
+
     if (isCancelledOrder(order) && !isPaymentComplete(order)) {
       return { cancelledBeforePayment: true, order };
     }
 
-    if (!['pending', 'unpaid', ''].includes(normalizedPaymentStatus)) {
+    if (['collected', 'verified', 'paid'].includes(normalizedPaymentStatus)) {
       const autoQueue = autoPrintAfterCollection
         ? await queuePrintJobIfPaymentReady(order.id, hubId, client)
         : { queued: false, message: 'Payment already collected. Auto-print is off; press Send to print manually.' };

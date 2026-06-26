@@ -883,13 +883,10 @@ export async function listPendingPaymentOrderFilesForAgentPredownload(hubId, { l
      join print_order_files pof on pof.order_id = po.id
      join documents d on d.id = pof.document_id
      where po.hub_id = $1
-       and lower(coalesce(po.payment_status, '')) in ('pending', 'draft')
-       and lower(coalesce(po.status, '')) not in (
+       and po.payment_status in ('not_requested', 'requested', 'failed')
+       and po.status not in (
          'cancelled',
-         'expired',
-         'refund requested',
-         'ready for pickup',
-         'collected'
+         'completed'
        )
        and (po.expires_at is null or po.expires_at > now())
        and d.storage_path is not null
@@ -2592,5 +2589,52 @@ export async function getPrinterProfilesByName(hubId, printerName) {
     scaleMode: row.scale_mode,
     collate: row.collate,
     lastTestedAt: row.last_tested_at
+  }));
+}
+
+export async function listPendingBillVerificationJobsForAgent(hubId, { limit = 20 } = {}, client) {
+  const boundedLimit = Math.min(50, Math.max(1, Number(limit) || 20));
+  const result = await executor(client).query(
+    `select
+       pof.*,
+       po.order_code,
+       po.status as order_status,
+       d.file_name,
+       d.file_type,
+       d.file_size,
+       d.file_size_bytes,
+       d.file_sha256,
+       d.storage_path,
+       d.print_ready_storage_path,
+       d.print_ready_sha256,
+       d.conversion_source,
+       d.conversion_placement,
+       d.conversion_reason_code,
+       d.file_kind,
+       d.requires_desktop_preparation,
+       d.page_count,
+       d.prepared_page_count,
+       d.preparation_status,
+       d.created_at as document_created_at
+     from print_orders po
+     join print_order_files pof on pof.order_id = po.id
+     join documents d on d.id = pof.document_id
+     where po.hub_id = $1
+       and po.status = 'awaiting_hub_bill_confirmation'
+       and (po.expires_at is null or po.expires_at > now())
+       and d.storage_path is not null
+       and d.storage_path <> ''
+       and d.file_sha256 is not null
+       and d.file_sha256 <> ''
+     order by po.created_at asc, pof.id asc
+     limit $2`,
+    [hubId, boundedLimit]
+  );
+
+  return result.rows.map((row) => ({
+    orderId: row.order_id,
+    orderCode: row.order_code || null,
+    orderStatus: row.order_status || null,
+    file: mapOrderFile(row),
   }));
 }

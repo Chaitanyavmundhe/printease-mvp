@@ -7,6 +7,7 @@ import {
   insertPrintJobEvent,
   listPendingPaymentOrderFilesForAgentPredownload,
   listOrderFiles,
+  listPendingBillVerificationJobsForAgent,
   markPairingSessionConfirmed,
   replaceAgentPrinters,
   revokeActiveAgentTokens,
@@ -23,7 +24,7 @@ import {
   AGENT_POLL_INTERVAL_MS,
   OFFICIAL_BACKEND_URL
 } from '../config/agent.js';
-import { getSupabaseAdminClient } from '../config/supabase.js';
+import { getSupabaseAdminClient, getSupabaseBucketName } from '../config/supabase.js';
 import { createAgentToken as createRawAgentToken, createPairingCode, hashAgentSecret } from '../utils/agentCrypto.js';
 import { generateId } from '../utils/generateCode.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
@@ -448,6 +449,86 @@ export const reportPreparationResult = asyncHandler(async (req, res) => {
     }
   } catch (err) {
     console.error(`[AgentController] Error recalculating pricing for document ${documentId}:`, err);
+  }
+
+  res.json({ success: true, document: result });
+});
+
+export const getPendingVerificationJobs = asyncHandler(async (req, res) => {
+  const limit = Math.min(30, Math.max(1, Number(req.query.limit) || 15));
+  const candidates = await listPendingBillVerificationJobsForAgent(req.agent.hubId, { limit });
+  
+  const files = await Promise.all(candidates.map(async (candidate) => {
+    const order = {
+      id: candidate.orderId,
+      orderCode: candidate.orderCode,
+    };
+    const printReadyFile = await getPrintReadyFile(order, candidate.file);
+    const sourceFileUrl = printReadyFile?.fileUrl || (
+      candidate.file.document?.storagePath
+        ? `private://${getSupabaseBucketName()}/${candidate.file.document.storagePath}`
+        : null
+    );
+
+    if (!sourceFileUrl) return null;
+
+    return {
+      orderId: candidate.orderId,
+      orderCode: candidate.orderCode,
+      orderStatus: candidate.orderStatus,
+      documentId: candidate.file.documentId,
+      orderFileId: candidate.file.id,
+      fileName: candidate.file.document?.fileName || 'document.pdf',
+      fileType: printReadyFile?.fileType || candidate.file.document?.fileType || 'application/pdf',
+      fileSha256: printReadyFile?.fileSha256 || candidate.file.document?.fileSha256 || null,
+      fileUrl: await resolveDownloadUrl(sourceFileUrl),
+      printReady: Boolean(printReadyFile?.transformed),
+      requiresDesktopPreparation: candidate.file.document?.requiresDesktopPreparation || false,
+      preparationStatus: candidate.file.document?.preparationStatus || 'prepared'
+    };
+  }));
+
+  res.json({
+    success: true,
+    mode: 'verification',
+    files: files.filter(f => f?.documentId && f?.fileUrl && f?.fileSha256)
+  });
+});
+
+export const reportVerificationResult = asyncHandler(async (req, res) => {
+  const { jobId } = req.params; // jobId is orderId here
+  const { documentId, preparedPageCount, preparationStatus, errorCode, errorMessage, printReadySha256 } = req.body;
+
+  if (!documentId) {
+    return res.status(400).json({ success: false, message: 'documentId is required' });
+  }
+  
+  // 1. Update Document Preparation Status
+  const result = await updateDocumentPreparation(documentId, {
+    preparedPageCount,
+    preparationStatus,
+    preparationErrorCode: errorCode,
+    preparationErrorMessage: errorMessage,
+    preparedAt: new Date().toISOString()
+  });
+
+  if (!result) {
+    return res.status(404).json({ success: false, message: 'Document not found' });
+  }
+
+  // 2. Automate Bill Confirmation if prepared
+  if (preparationStatus === 'prepared') {
+    // We import confirmOrderBill to run the backend verification logic
+    const { confirmOrderBill } = await import('../services/orderConfigurationService.js');
+    try {
+      // confirmOrderBill will automatically recalculate and set the bill_status = confirmed / mismatch
+      // and allow payment requests.
+      const updatedOrder = await confirmOrderBill({ orderId: jobId, hubId: req.agent.hubId, agentId: req.agent.id, isAutomatic: true });
+      return res.json({ success: true, document: result, order: updatedOrder });
+    } catch (err) {
+      console.error(`[AgentController] Error confirming bill for order ${jobId}:`, err);
+      return res.status(400).json({ success: false, message: err.message || 'Failed to confirm bill' });
+    }
   }
 
   res.json({ success: true, document: result });

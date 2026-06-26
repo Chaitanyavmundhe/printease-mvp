@@ -375,7 +375,42 @@ export async function recalculateOrderPricingByDocument(documentId) {
         sheetCount: totalSheetCount
       }, client);
 
-      results.push(updatedOrder);
+      let finalOrder = updatedOrder;
+
+      // Auto-confirm bill if awaiting
+      if (order.status === 'awaiting_hub_bill_confirmation' || order.status === 'draft_uploaded') {
+        const hashInput = JSON.stringify({
+          orderId: order.id,
+          totalAmountPaise,
+          fileConfigs: pricedFiles.map(f => ({
+            id: f.updatedFile.id,
+            printOptions: f.normalizedPrintOptions,
+            lineAmountPaise: f.updatedFile.lineAmountPaise
+          }))
+        });
+        const crypto = await import('crypto');
+        const billHash = crypto.createHash('sha256').update(hashInput).digest('hex');
+
+        const confirmResult = await executor(client).query(
+          `UPDATE print_orders 
+           SET status = $1, 
+               bill_status = $2,
+               hub_confirmed_total_paise = $3, 
+               bill_hash = $4
+           WHERE id = $5
+           RETURNING *`,
+          [
+            totalAmountPaise === order.totalAmountPaise ? 'bill_confirmed' : order.status,
+            totalAmountPaise === order.totalAmountPaise ? 'confirmed' : 'mismatch',
+            totalAmountPaise, 
+            billHash, 
+            order.id
+          ]
+        );
+        finalOrder = confirmResult.rows[0];
+      }
+
+      results.push(finalOrder);
     }
     return results;
   });
@@ -465,14 +500,22 @@ export async function confirmOrderBill({ orderId, hubId }) {
 
     const result = await executor(client).query(
       `UPDATE print_orders 
-       SET status = 'bill_confirmed', 
-           hub_confirmed_total_paise = $1, 
-           bill_hash = $2,
-           amount = $3,
-           total_amount_paise = $1
-       WHERE id = $4
+       SET status = $1, 
+           bill_status = $2,
+           hub_confirmed_total_paise = $3, 
+           bill_hash = $4,
+           amount = $5,
+           total_amount_paise = $3
+       WHERE id = $6
        RETURNING *`,
-      [totalAmountPaise, billHash, totalAmount, order.id]
+      [
+        totalAmountPaise === order.totalAmountPaise ? 'bill_confirmed' : order.status,
+        totalAmountPaise === order.totalAmountPaise ? 'confirmed' : 'mismatch',
+        totalAmountPaise, 
+        billHash, 
+        totalAmount, 
+        order.id
+      ]
     );
 
     return result.rows[0];

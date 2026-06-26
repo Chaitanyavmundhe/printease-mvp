@@ -3,6 +3,8 @@ import {
   acceptJob,
   confirmPairing,
   getPredownloadCandidates,
+  getPendingVerificationJobs,
+  reportVerificationResult,
   getNextJob,
   getAgentConfig,
   heartbeat,
@@ -27,6 +29,8 @@ router.post('/heartbeat', agentAuthMiddleware, heartbeat);
 router.get('/config', agentAuthMiddleware, getAgentConfig);
 router.post('/printers', agentAuthMiddleware, syncPrinters);
 router.get('/jobs/predownload', agentAuthMiddleware, getPredownloadCandidates);
+router.get('/jobs/verify', agentAuthMiddleware, getPendingVerificationJobs);
+router.post('/jobs/:jobId/verify-result', agentAuthMiddleware, reportVerificationResult);
 router.get('/jobs/next', agentAuthMiddleware, getNextJob);
 router.post('/jobs/:jobId/accepted', agentAuthMiddleware, acceptJob);
 router.post('/jobs/:jobId/downloading', agentAuthMiddleware, markDownloading);
