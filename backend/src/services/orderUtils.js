@@ -1,19 +1,16 @@
 import { hashGuestToken } from './guestAccessService.js';
 
 export const ALLOWED_HUB_ORDER_STATUSES = new Set([
-  'Payment Pending',
-  'Payment Verified',
-  'Payment Collected',
-  'Accepted by Centre',
-  'Queued for Printing',
-  'Sent to Agent',
-  'Printing',
-  'Ready for Pickup',
-  'Collected',
-  'Paused',
-  'Cancelled',
-  'Printing Failed',
-  'Refund Requested'
+  'draft_uploaded',
+  'awaiting_hub_bill_confirmation',
+  'bill_confirmed',
+  'payment_requested',
+  'payment_collected',
+  'queued_for_print',
+  'printing',
+  'completed',
+  'failed',
+  'cancelled'
 ]);
 
 export function normalizePaymentStatus(order) {

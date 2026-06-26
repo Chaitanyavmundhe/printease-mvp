@@ -53,6 +53,11 @@ function assertOrderCanStartPayment(order) {
     error.statusCode = 409;
     throw error;
   }
+  if (order.status !== 'bill_confirmed') {
+    const error = new Error('Please wait for the hub to confirm the bill before payment.');
+    error.statusCode = 403;
+    throw error;
+  }
 }
 
 async function assertOrderIsFullyPrepared(orderId) {
@@ -100,7 +105,7 @@ async function markOrderPaidAndQueue({ orderId, paymentId, providerPaymentId, pr
     verifiedAt: new Date().toISOString()
   }, client);
 
-  const paidOrder = await updateOrderPayment(orderId, 'verified', 'Payment Verified', client);
+  const paidOrder = await updateOrderPayment(orderId, 'verified', 'payment_collected', client);
   const autoQueue = await queuePrintJobIfPaymentReady(paidOrder.id, paidOrder.centreId, client);
 
   return {
@@ -163,7 +168,7 @@ export const createManualPaymentRequest = asyncHandler(async (req, res) => {
       verifiedAt: null
     }, client);
 
-    const requestedOrder = await updateOrderPayment(order.id, 'pending', 'Payment Pending', client);
+    const requestedOrder = await updateOrderPayment(order.id, 'requested', 'payment_requested', client);
 
     return { payment, order: requestedOrder };
   });
@@ -240,7 +245,7 @@ export const createRazorpayOrder = asyncHandler(async (req, res) => {
       verifiedAt: null
     }, client);
 
-    const requestedOrder = await updateOrderPayment(order.id, 'pending', 'Payment Pending', client);
+    const requestedOrder = await updateOrderPayment(order.id, 'requested', 'payment_requested', client);
     return { payment, requestedOrder };
   });
 
@@ -455,7 +460,7 @@ export const createRazorpayUpiQr = asyncHandler(async (req, res) => {
       verifiedAt: null
     }, client);
 
-    const requestedOrder = await updateOrderPayment(order.id, 'pending', 'Payment Pending', client);
+    const requestedOrder = await updateOrderPayment(order.id, 'requested', 'payment_requested', client);
     return { payment, requestedOrder };
   });
 
@@ -520,7 +525,7 @@ export const razorpayWebhook = asyncHandler(async (req, res) => {
 
       const failedOrder = isCancelledOrder(order)
         ? order
-        : await updateOrderPayment(order.id, 'failed', 'Payment Failed', client);
+        : await updateOrderPayment(order.id, 'failed', 'failed', client);
       return { payment: failedPayment, order: failedOrder, failed: true };
     }
 
@@ -600,7 +605,7 @@ export const verifyDemoPayment = asyncHandler(async (req, res) => {
   if (!demoSuccess) {
     const result = await withTransaction(async (client) => {
       const failedPayment = await updatePayment(payment.id, { status: 'failed' }, client);
-      const failedOrder = await updateOrderPayment(order.id, 'failed', 'Payment Failed', client);
+      const failedOrder = await updateOrderPayment(order.id, 'failed', 'failed', client);
       return { payment: failedPayment, order: failedOrder };
     });
 
@@ -613,7 +618,7 @@ export const verifyDemoPayment = asyncHandler(async (req, res) => {
       transactionId: `demo_payment_${Date.now()}`,
       verifiedAt: new Date().toISOString()
     }, client);
-    const collectedOrder = await updateOrderPayment(order.id, 'collected', 'Payment Collected', client);
+    const collectedOrder = await updateOrderPayment(order.id, 'collected', 'payment_collected', client);
     const autoQueue = await queuePrintJobIfPaymentReady(collectedOrder.id, collectedOrder.centreId, client);
     return {
       payment: collectedPayment,

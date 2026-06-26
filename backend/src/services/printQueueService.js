@@ -118,7 +118,7 @@ export async function queuePrintJobIfPaymentReady(orderId, hubId, client) {
     }
   }, client);
 
-  const queuedOrder = await updateOrderStatus(orderId, hubId, 'Queued for Printing', client);
+  const queuedOrder = await updateOrderStatus(orderId, hubId, 'queued_for_print', client);
 
   return {
     queued: true,

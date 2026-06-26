@@ -265,8 +265,8 @@ export const createOrder = asyncHandler(async (req, res) => {
       sheetCount: totalSheetCount,
       amount: totalAmount,
       totalAmountPaise,
-      paymentStatus: 'draft',
-      status: 'Draft',
+      paymentStatus: 'not_requested',
+      status: 'awaiting_hub_bill_confirmation',
       pickupCode: generateShortCode(4),
       createdAt
     }, client);

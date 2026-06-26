@@ -11,6 +11,7 @@ import {
 } from '../db/repository.js';
 import { calculatePrintPricing } from '../utils/calculatePrice.js';
 import { normalizePrintOptions, toLegacyColorType, toLegacySideType } from '../utils/printOptions.js';
+import crypto from 'crypto';
 
 /**
  * Checks whether the print hub is allowed to configure/correct settings for a given order.
@@ -377,5 +378,103 @@ export async function recalculateOrderPricingByDocument(documentId) {
       results.push(updatedOrder);
     }
     return results;
+  });
+}
+
+export async function confirmOrderBill({ orderId, hubId }) {
+  return await withTransaction(async (client) => {
+    const order = await findOrderByIdOrCode(orderId, client);
+    if (!order) {
+      throw new Error('Order not found');
+    }
+
+    if (order.centreId !== hubId) {
+      throw new Error('Order does not belong to this hub');
+    }
+
+    if (order.status !== 'awaiting_hub_bill_confirmation' && order.status !== 'draft_uploaded') {
+      throw new Error(`Order is in state ${order.status}, cannot confirm bill`);
+    }
+
+    const centre = await findCentreById(hubId, client);
+    if (!centre) {
+      throw new Error('Hub profile not found');
+    }
+
+    const existingFiles = await listOrderFiles(order.id, client);
+    if (!existingFiles || existingFiles.length === 0) {
+      throw new Error('No files found for this order');
+    }
+
+    const pricedFiles = [];
+    for (let index = 0; index < existingFiles.length; index++) {
+      const existingFile = existingFiles[index];
+      const mergedPrintOptions = existingFile.printOptions;
+      const copies = existingFile.copies;
+
+      const trustedPageCount = existingFile.document?.preparedPageCount ?? existingFile.document?.pageCount ?? existingFile.originalPageCount;
+      
+      const normalizedOptions = normalizePrintOptions(mergedPrintOptions, trustedPageCount);
+      normalizedOptions.copies = copies;
+      
+      const fileColorType = toLegacyColorType(normalizedOptions.colorMode);
+      const fileSideType = toLegacySideType(normalizedOptions.sides);
+      const pricedSelectedPages = normalizedOptions.pages.mode === 'custom'
+        ? normalizedOptions.pages.range
+        : 'all';
+
+      const price = calculatePrintPricing({
+        centre,
+        originalPageCount: trustedPageCount,
+        selectedPages: pricedSelectedPages,
+        copies: copies,
+        colorType: fileColorType,
+        sideType: fileSideType,
+        paperSize: normalizedOptions.paperSize,
+        pagesPerSheet: normalizedOptions.pagesPerSheet,
+        watermarkEnabled: normalizedOptions.watermark.enabled
+      });
+
+      const updatedFile = await updateOrderFileConfiguration(existingFile.id, {
+        copies: price.copies,
+        selectedPages: price.selectedPages,
+        selectedPageCount: price.selectedPageCount,
+        printablePageCount: price.printablePageCount,
+        sheetCount: price.sheetCount,
+        printOptions: normalizedOptions,
+        lineAmountPaise: price.totalAmountPaise
+      }, client);
+
+      pricedFiles.push({ price, normalizedPrintOptions: normalizedOptions, updatedFile });
+    }
+
+    const totalAmount = pricedFiles.reduce((sum, f) => sum + f.price.totalAmount, 0);
+    const totalAmountPaise = pricedFiles.reduce((sum, f) => sum + f.price.totalAmountPaise, 0);
+
+    const hashInput = JSON.stringify({
+      orderId: order.id,
+      totalAmountPaise,
+      fileConfigs: pricedFiles.map(f => ({
+        id: f.updatedFile.id,
+        printOptions: f.normalizedPrintOptions,
+        lineAmountPaise: f.updatedFile.lineAmountPaise
+      }))
+    });
+    
+    const billHash = crypto.createHash('sha256').update(hashInput).digest('hex');
+
+    const result = await executor(client).query(
+      `UPDATE print_orders 
+       SET status = 'bill_confirmed', 
+           hub_confirmed_total_paise = $1, 
+           bill_hash = $2,
+           amount = $3,
+           total_amount_paise = $1
+       WHERE id = $4
+       RETURNING *`,
+      [totalAmountPaise, billHash, totalAmount, order.id]
+    );
+
+    return result.rows[0];
   });
 }

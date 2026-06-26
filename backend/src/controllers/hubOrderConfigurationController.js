@@ -1,4 +1,4 @@
-import { applyOrderConfigurationChange } from '../services/orderConfigurationService.js';
+import { applyOrderConfigurationChange, confirmOrderBill } from '../services/orderConfigurationService.js';
 import { getOrderConfigEvents, findOrderByIdOrCode } from '../db/repository.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 
@@ -97,6 +97,36 @@ export const getHubOrderConfigurationHistory = asyncHandler(async (req, res) => 
     return res.status(500).json({
       success: false,
       message: error.message || 'Failed to retrieve configuration history'
+    });
+  }
+});
+
+/**
+ * Endpoint to confirm the bill for an order awaiting hub confirmation.
+ * POST /api/hubs/orders/:orderId/confirm-bill
+ */
+export const confirmBill = asyncHandler(async (req, res) => {
+  const hubId = getHubId(req);
+  if (!hubId) {
+    return res.status(400).json({
+      success: false,
+      message: 'Logged in hub user is not linked to a hub'
+    });
+  }
+
+  const { orderId } = req.params;
+
+  try {
+    const updatedOrder = await confirmOrderBill({ orderId, hubId });
+    return res.json({
+      success: true,
+      message: 'Bill confirmed successfully',
+      order: updatedOrder
+    });
+  } catch (error) {
+    return res.status(400).json({
+      success: false,
+      message: error.message || 'Failed to confirm bill'
     });
   }
 });
