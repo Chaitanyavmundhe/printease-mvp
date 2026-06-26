@@ -151,8 +151,6 @@ export function mapOrder(row) {
     guestPhone: row.guest_phone || null,
     priceSnapshot: row.price_snapshot || null,
     printConfigSnapshot: row.print_config_snapshot || null,
-    billStatus: row.bill_status || null,
-    bill_status: row.bill_status || null,
     hubConfirmedTotalPaise: row.hub_confirmed_total_paise === null || row.hub_confirmed_total_paise === undefined
       ? null
       : Number(row.hub_confirmed_total_paise),
@@ -747,9 +745,9 @@ export async function createOrder(order, client) {
          printable_page_count, sheet_count, amount, total_amount_paise, payment_status,
          status, pickup_code, created_at, customer_type, expires_at,
          guest_token, guest_name, guest_phone, price_snapshot, print_config_snapshot,
-         guest_token_hash, bill_status, hub_confirmed_total_paise, bill_hash
+         guest_token_hash
        )
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13, $14, $15, $16, $17, $18, $19, $20, coalesce($21, now()), $22, $23, $24, $25, $26, $27::jsonb, $28::jsonb, $29, $30, $31, $32)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13, $14, $15, $16, $17, $18, $19, $20, coalesce($21, now()), $22, $23, $24, $25, $26, $27::jsonb, $28::jsonb, $29)
       returning *, hub_id as centre_id`,
      [
       order.id,
@@ -780,10 +778,7 @@ export async function createOrder(order, client) {
       order.guestPhone || null,
       order.priceSnapshot ? JSON.stringify(order.priceSnapshot) : null,
       order.printConfigSnapshot ? JSON.stringify(order.printConfigSnapshot) : null,
-      order.guestTokenHash || null,
-      order.billStatus || null,
-      order.hubConfirmedTotalPaise ?? null,
-      order.billHash || null
+      order.guestTokenHash || null
     ]
   );
 

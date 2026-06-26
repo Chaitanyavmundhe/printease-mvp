@@ -102,12 +102,8 @@ export const uploadDocument = asyncHandler(async (req, res) => {
     mainFile.mimetype === 'image/bmp' ||
     mainFile.mimetype === 'image/tiff';
   const hasTrustedPrintReadyPageCount = Boolean(printReadyFile && Number.isFinite(pageCount) && pageCount > 0);
-  const needsDesktopPrep = !hasTrustedPrintReadyPageCount && (
-    req.body.requiresDesktopPreparation === 'true' ||
-    (isOfficeFormat && !printReadyFile) ||
-    (pageCount === null && canDesktopPrepare)
-  );
-  const preparationStatus = needsDesktopPrep ? 'pending' : 'prepared';
+  const needsDesktopPrep = false;
+  const preparationStatus = 'prepared';
 
   const documentId = generateId();
   const originalName = mainFile.originalname || 'document.pdf';
