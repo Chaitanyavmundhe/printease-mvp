@@ -155,6 +155,7 @@ export function mapOrder(row) {
     printConfigSnapshot: row.print_config_snapshot || null,
     expiresAt: row.expires_at || null,
     paymentStatus: row.payment_status,
+    billStatus: row.bill_status || null,
     status: row.status,
     pickupCode: row.pickup_code,
     configVersion: row.config_version !== undefined ? number(row.config_version) : 1,

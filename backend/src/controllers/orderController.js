@@ -267,7 +267,9 @@ export const createOrder = asyncHandler(async (req, res) => {
           }))
         }))
         .digest('hex');
-  const initialOrderStatus = 'draft_uploaded';
+  const initialOrderStatus = hasPendingDesktopPreparation
+    ? 'awaiting_hub_bill_confirmation'
+    : 'draft_uploaded';
 
   const createdAt = new Date().toISOString();
   const isLimitedLoginlessOrder = !req.user?.id;
@@ -299,7 +301,16 @@ export const createOrder = asyncHandler(async (req, res) => {
       guestTokenHash,
       guestName: null,
       guestPhone: null,
-      priceSnapshot: { amount: totalAmount, totalAmountPaise, breakdown: pricedFiles.map(f => f.price) },
+      priceSnapshot: {
+        amount: totalAmount,
+        totalAmountPaise,
+        pricingPending: hasPendingDesktopPreparation,
+        reasonCode: hasPendingDesktopPreparation ? 'DESKTOP_PREPARATION_PENDING' : null,
+        message: hasPendingDesktopPreparation
+          ? 'Hub desktop must convert and verify this document before the final bill is available.'
+          : null,
+        breakdown: pricedFiles.map(f => f.price)
+      },
       printConfigSnapshot: orderPrintOptions,
       centreId: centre.id,
       documentId: firstFile.document?.id || null,
@@ -365,6 +376,11 @@ export const createOrder = asyncHandler(async (req, res) => {
     price: {
       totalAmount,
       totalAmountPaise,
+      pricingPending: hasPendingDesktopPreparation,
+      reasonCode: hasPendingDesktopPreparation ? 'DESKTOP_PREPARATION_PENDING' : null,
+      message: hasPendingDesktopPreparation
+        ? 'Hub desktop must convert and verify this document before the final bill is available.'
+        : null,
       pricePerPage: firstFile.price.pricePerPage,
       files: pricedFiles.map((file) => ({
         documentId: file.document?.id || null,
@@ -539,4 +555,3 @@ export const reprintOrder = asyncHandler(async (req, res) => {
   const statusCode = result.success ? 201 : 200;
   res.status(statusCode).json(result);
 });
-
