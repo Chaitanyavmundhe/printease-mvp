@@ -54,7 +54,7 @@ export const uploadDocument = asyncHandler(async (req, res) => {
 
   const supabase = getSupabaseAdminClient();
   const bucket = getSupabaseBucketName();
-  let pageCount = 1;
+  let pageCount = null;
 
   if (isPdf) {
     try {
@@ -90,8 +90,20 @@ export const uploadDocument = asyncHandler(async (req, res) => {
     pageCount = null;
   }
 
-  const isOfficeFormat = mainFile.mimetype.includes('officedocument') || mainFile.mimetype.includes('msword') || mainFile.mimetype.includes('ms-excel');
-  const needsDesktopPrep = req.body.requiresDesktopPreparation === 'true' || (isOfficeFormat && pageCount === null);
+  const isOfficeFormat = mainFile.mimetype.includes('officedocument') ||
+    mainFile.mimetype.includes('opendocument') ||
+    mainFile.mimetype.includes('msword') ||
+    mainFile.mimetype.includes('ms-excel') ||
+    mainFile.mimetype.includes('ms-powerpoint');
+  const canDesktopPrepare = isOfficeFormat ||
+    mainFile.mimetype.startsWith('text/') ||
+    mainFile.mimetype === 'application/json' ||
+    mainFile.mimetype === 'image/gif' ||
+    mainFile.mimetype === 'image/bmp' ||
+    mainFile.mimetype === 'image/tiff';
+  const needsDesktopPrep = req.body.requiresDesktopPreparation === 'true' ||
+    (isOfficeFormat && !printReadyFile) ||
+    (pageCount === null && canDesktopPrepare);
   const preparationStatus = needsDesktopPrep ? 'pending' : 'prepared';
 
   const documentId = generateId();
