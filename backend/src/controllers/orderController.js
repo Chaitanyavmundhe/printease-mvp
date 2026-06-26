@@ -159,7 +159,7 @@ export const createOrder = asyncHandler(async (req, res) => {
           ...file,
           pendingDesktopPreparation: true,
           price: {
-            originalPageCount: null,
+            originalPageCount: 0,
             selectedPages: submittedPrintOptions.pages?.mode === 'custom' ? submittedPrintOptions.pages.range : 'all',
             selectedPageCount: 0,
             printablePageCount: 0,
