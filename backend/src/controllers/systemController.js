@@ -30,6 +30,11 @@ export async function runInternalCleanup() {
     const documentIds = documents.map(doc => doc.id);
     
     await pool.query(
+      `DELETE FROM print_job_files WHERE document_id = ANY($1::uuid[])`,
+      [documentIds]
+    );
+
+    await pool.query(
       `DELETE FROM print_order_files WHERE document_id = ANY($1::uuid[])`,
       [documentIds]
     );

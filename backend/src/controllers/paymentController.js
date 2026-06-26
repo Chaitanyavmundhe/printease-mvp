@@ -60,8 +60,9 @@ function assertOrderCanStartPayment(order) {
   }
 }
 
-async function assertOrderIsFullyPrepared(orderId) {
-  const files = await listOrderFiles(orderId);
+async function assertOrderIsFullyPrepared(order) {
+  if (order.status === 'bill_confirmed') return;
+  const files = await listOrderFiles(order.id);
   if (files.some(f => f.document?.requiresDesktopPreparation && f.document?.preparationStatus === 'pending')) {
     const error = new Error('Documents are being prepared for accurate page counts. Please wait.');
     error.statusCode = 400;
@@ -149,7 +150,7 @@ export const createManualPaymentRequest = asyncHandler(async (req, res) => {
   }
 
   assertOrderCanStartPayment(order);
-  await assertOrderIsFullyPrepared(order.id);
+  await assertOrderIsFullyPrepared(order);
 
   const paymentStatus = normalizePaymentStatus(order);
   if (['verified', 'collected', 'paid'].includes(paymentStatus)) {
@@ -208,7 +209,7 @@ export const createRazorpayOrder = asyncHandler(async (req, res) => {
   }
 
   assertOrderCanStartPayment(order);
-  await assertOrderIsFullyPrepared(order.id);
+  await assertOrderIsFullyPrepared(order);
 
   const paymentStatus = normalizePaymentStatus(order);
   if (['verified', 'collected', 'paid'].includes(paymentStatus)) {
@@ -411,7 +412,7 @@ export const createRazorpayUpiQr = asyncHandler(async (req, res) => {
   }
 
   assertOrderCanStartPayment(order);
-  await assertOrderIsFullyPrepared(order.id);
+  await assertOrderIsFullyPrepared(order);
 
   const paymentStatus = normalizePaymentStatus(order);
   if (['verified', 'collected', 'paid'].includes(paymentStatus)) {
