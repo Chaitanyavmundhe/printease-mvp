@@ -11,6 +11,7 @@ import { generateId, generateOrderCode, generateShortCode } from '../utils/gener
 import { calculatePrintPricing } from '../utils/calculatePrice.js';
 import { pricingMetadata } from '../services/orderPricingPresenter.js';
 import { getSupabaseAdminClient, getSupabaseBucketName } from '../config/supabase.js';
+import crypto from 'crypto';
 
 function centreWithCurrentPricing(centre) {
   const pricing = centre?.pricing || {};
@@ -121,10 +122,16 @@ export async function createReprintOrder({ originalOrderId, actor, allowDocument
        break;
     }
 
-    // Re-price based on CURRENT hub pricing
+    const trustedPageCount = document.preparedPageCount ?? document.pageCount ?? file.originalPageCount;
+    if (!Number.isFinite(Number(trustedPageCount)) || Number(trustedPageCount) <= 0) {
+      allDocumentsAvailable = false;
+      break;
+    }
+
+    // Re-price based on CURRENT hub pricing and the prepared/converted page count.
     const price = calculatePrintPricing({
       centre: currentCentre,
-      originalPageCount: file.originalPageCount,
+      originalPageCount: Number(trustedPageCount),
       selectedPages: file.selectedPages,
       copies: file.copies,
       colorType: getOptionColorMode(file.printOptions),
@@ -184,6 +191,19 @@ export async function createReprintOrder({ originalOrderId, actor, allowDocument
           printOptions: file.normalizedPrintOptions
         }))
       };
+  const billHash = crypto
+    .createHash('sha256')
+    .update(JSON.stringify({
+      originalOrderId: originalOrder.id,
+      totalAmountPaise,
+      files: pricedFiles.map((file, index) => ({
+        documentId: file.document.id,
+        printSequence: index + 1,
+        printOptions: file.normalizedPrintOptions,
+        lineAmountPaise: file.price.totalAmountPaise
+      }))
+    }))
+    .digest('hex');
 
   const createdAt = new Date().toISOString();
 
@@ -214,8 +234,11 @@ export async function createReprintOrder({ originalOrderId, actor, allowDocument
       sheetCount: totalSheetCount,
       amount: totalAmount,
       totalAmountPaise,
-      paymentStatus: 'pending',
-      status: 'Payment Pending',
+      paymentStatus: 'not_requested',
+      status: 'bill_confirmed',
+      billStatus: 'confirmed',
+      hubConfirmedTotalPaise: totalAmountPaise,
+      billHash,
       pickupCode: generateShortCode(4),
       createdAt
     }, client);
