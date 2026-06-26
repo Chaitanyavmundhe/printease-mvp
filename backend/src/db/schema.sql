@@ -162,6 +162,7 @@ alter table documents add column if not exists file_kind text;
 alter table documents add column if not exists requires_desktop_preparation boolean default false;
 alter table documents add column if not exists prepared_page_count integer;
 alter table documents add column if not exists preparation_status text default 'prepared' check (preparation_status in ('pending', 'prepared', 'failed'));
+
 alter table documents add column if not exists preparation_error_code text;
 alter table documents add column if not exists preparation_error_message text;
 alter table documents add column if not exists prepared_at timestamptz;
@@ -445,6 +446,21 @@ create table if not exists print_jobs (
   printing_started_at timestamptz,
   completed_at timestamptz,
   failed_at timestamptz
+);
+
+alter table print_jobs drop constraint if exists print_jobs_status_check;
+alter table print_jobs add constraint print_jobs_status_check check (
+  status in (
+    'queued',
+    'assigned',
+    'accepted',
+    'downloading',
+    'printing',
+    'submitted_to_printer',
+    'completed',
+    'failed',
+    'cancelled'
+  )
 );
 
 alter table print_orders
