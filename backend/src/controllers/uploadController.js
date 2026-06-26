@@ -101,9 +101,12 @@ export const uploadDocument = asyncHandler(async (req, res) => {
     mainFile.mimetype === 'image/gif' ||
     mainFile.mimetype === 'image/bmp' ||
     mainFile.mimetype === 'image/tiff';
-  const needsDesktopPrep = req.body.requiresDesktopPreparation === 'true' ||
+  const hasTrustedPrintReadyPageCount = Boolean(printReadyFile && Number.isFinite(pageCount) && pageCount > 0);
+  const needsDesktopPrep = !hasTrustedPrintReadyPageCount && (
+    req.body.requiresDesktopPreparation === 'true' ||
     (isOfficeFormat && !printReadyFile) ||
-    (pageCount === null && canDesktopPrepare);
+    (pageCount === null && canDesktopPrepare)
+  );
   const preparationStatus = needsDesktopPrep ? 'pending' : 'prepared';
 
   const documentId = generateId();

@@ -139,7 +139,9 @@ export const createOrder = asyncHandler(async (req, res) => {
   const pricedFiles = [];
   try {
     for (const file of resolvedFiles) {
-      const isPending = file.document?.preparationStatus === 'pending';
+      const trustedDocumentPageCount = file.document?.preparedPageCount ?? file.document?.pageCount ?? null;
+      const hasTrustedDocumentPageCount = Number.isFinite(Number(trustedDocumentPageCount)) && Number(trustedDocumentPageCount) > 0;
+      const isPending = file.document?.preparationStatus === 'pending' && !hasTrustedDocumentPageCount;
       const submittedPrintOptions = buildSubmittedPrintOptions(file, {
         selectedPages,
         copies,
@@ -185,7 +187,7 @@ export const createOrder = asyncHandler(async (req, res) => {
         continue;
       }
 
-      const trustedPageCount = file.document?.preparedPageCount ?? file.document?.pageCount ?? Number(file.pages ?? pages);
+      const trustedPageCount = trustedDocumentPageCount ?? Number(file.pages ?? pages);
 
       if (!isPending && (!Number.isFinite(trustedPageCount) || trustedPageCount <= 0)) {
         throw new Error('Each file must have a valid PDF page count');

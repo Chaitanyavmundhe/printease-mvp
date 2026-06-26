@@ -25,7 +25,7 @@ const paymentOptions = [
 
 function formatCurrency(value) {
   const num = Number(value);
-  if (isNaN(num) || num === 0) return "₹0.00";
+  if (isNaN(num)) return "Pending";
   return `₹${num.toFixed(2)}`;
 }
 
@@ -59,6 +59,13 @@ export default function PaymentPage({
   const centreUpi = selectedCentre?.upiId || "";
   const upiQrUrl = selectedCentre?.upiQrImageUrl || "";
   const isMultiFileOrder = Array.isArray(backendPrice?.files) && backendPrice.files.length > 1;
+  const orderStatus = String(order?.status || "").toLowerCase();
+  const billStatus = String(order?.billStatus || order?.bill_status || "").toLowerCase();
+  const isBillPending =
+    orderStatus === "awaiting_hub_bill_confirmation" ||
+    orderStatus === "draft_uploaded" ||
+    billStatus === "awaiting_hub_confirmation" ||
+    Boolean(backendPrice?.files?.some?.((file) => file?.pricingPending));
 
   const handlePaymentClick = () => {
     const printablePages = backendPrice?.printablePageCount || (selectedPageCount * (copies || 1));
@@ -70,7 +77,9 @@ export default function PaymentPage({
   };
 
   const buttonLabel =
-    paymentMethod === "razorpay"
+    isBillPending
+      ? "Bill pending"
+      : paymentMethod === "razorpay"
       ? `Pay ${formatCurrency(amount)}`
       : paymentMethod === "upi_qr"
         ? `Generate UPI QR · ${formatCurrency(amount)}`
@@ -83,7 +92,7 @@ export default function PaymentPage({
         : "Creating request...";
   const ButtonIcon = paymentMethod === "razorpay" ? CreditCard : paymentMethod === "upi_qr" ? QrCode : Clock;
 
-  const isDisabled = paymentLoading || amount <= 0;
+  const isDisabled = paymentLoading || isBillPending || amount <= 0;
 
   return (
     <div className="mx-auto max-w-2xl pb-[calc(7rem+env(safe-area-inset-bottom))] md:pb-6">
@@ -110,7 +119,7 @@ export default function PaymentPage({
             </>
           )}
           <div className="border-t pt-3">
-            <OrderSummaryRow label="Total Amount" value={formatCurrency(amount)} highlight />
+            <OrderSummaryRow label="Total Amount" value={isBillPending ? "Pending" : formatCurrency(amount)} highlight />
           </div>
         </div>
 
@@ -181,7 +190,13 @@ export default function PaymentPage({
         </div>
 
         {/* Validation: zero amount */}
-        {amount <= 0 && !paymentLoading && (
+        {isBillPending && !paymentLoading && (
+          <p className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-700">
+            Bill confirmation is pending. The hub desktop must finish document preparation before payment can be requested.
+          </p>
+        )}
+
+        {amount <= 0 && !isBillPending && !paymentLoading && (
           <p className="mt-4 rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3 text-sm font-semibold text-orange-700">
             Order amount is ₹0. Please check your print settings and try again.
           </p>
