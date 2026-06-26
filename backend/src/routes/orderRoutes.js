@@ -7,8 +7,7 @@ import {
   getOrderDocuments,
   getOrderById,
   updateOrderStatus,
-  reprintOrder,
-  acceptMismatch
+  reprintOrder
 } from '../controllers/orderController.js';
 import { authMiddleware, optionalAuthMiddleware } from '../middleware/authMiddleware.js';
 import { roleMiddleware } from '../middleware/roleMiddleware.js';
@@ -29,6 +28,5 @@ router.get('/:id', optionalAuthMiddleware, getOrderById);
 router.post('/:id/collect-payment', authMiddleware, roleMiddleware('hub'), collectCashPayment);
 router.patch('/:id/status', authMiddleware, roleMiddleware('hub'), updateOrderStatus);
 router.post('/:id/reprint', authMiddleware, reprintOrder);
-router.post('/:id/accept-mismatch', optionalAuthMiddleware, acceptMismatch);
 
 export default router;

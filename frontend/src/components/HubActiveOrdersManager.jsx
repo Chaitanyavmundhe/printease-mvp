@@ -26,7 +26,6 @@ import {
   getHubAgentSummary,
   getOrderDocuments,
   sendOrderToAgent,
-  confirmOrderBill,
 } from "../services/api";
 
 function normalizeStatus(status) {
@@ -40,9 +39,7 @@ function label(value) {
 function displayStatus(status) {
   const normalized = normalizeStatus(status);
   const labels = {
-    draft_uploaded: "Awaiting Hub Bill Confirmation",
-    awaiting_hub_bill_confirmation: "Awaiting Hub Bill Confirmation",
-    bill_confirmed: "Bill Confirmed",
+    draft_uploaded: "Draft Uploaded",
     payment_requested: "Payment Requested",
     payment_collected: "Payment Collected",
     payment_pending: "Payment Pending",
@@ -164,7 +161,6 @@ export default function HubActiveOrdersManager({
   const [message, setMessage] = useState("");
   const [orderSearch, setOrderSearch] = useState("");
   const [collectingOrderId, setCollectingOrderId] = useState("");
-  const [confirmingBillId, setConfirmingBillId] = useState("");
   const [statusActionId, setStatusActionId] = useState("");
   const [sendingOrderId, setSendingOrderId] = useState("");
   const [sendModalOrder, setSendModalOrder] = useState(null);
@@ -308,21 +304,7 @@ export default function HubActiveOrdersManager({
     }
   }
 
-  async function handleConfirmBill(order) {
-    const orderId = order.backendId || order.id;
-    setConfirmingBillId(orderId);
-    setAgentError("");
-    setMessage("");
-    try {
-      const data = await confirmOrderBill(orderId);
-      setMessage(data.message || "Bill confirmed successfully.");
-      await Promise.all([refreshAgentStatus(), refreshOrders?.()]);
-    } catch (error) {
-      setAgentError(error.message || "Could not confirm bill.");
-    } finally {
-      setConfirmingBillId("");
-    }
-  }
+
 
   async function quickUpdateOrderStatus(order, nextStatus) {
     const orderId = order.backendId || order.id;
@@ -468,8 +450,7 @@ export default function HubActiveOrdersManager({
     const paymentVerified = isPaymentVerified(order);
     const orderCancelled = isOrderCancelled(order);
     const cancelledBeforePayment = orderCancelled && !paymentVerified;
-    const isAwaitingConfirmation = normalizeStatus(order.status) === "awaiting_hub_bill_confirmation" || normalizeStatus(order.status) === "draft_uploaded";
-    const canConfigure = canConfigureOrder(order, job) || isAwaitingConfirmation;
+    const canConfigure = canConfigureOrder(order, job);
     const compactButtons = variant === "mobile";
 
     return (
@@ -490,15 +471,7 @@ export default function HubActiveOrdersManager({
             <Settings size={14} /> Configure
           </button>
         )}
-        {isAwaitingConfirmation && (
-          <button
-            onClick={() => handleConfirmBill(order)}
-            disabled={confirmingBillId === orderId}
-            className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50 px-2 py-2 text-xs font-semibold text-blue-700 disabled:opacity-50"
-          >
-            <ShieldCheck size={14} /> {confirmingBillId === orderId ? "Confirming" : "Confirm Bill"}
-          </button>
-        )}
+
         {paymentPending && (
           <button
             onClick={() => markCashCollected(order)}
@@ -659,8 +632,7 @@ export default function HubActiveOrdersManager({
               const paymentVerified = isPaymentVerified(order);
               const orderCancelled = isOrderCancelled(order);
               const cancelledBeforePayment = orderCancelled && !paymentVerified;
-              const isAwaitingConfirmation = normalizeStatus(order.status) === "awaiting_hub_bill_confirmation" || normalizeStatus(order.status) === "draft_uploaded";
-              const canConfigure = canConfigureOrder(order, job) || isAwaitingConfirmation;
+              const canConfigure = canConfigureOrder(order, job);
 
               return (
                 <tr key={order.id} className="align-top odd:bg-white even:bg-slate-50">
@@ -750,15 +722,7 @@ export default function HubActiveOrdersManager({
                           <IndianRupee size={14} /> {collectingOrderId === orderId ? "Saving" : "Cash Collected"}
                         </button>
                       )}
-                      {isAwaitingConfirmation && (
-                        <button
-                          onClick={() => handleConfirmBill(order)}
-                          disabled={confirmingBillId === orderId}
-                          className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-blue-200 bg-blue-50 px-2 py-1.5 font-semibold text-blue-700 disabled:opacity-50"
-                        >
-                          <ShieldCheck size={14} /> {confirmingBillId === orderId ? "Confirming" : "Confirm Bill"}
-                        </button>
-                      )}
+
                       {sendEnabled && routeableAgents.length > 0 && (
                         <button
                           onClick={() => openSendModal(order)}

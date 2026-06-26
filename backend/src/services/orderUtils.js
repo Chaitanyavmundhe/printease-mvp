@@ -2,8 +2,6 @@ import { hashGuestToken } from './guestAccessService.js';
 
 export const ALLOWED_HUB_ORDER_STATUSES = new Set([
   'draft_uploaded',
-  'awaiting_hub_bill_confirmation',
-  'bill_confirmed',
   'payment_requested',
   'payment_collected',
   'queued_for_print',

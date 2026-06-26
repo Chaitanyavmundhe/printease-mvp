@@ -590,13 +590,12 @@ export default function UploadPage({
         const conf = multiFileConfigs[i] || {};
         const fileCopies = conf.copies ?? 1;
         const prepared = filePreparationState[i];
-        const canDeferPageCount = prepared?.status === PREPARATION_STATUS.PENDING_DESKTOP;
         const filePages = conf.pages ?? "";
         if (fileCopies === "" || Number(fileCopies) <= 0) {
           window.alert(`Please enter a valid number of copies (at least 1) for document: "${displayFiles[i].name}".`);
           return;
         }
-        if (!canDeferPageCount && (filePages === "" || Number(filePages) <= 0)) {
+        if (filePages === "" || Number(filePages) <= 0) {
           window.alert(`Please enter a valid number of pages (at least 1) for document: "${displayFiles[i].name}".`);
           return;
         }
@@ -621,39 +620,34 @@ export default function UploadPage({
 
   const preparationItems = Object.values(filePreparationState);
   const hasPreparingFiles = preparationItems.some((item) => item?.status === PREPARATION_STATUS.PREPARING);
-  const hasPendingDesktopFiles = preparationItems.some((item) => item?.status === PREPARATION_STATUS.PENDING_DESKTOP);
   const failedPreparation = preparationItems.find((item) => item?.status === PREPARATION_STATUS.FAILED);
   const readyPreparationCount = preparationItems.filter((item) => item?.status === PREPARATION_STATUS.READY).length;
   const activePreparationCount = preparationItems.filter((item) =>
-    item?.status === PREPARATION_STATUS.PREPARING || item?.status === PREPARATION_STATUS.PENDING_DESKTOP
+    item?.status === PREPARATION_STATUS.PREPARING
   ).length;
   const preparationProgress = selectedFileCount
     ? Math.round((readyPreparationCount / selectedFileCount) * 100)
     : 0;
   const hasUsableCentrePricing = Boolean(selectedCentre) && Number(pricePerPage || 0) > 0;
-  const priceReady = selectedFileCount > 0 && hasUsableCentrePricing && !hasPreparingFiles && !hasPendingDesktopFiles && !failedPreparation;
+  const priceReady = selectedFileCount > 0 && hasUsableCentrePricing && !hasPreparingFiles && !failedPreparation;
   const canContinueForPayment = selectedFileCount > 0 && hasUsableCentrePricing && !hasPreparingFiles && !failedPreparation;
   const priceSummaryLabel = hasPreparingFiles
     ? "Calculating price..."
-    : hasPendingDesktopFiles
-      ? "Waiting for desktop preparation"
-      : failedPreparation
-        ? "Price unavailable"
-        : !hasUsableCentrePricing
-          ? "Select centre for price"
-        : backendPrice
-          ? "Total"
-          : "Est. Total";
+    : failedPreparation
+      ? "Price unavailable"
+      : !hasUsableCentrePricing
+        ? "Select centre for price"
+      : backendPrice
+        ? "Total"
+        : "Total";
   const priceSummaryHelp = hasPreparingFiles
-    ? "Preparing page count and preview from your selected files."
-    : hasPendingDesktopFiles
-      ? "Office files need hub desktop conversion before exact pricing. Upload as PDF for immediate pricing."
-      : failedPreparation
-        ? failedPreparation.errorMessage || "Remove the failed file or upload it as PDF."
-        : !hasUsableCentrePricing
-          ? "Select a print centre with pricing before checkout. The final bill will stay pending until pricing is available."
-        : "Price is ready before checkout and will be verified by the backend.";
-  const singlePricePending = hasPreparingFiles || hasPendingDesktopFiles || failedPreparation;
+    ? "Converting and counting your selected files."
+    : failedPreparation
+      ? failedPreparation.errorMessage || "Remove the failed file or upload it as PDF."
+      : !hasUsableCentrePricing
+        ? "Select a print centre with pricing before checkout."
+      : "Exact price verified based on uploaded files.";
+  const singlePricePending = hasPreparingFiles || failedPreparation;
   const displayMoney = (value) => (value === null || value === undefined || Number.isNaN(Number(value)) ? "Pending" : `₹${value}`);
   const displayCount = (value) => (value === null || value === undefined || value === "" || Number.isNaN(Number(value)) ? "Pending" : value);
 
@@ -752,7 +746,7 @@ export default function UploadPage({
   const regularConfigurationForm = (
     <div className="grid gap-2 sm:gap-4 grid-cols-1 min-[380px]:grid-cols-2 md:grid-cols-4">
       <label className="grid gap-2 text-sm font-semibold text-slate-600 col-span-1">
-        Estimated pages
+        Pages
         <input type="number" min="1" value={activeConfig?.pages ?? 1} onChange={(e) => setConfigVal("pages", e.target.value === "" ? "" : Number(e.target.value))} className="w-full min-w-0 rounded-2xl border px-2 sm:px-3 py-2 text-sm sm:text-base font-normal text-slate-900 outline-none focus:ring-2 focus:ring-slate-300" />
       </label>
       <label className="grid gap-1 sm:gap-2 text-sm font-semibold text-slate-600 col-span-1 min-w-0">

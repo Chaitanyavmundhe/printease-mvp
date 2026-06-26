@@ -35,12 +35,12 @@ import { getPrintReadyFile } from '../utils/printReadyPdf.js';
 import { recalculateOrderPricingByDocument } from '../services/orderConfigurationService.js';
 
 const JOB_STATUS_TO_ORDER_STATUS = {
-  [PRINT_JOB_STATUSES.ACCEPTED]: 'Sent to Agent',
-  [PRINT_JOB_STATUSES.DOWNLOADING]: 'Sent to Agent',
-  [PRINT_JOB_STATUSES.PRINTING]: 'Printing',
-  [PRINT_JOB_STATUSES.COMPLETED]: 'Ready for Pickup',
-  [PRINT_JOB_STATUSES.FAILED]: 'Printing Failed',
-  [PRINT_JOB_STATUSES.CANCELLED]: 'Cancelled'
+  [PRINT_JOB_STATUSES.ACCEPTED]: 'queued_for_print',
+  [PRINT_JOB_STATUSES.DOWNLOADING]: 'queued_for_print',
+  [PRINT_JOB_STATUSES.PRINTING]: 'printing',
+  [PRINT_JOB_STATUSES.COMPLETED]: 'completed',
+  [PRINT_JOB_STATUSES.FAILED]: 'failed',
+  [PRINT_JOB_STATUSES.CANCELLED]: 'cancelled'
 };
 
 function getPairingExpiry() {

@@ -53,22 +53,9 @@ function assertOrderCanStartPayment(order) {
     error.statusCode = 409;
     throw error;
   }
-  if (order.status !== 'bill_confirmed') {
-    const error = new Error('Please wait for the hub to confirm the bill before payment.');
-    error.statusCode = 403;
-    throw error;
-  }
 }
 
-async function assertOrderIsFullyPrepared(order) {
-  if (order.status === 'bill_confirmed') return;
-  const files = await listOrderFiles(order.id);
-  if (files.some(f => f.document?.requiresDesktopPreparation && f.document?.preparationStatus === 'pending')) {
-    const error = new Error('Documents are being prepared for accurate page counts. Please wait.');
-    error.statusCode = 400;
-    throw error;
-  }
-}
+// Removed assertOrderIsFullyPrepared
 
 function verifyRazorpayCheckoutSignature({ razorpayOrderId, razorpayPaymentId, razorpaySignature }) {
   const body = `${razorpayOrderId}|${razorpayPaymentId}`;
@@ -150,7 +137,6 @@ export const createManualPaymentRequest = asyncHandler(async (req, res) => {
   }
 
   assertOrderCanStartPayment(order);
-  await assertOrderIsFullyPrepared(order);
 
   const paymentStatus = normalizePaymentStatus(order);
   if (['verified', 'collected', 'paid'].includes(paymentStatus)) {
@@ -209,7 +195,6 @@ export const createRazorpayOrder = asyncHandler(async (req, res) => {
   }
 
   assertOrderCanStartPayment(order);
-  await assertOrderIsFullyPrepared(order);
 
   const paymentStatus = normalizePaymentStatus(order);
   if (['verified', 'collected', 'paid'].includes(paymentStatus)) {
@@ -412,7 +397,6 @@ export const createRazorpayUpiQr = asyncHandler(async (req, res) => {
   }
 
   assertOrderCanStartPayment(order);
-  await assertOrderIsFullyPrepared(order);
 
   const paymentStatus = normalizePaymentStatus(order);
   if (['verified', 'collected', 'paid'].includes(paymentStatus)) {
