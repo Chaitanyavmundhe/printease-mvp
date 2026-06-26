@@ -61,13 +61,13 @@ async function convertDocxToPdf(file) {
 
 async function createFallbackPdf(file) {
   const container = document.createElement('div');
-  container.innerHTML = \`
+  container.innerHTML = `
     <div style="padding: 40px; font-family: sans-serif; text-align: center;">
-      <h2>\${file.name}</h2>
-      <p>This file type (\${file.name.split('.').pop()}) cannot be perfectly rendered in the browser.</p>
+      <h2>${file.name}</h2>
+      <p>This file type (${file.name.split('.').pop()}) cannot be perfectly rendered in the browser.</p>
       <p>It will be uploaded as-is, but this is a placeholder PDF for page counting purposes.</p>
     </div>
-  \`;
+  `;
   container.style.width = '210mm';
   
   const opt = {
