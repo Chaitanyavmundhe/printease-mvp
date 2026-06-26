@@ -59,7 +59,7 @@ export async function processManualCollection({
       verifiedAt: now
     }, client);
 
-    const collectedOrder = await updateOrderPayment(order.id, 'collected', 'Payment Collected', client);
+    const collectedOrder = await updateOrderPayment(order.id, 'collected', 'payment_collected', client);
     const autoQueue = autoPrintAfterCollection
       ? await queuePrintJobIfPaymentReady(collectedOrder.id, hubId, client)
       : { queued: false, message: 'Payment collected. Auto-print is off; press Send to print manually.' };

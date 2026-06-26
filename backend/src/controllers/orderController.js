@@ -140,28 +140,59 @@ export const createOrder = asyncHandler(async (req, res) => {
   try {
     for (const file of resolvedFiles) {
       const isPending = file.document?.preparationStatus === 'pending';
-      const trustedPageCount = isPending 
-        ? 1 
-        : (file.document?.preparedPageCount ?? file.document?.pageCount ?? Number(file.pages ?? pages));
+      const submittedPrintOptions = buildSubmittedPrintOptions(file, {
+        selectedPages,
+        copies,
+        colorType,
+        sideType,
+        paperSize,
+        pagesPerSheet,
+        orientation,
+        printDpi,
+        scaleMode,
+        marginMode,
+        watermarkEnabled
+      });
+
+      if (isPending) {
+        pricedFiles.push({
+          ...file,
+          pendingDesktopPreparation: true,
+          price: {
+            originalPageCount: null,
+            selectedPages: submittedPrintOptions.pages?.mode === 'custom' ? submittedPrintOptions.pages.range : 'all',
+            selectedPageCount: 0,
+            printablePageCount: 0,
+            sheetCount: 0,
+            copies: Number(submittedPrintOptions.copies || file.copies || copies || 1),
+            colorMode: toLegacyColorType(submittedPrintOptions.colorMode),
+            sides: toLegacySideType(submittedPrintOptions.sides),
+            pricePerPage: 0,
+            totalAmount: 0,
+            totalAmountPaise: 0,
+            pricingPending: true,
+            reasonCode: 'DESKTOP_PREPARATION_PENDING'
+          },
+          normalizedPrintOptions: {
+            ...submittedPrintOptions,
+            pricing: {
+              pending: true,
+              reasonCode: 'DESKTOP_PREPARATION_PENDING',
+              message: 'Hub desktop must convert and count this document before payment.'
+            }
+          }
+        });
+        continue;
+      }
+
+      const trustedPageCount = file.document?.preparedPageCount ?? file.document?.pageCount ?? Number(file.pages ?? pages);
 
       if (!isPending && (!Number.isFinite(trustedPageCount) || trustedPageCount <= 0)) {
         throw new Error('Each file must have a valid PDF page count');
       }
 
       const normalizedOptions = normalizePrintOptions(
-        buildSubmittedPrintOptions(file, {
-          selectedPages,
-          copies,
-          colorType,
-          sideType,
-          paperSize,
-          pagesPerSheet,
-          orientation,
-          printDpi,
-          scaleMode,
-          marginMode,
-          watermarkEnabled
-        }),
+        submittedPrintOptions,
         trustedPageCount
       );
       const fileColorType = toLegacyColorType(normalizedOptions.colorMode);
@@ -202,6 +233,7 @@ export const createOrder = asyncHandler(async (req, res) => {
   const orderCode = generateOrderCode(centre.centreCode);
   const totalAmount = pricedFiles.reduce((sum, file) => sum + file.price.totalAmount, 0);
   const totalAmountPaise = pricedFiles.reduce((sum, file) => sum + file.price.totalAmountPaise, 0);
+  const hasPendingDesktopPreparation = pricedFiles.some((file) => file.pendingDesktopPreparation);
   const firstFile = pricedFiles[0];
   const totalSelectedPages = pricedFiles.reduce((sum, file) => sum + file.price.selectedPageCount, 0);
   const totalPrintablePages = pricedFiles.reduce((sum, file) => sum + file.price.printablePageCount, 0);
@@ -218,6 +250,27 @@ export const createOrder = asyncHandler(async (req, res) => {
           printOptions: file.normalizedPrintOptions
         }))
       };
+  const billHash = hasPendingDesktopPreparation
+    ? null
+    : crypto
+        .createHash('sha256')
+        .update(JSON.stringify({
+          orderCode,
+          totalAmountPaise,
+          files: pricedFiles.map((file) => ({
+            documentId: file.document?.id || null,
+            printSequence: file.index + 1,
+            printOptions: file.normalizedPrintOptions,
+            lineAmountPaise: file.price.totalAmountPaise
+          }))
+        }))
+        .digest('hex');
+  const initialOrderStatus = hasPendingDesktopPreparation
+    ? 'awaiting_hub_bill_confirmation'
+    : 'bill_confirmed';
+  const initialBillStatus = hasPendingDesktopPreparation
+    ? 'awaiting_hub_confirmation'
+    : 'confirmed';
 
   const createdAt = new Date().toISOString();
   const isLimitedLoginlessOrder = !req.user?.id;
@@ -266,7 +319,10 @@ export const createOrder = asyncHandler(async (req, res) => {
       amount: totalAmount,
       totalAmountPaise,
       paymentStatus: 'not_requested',
-      status: 'awaiting_hub_bill_confirmation',
+      status: initialOrderStatus,
+      billStatus: initialBillStatus,
+      hubConfirmedTotalPaise: hasPendingDesktopPreparation ? null : totalAmountPaise,
+      billHash,
       pickupCode: generateShortCode(4),
       createdAt
     }, client);
@@ -527,4 +583,3 @@ export const acceptMismatch = asyncHandler(async (req, res) => {
     order: result
   });
 });
-

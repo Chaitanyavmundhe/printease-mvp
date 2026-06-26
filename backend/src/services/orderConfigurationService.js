@@ -391,17 +391,24 @@ export async function recalculateOrderPricingByDocument(documentId) {
         const crypto = await import('crypto');
         const billHash = crypto.createHash('sha256').update(hashInput).digest('hex');
 
+        const canAutoConfirmPreparedBill =
+          totalAmountPaise === order.totalAmountPaise ||
+          (
+            Number(order.totalAmountPaise || 0) <= 0 &&
+            existingFiles.some((file) => file.document?.requiresDesktopPreparation)
+          );
+
         const confirmResult = await executor(client).query(
           `UPDATE print_orders 
            SET status = $1, 
                bill_status = $2,
                hub_confirmed_total_paise = $3, 
                bill_hash = $4
-           WHERE id = $5
+          WHERE id = $5
            RETURNING *`,
           [
-            totalAmountPaise === order.totalAmountPaise ? 'bill_confirmed' : order.status,
-            totalAmountPaise === order.totalAmountPaise ? 'confirmed' : 'mismatch',
+            canAutoConfirmPreparedBill ? 'bill_confirmed' : order.status,
+            canAutoConfirmPreparedBill ? 'confirmed' : 'mismatch',
             totalAmountPaise, 
             billHash, 
             order.id

@@ -65,6 +65,7 @@ export default function UploadPage({
 
   const [localPreview, setLocalPreview] = useState(null);
   const [filePreparationState, setFilePreparationState] = useState({});
+  const [uploadNotice, setUploadNotice] = useState("");
 
   function releasePreparationState(state = filePreparationState) {
     Object.values(state || {}).forEach(revokePreparationPreview);
@@ -329,6 +330,10 @@ export default function UploadPage({
     if (setReprintDocumentExpired) setReprintDocumentExpired(false);
     const files = Array.from(event.target.files || []);
     const firstFile = files[0] || null;
+    const hasOfficeFile = files.some((file) => detectUploadFileKind(file) === "office");
+    setUploadNotice(hasOfficeFile
+      ? "DOCX, PPTX and XLSX can take longer or fail in the web browser. For faster and more accurate results, export as PDF first or use the Android app when available."
+      : "");
     setDocumentFiles(files);
     setDocumentFile(firstFile);
     if (!firstFile) {
@@ -355,6 +360,10 @@ export default function UploadPage({
     const handlePaste = (e) => {
       const files = Array.from(e.clipboardData?.files || []).filter(isAllowedUploadFile);
       if (files.length > 0) {
+        const hasOfficeFile = files.some((file) => detectUploadFileKind(file) === "office");
+        setUploadNotice(hasOfficeFile
+          ? "DOCX, PPTX and XLSX can take longer or fail in the web browser. For faster and more accurate results, export as PDF first or use the Android app when available."
+          : "");
         setBackendPrice?.(null);
         if (setReprintSourceDocuments) setReprintSourceDocuments([]);
         if (setReprintDocumentExpired) setReprintDocumentExpired(false);
@@ -610,13 +619,24 @@ export default function UploadPage({
   const hasPreparingFiles = preparationItems.some((item) => item?.status === PREPARATION_STATUS.PREPARING);
   const hasPendingDesktopFiles = preparationItems.some((item) => item?.status === PREPARATION_STATUS.PENDING_DESKTOP);
   const failedPreparation = preparationItems.find((item) => item?.status === PREPARATION_STATUS.FAILED);
-  const priceReady = selectedFileCount > 0 && !hasPreparingFiles && !hasPendingDesktopFiles && !failedPreparation;
+  const readyPreparationCount = preparationItems.filter((item) => item?.status === PREPARATION_STATUS.READY).length;
+  const activePreparationCount = preparationItems.filter((item) =>
+    item?.status === PREPARATION_STATUS.PREPARING || item?.status === PREPARATION_STATUS.PENDING_DESKTOP
+  ).length;
+  const preparationProgress = selectedFileCount
+    ? Math.round((readyPreparationCount / selectedFileCount) * 100)
+    : 0;
+  const hasUsableCentrePricing = Boolean(selectedCentre) && Number(pricePerPage || 0) > 0;
+  const priceReady = selectedFileCount > 0 && hasUsableCentrePricing && !hasPreparingFiles && !hasPendingDesktopFiles && !failedPreparation;
+  const canContinueForPayment = selectedFileCount > 0 && hasUsableCentrePricing && !hasPreparingFiles && !failedPreparation;
   const priceSummaryLabel = hasPreparingFiles
     ? "Calculating price..."
     : hasPendingDesktopFiles
       ? "Waiting for desktop preparation"
       : failedPreparation
         ? "Price unavailable"
+        : !hasUsableCentrePricing
+          ? "Select centre for price"
         : backendPrice
           ? "Total"
           : "Est. Total";
@@ -626,6 +646,8 @@ export default function UploadPage({
       ? "Office files need hub desktop conversion before exact pricing. Upload as PDF for immediate pricing."
       : failedPreparation
         ? failedPreparation.errorMessage || "Remove the failed file or upload it as PDF."
+        : !hasUsableCentrePricing
+          ? "Select a print centre with pricing before checkout. The final bill will stay pending until pricing is available."
         : "Price is ready before checkout and will be verified by the backend.";
 
   const multiEstimatedFiles = useMemo(() => {
@@ -891,6 +913,13 @@ export default function UploadPage({
             <p className="text-xs sm:text-sm text-slate-500 mt-1 px-2 leading-tight">{selectedFileCount ? (selectedFileSize ? `${Math.ceil(selectedFileSize / 1024)} KB selected` : "Documents selected from history") : "Select multiple supported files"}</p>
           </label>
 
+          {uploadNotice && (
+            <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              <p className="font-semibold">Office document preparation may take longer on web.</p>
+              <p className="mt-1">{uploadNotice}</p>
+            </div>
+          )}
+
           {!isMulti && (
             <div className="mb-4">
               <label className="grid gap-2 text-sm font-semibold text-slate-600 col-span-2 md:col-span-2">
@@ -1043,6 +1072,22 @@ export default function UploadPage({
                 : "border-amber-100 bg-amber-50 text-amber-800"
           }`}>
             {priceSummaryHelp}
+            {(hasPreparingFiles || hasPendingDesktopFiles || activePreparationCount > 0) && (
+              <div className="mt-2">
+                <div className="mb-1 flex items-center justify-between text-[11px] font-bold">
+                  <span>{hasPendingDesktopFiles ? "Waiting for hub desktop preparation" : "Preparing files"}</span>
+                  <span>{readyPreparationCount}/{selectedFileCount || preparationItems.length} ready</span>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full bg-white/70">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      hasPendingDesktopFiles ? "bg-amber-500" : "bg-emerald-500"
+                    }`}
+                    style={{ width: `${Math.max(8, preparationProgress)}%` }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
           <details className="group mb-2 md:hidden">
@@ -1102,7 +1147,7 @@ export default function UploadPage({
                      </div>
                    </div>
                  ))}
-                 <p className="text-xs text-slate-500">Estimate updates here from each file's settings. Continue unlocks only when page counts are known.</p>
+                 <p className="text-xs text-slate-500">Office files can continue for hub desktop preparation; payment unlocks after the converted page count confirms the bill.</p>
                </div>
             ) : (
                <>
@@ -1166,8 +1211,8 @@ export default function UploadPage({
               </button>
             )}
 
-            <button onClick={handlePaymentClick} disabled={!selectedFileCount || paymentLoading || !priceReady} className="flex-1 rounded-2xl bg-slate-900 px-2 py-3 text-sm font-semibold text-white disabled:opacity-40 md:mt-3 md:w-full md:px-4 md:text-base">
-              {paymentLoading ? "Calculating..." : !priceReady ? "Calculating price..." : (!selectedCentre ? "Select & Continue" : "Continue to Payment")}
+            <button onClick={handlePaymentClick} disabled={!canContinueForPayment || paymentLoading} className="flex-1 rounded-2xl bg-slate-900 px-2 py-3 text-sm font-semibold text-white disabled:opacity-40 md:mt-3 md:w-full md:px-4 md:text-base">
+              {paymentLoading ? "Calculating..." : hasPendingDesktopFiles ? "Send for bill preparation" : !priceReady ? "Calculating price..." : (!selectedCentre ? "Select & Continue" : "Continue to Payment")}
             </button>
           </div>
         </Card>
