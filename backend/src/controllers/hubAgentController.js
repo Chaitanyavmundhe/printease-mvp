@@ -27,6 +27,7 @@ import { hashAgentSecret } from '../utils/agentCrypto.js';
 import { buildHubAgentAnalytics, decorateAgent, decoratePrinter } from '../utils/hubAgentAnalytics.js';
 import { generateId } from '../utils/generateCode.js';
 import { PRINT_JOB_STATUSES, PAIRING_STATUSES } from '../constants/statuses.js';
+import { createPrintJobFilesForOrder } from '../services/printQueue/printJobFilesService.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 
 function getHubId(req) {
@@ -333,8 +334,15 @@ export const sendOrderToAgent = asyncHandler(async (req, res) => {
       copies: order.copies,
       paperSize: 'A4',
       colorMode: order.color_type || 'bw',
+      printOptions: firstFile?.printOptions || order.print_options || {},
       sourceBackendUrl: OFFICIAL_BACKEND_URL
     }, client);
+
+    await createPrintJobFilesForOrder({
+      printJobId: job.id,
+      orderFiles,
+      client
+    });
 
     await insertPrintJobEvent({
       printJobId: job.id,

@@ -79,7 +79,7 @@ function isPaymentPending(order) {
 }
 
 const CLOSED_STATUSES = new Set(["collected", "refund_requested", "printing_failed", "cancelled"]);
-const AGENT_LOCKED_STATUSES = new Set(["sent_to_agent", "queued_for_printing", "printing", "paused", "ready_for_pickup", "collected", "printing_failed", "cancelled"]);
+const AGENT_LOCKED_STATUSES = new Set(["sent_to_agent", "queued_for_print", "queued_for_printing", "printing", "paused", "ready_for_pickup", "collected", "printing_failed", "cancelled", "completed", "failed"]);
 const ROUTEABLE_PRINTER_STATUSES = new Set(["idle", "available", "enabled", "accepting"]);
 const BLOCKED_PRINTER_STATUSES = new Set(["paused", "disabled", "stopped", "offline", "unable", "disconnected", "not_accepting"]);
 
