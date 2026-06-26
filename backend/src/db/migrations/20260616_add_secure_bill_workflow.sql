@@ -6,21 +6,34 @@ ALTER TABLE print_orders ADD COLUMN IF NOT EXISTS bill_hash text;
 ALTER TABLE print_orders DROP CONSTRAINT IF EXISTS print_orders_payment_status_check;
 ALTER TABLE print_orders DROP CONSTRAINT IF EXISTS print_orders_status_check;
 
--- Map old payment_status to new ones
+-- Map old + already-new payment_status to new ones
 UPDATE print_orders
 SET payment_status = CASE
+  WHEN payment_status IN ('not_requested', 'requested', 'collected', 'verified', 'failed') THEN payment_status
   WHEN payment_status IN ('draft') THEN 'not_requested'
   WHEN payment_status IN ('pending') THEN 'requested'
-  WHEN payment_status IN ('verified', 'paid') THEN 'verified'
-  WHEN payment_status IN ('collected') THEN 'collected'
-  WHEN payment_status IN ('failed', 'expired', 'cancelled') THEN 'failed'
+  WHEN payment_status IN ('paid') THEN 'verified'
+  WHEN payment_status IN ('expired', 'cancelled') THEN 'failed'
   ELSE 'not_requested'
 END;
 
--- Map old status to new ones
+-- Map old + already-new status to new ones
 UPDATE print_orders
 SET status = CASE
-  WHEN status IN ('Draft', 'Payment Pending') THEN 'awaiting_hub_bill_confirmation'
+  WHEN status IN (
+    'draft_uploaded',
+    'awaiting_hub_bill_confirmation',
+    'bill_confirmed',
+    'payment_requested',
+    'payment_collected',
+    'queued_for_print',
+    'printing',
+    'completed',
+    'failed',
+    'cancelled'
+  ) THEN status
+  WHEN status IN ('Draft') THEN 'awaiting_hub_bill_confirmation'
+  WHEN status IN ('Payment Pending') THEN 'payment_requested'
   WHEN status IN ('Payment Verified', 'Payment Collected') THEN 'payment_collected'
   WHEN status IN ('Accepted by Centre', 'Queued for Printing', 'Paused') THEN 'queued_for_print'
   WHEN status IN ('Sent to Agent', 'Printing') THEN 'printing'
