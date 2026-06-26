@@ -377,39 +377,6 @@ export async function recalculateOrderPricingByDocument(documentId) {
 
       let finalOrder = updatedOrder;
 
-      // Auto-confirm bill if awaiting
-      if (order.status === 'awaiting_hub_bill_confirmation' || order.status === 'draft_uploaded') {
-        const hashInput = JSON.stringify({
-          orderId: order.id,
-          totalAmountPaise,
-          fileConfigs: pricedFiles.map(f => ({
-            id: f.updatedFile.id,
-            printOptions: f.normalizedPrintOptions,
-            lineAmountPaise: f.updatedFile.lineAmountPaise
-          }))
-        });
-        const crypto = await import('crypto');
-        const billHash = crypto.createHash('sha256').update(hashInput).digest('hex');
-
-        const canAutoConfirmPreparedBill =
-          totalAmountPaise === order.totalAmountPaise ||
-          (
-            Number(order.totalAmountPaise || 0) <= 0 &&
-            existingFiles.some((file) => file.document?.requiresDesktopPreparation)
-          );
-
-        const confirmResult = await executor(client).query(
-          `UPDATE print_orders 
-           SET status = $1
-          WHERE id = $2
-           RETURNING *`,
-          [
-            order.status,
-            order.id
-          ]
-        );
-        finalOrder = confirmResult.rows[0];
-      }
 
       results.push(finalOrder);
     }

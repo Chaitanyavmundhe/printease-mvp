@@ -267,12 +267,7 @@ export const createOrder = asyncHandler(async (req, res) => {
           }))
         }))
         .digest('hex');
-  const initialOrderStatus = hasPendingDesktopPreparation
-    ? 'awaiting_hub_bill_confirmation'
-    : 'bill_confirmed';
-  const initialBillStatus = hasPendingDesktopPreparation
-    ? 'awaiting_hub_confirmation'
-    : 'confirmed';
+  const initialOrderStatus = 'draft_uploaded';
 
   const createdAt = new Date().toISOString();
   const isLimitedLoginlessOrder = !req.user?.id;
@@ -322,9 +317,6 @@ export const createOrder = asyncHandler(async (req, res) => {
       totalAmountPaise,
       paymentStatus: 'not_requested',
       status: initialOrderStatus,
-      billStatus: initialBillStatus,
-      hubConfirmedTotalPaise: hasPendingDesktopPreparation ? null : totalAmountPaise,
-      billHash,
       pickupCode: generateShortCode(4),
       createdAt
     }, client);
