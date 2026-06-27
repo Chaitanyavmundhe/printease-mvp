@@ -1,4 +1,4 @@
-import { Suspense } from "react";
+import React, { Suspense } from "react";
 import { Route, Routes, Navigate } from "react-router-dom";
 import Navbar from "./components/Navbar";
 import BackendStatus from "./components/BackendStatus";
@@ -17,7 +17,7 @@ import PaymentPage from "./pages/PaymentPage";
 import TrackPage from "./pages/TrackPage";
 import HistoryPage from "./pages/HistoryPage";
 import PlatformStatsPage from "./pages/PlatformStatsPage";
-import { ROUTES } from "./utils/appHelpers.jsx";
+import { ROUTES, RouteErrorBoundary, RouteNotice } from "./utils/appHelpers.jsx";
 
 const HubHistoryPage = React.lazy(() => import("./pages/HubHistoryPage"));
 
@@ -42,7 +42,10 @@ export default function AppRouter(props) {
     demoPaymentEnabled, order, updateOrderStatus,
     hubOrders, currentHub, updateCentrePrice, updateCentrePayment, updateCentreAfterOrderSettings, updateProfile,
     startDirectUpload, orders, centres, startRazorpayForExistingOrder, createUpiQrForExistingOrder, openPaymentRequest,
-    reprintWithSettings, reprintWithSameSettings
+    reprintWithSettings, reprintWithSameSettings,
+    prioritizedCentres, selectCentreAndUpload, selectCentreByCode, loadOrdersForSession, applySavedOrderUpdate,
+    generateStrongPassword, approvalReturnPath, documentFile, setDocumentFile, setReprintDocumentExpired,
+    pricePerPage, estimatedSelectedPageCount, totalAmount, backendPrice, setBackendPrice, lastOrdersUpdatedAt
   } = props;
 
 return (
