@@ -40,7 +40,8 @@ function displayStatus(status) {
   const normalized = normalizeStatus(status);
   const labels = {
     draft_uploaded: "Draft Uploaded",
-    awaiting_hub_bill_confirmation: "Hub Bill Pending",
+    awaiting_hub_bill_confirmation: "Converting Document",
+    bill_confirmed: "Conversion Done",
     payment_requested: "Payment Requested",
     payment_collected: "Payment Collected",
     payment_pending: "Payment Pending",

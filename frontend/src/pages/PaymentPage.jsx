@@ -98,7 +98,7 @@ export default function PaymentPage({
 
   const buttonLabel =
     isPricingPending
-      ? "Waiting for hub bill"
+      ? "Converting Document..."
       : paymentMethod === "razorpay"
       ? `Pay ${formatCurrency(amount)}`
       : paymentMethod === "upi_qr"

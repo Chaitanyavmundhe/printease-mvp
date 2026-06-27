@@ -3,8 +3,8 @@ import Card from "../components/Card";
 import Row from "../components/Row";
 
 const orderStatuses = [
-  "Awaiting Hub Bill Confirmation",
-  "Bill Confirmed",
+  "Converting Document",
+  "Conversion Done",
   "Payment Requested",
   "Payment Collected",
   "Queued for Printing",
@@ -14,6 +14,8 @@ const orderStatuses = [
 
 const statusMap = {
   draft_uploaded: "Draft Uploaded",
+  awaiting_hub_bill_confirmation: "Converting Document",
+  bill_confirmed: "Conversion Done",
   payment_requested: "Payment Requested",
   payment_collected: "Payment Collected",
   queued_for_print: "Queued for Printing",
@@ -32,7 +34,7 @@ function normalizeStatus(status) {
 
 function isPaymentPending(order) {
   const value = String(order?.status || "").toLowerCase();
-  return ["payment_requested"].includes(value);
+  return ["payment_requested", "bill_confirmed"].includes(value);
 }
 
 
