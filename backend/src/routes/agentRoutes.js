@@ -17,6 +17,7 @@ import {
   syncPrinters,
   reportPreparationResult
 } from '../controllers/agentController.js';
+import { getNextConversionJob } from '../controllers/agentConversionController.js';
 import { agentAuthMiddleware } from '../middleware/agentAuthMiddleware.js';
 import { agentPairingRateLimit } from '../middleware/rateLimitMiddleware.js';
 import { upload } from '../middleware/uploadMiddleware.js';
@@ -41,5 +42,6 @@ router.post('/jobs/:jobId/failed', agentAuthMiddleware, markFailed);
 router.post('/jobs/:jobId/cancelled', agentAuthMiddleware, markCancelled);
 
 router.post('/preparation-result', agentAuthMiddleware, upload.single('printReadyFile'), reportPreparationResult);
+router.get('/conversion-jobs/next', agentAuthMiddleware, getNextConversionJob);
 
 export default router;

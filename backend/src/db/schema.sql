@@ -145,9 +145,12 @@ create table if not exists documents (
   file_sha256 text,
   storage_path text,
   page_count integer,
+  hub_id text references print_hubs(id) on delete set null,
   created_at timestamptz not null default now()
 );
 
+alter table documents add column if not exists hub_id text references print_hubs(id) on delete set null;
+create index if not exists idx_documents_hub_id on documents(hub_id);
 alter table documents add column if not exists file_sha256 text;
 alter table documents add column if not exists storage_path text;
 alter table documents add column if not exists page_count integer;

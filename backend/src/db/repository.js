@@ -106,6 +106,7 @@ export function mapDocument(row) {
     preparationErrorMessage: row.preparation_error_message,
     preparedAt: row.prepared_at,
     pageCount: row.page_count === null || row.page_count === undefined ? null : Number(row.page_count),
+    hubId: row.hub_id || null,
     createdAt: timestamp(row.created_at)
   };
 }
@@ -217,6 +218,20 @@ export function mapOrderFile(row) {
       : null,
     createdAt: timestamp(row.created_at)
   };
+}
+
+export async function getNextConversionJobForAgent(hubId, client) {
+  const result = await executor(client).query(
+    `select d.*
+     from documents d
+     where d.hub_id = $1
+       and d.requires_desktop_preparation = true
+       and d.preparation_status = 'pending'
+     order by d.created_at asc
+     limit 1`,
+    [hubId]
+  );
+  return mapDocument(result.rows[0]);
 }
 
 export function mapPayment(row) {
@@ -632,8 +647,18 @@ export async function updateHubLocation(centreId, fields) {
     ]
   );
 
-  if (!result.rows[0]) return null;
   return findCentreById(result.rows[0].id);
+}
+
+export async function updateDocumentHub(documentId, hubId, client) {
+  const result = await executor(client).query(
+    `update documents
+     set hub_id = $2
+     where id = $1
+     returning *`,
+    [documentId, hubId]
+  );
+  return mapDocument(result.rows[0]);
 }
 
 export async function createDocument(document) {
@@ -663,9 +688,10 @@ export async function createDocument(document) {
        preparation_status,
        preparation_error_code,
        preparation_error_message,
-       prepared_at
+       prepared_at,
+       hub_id
      )
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, coalesce($20, now()), $21, $22, $23, $24, $25)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, coalesce($20, now()), $21, $22, $23, $24, $25, $26)
      returning *`,
     [
       document.id,
@@ -692,7 +718,8 @@ export async function createDocument(document) {
       document.preparationStatus || 'prepared',
       document.preparationErrorCode || null,
       document.preparationErrorMessage || null,
-      document.preparedAt || null
+      document.preparedAt || null,
+      document.hubId || null
     ]
   );
 

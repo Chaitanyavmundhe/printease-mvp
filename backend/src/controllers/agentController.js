@@ -522,26 +522,8 @@ export const reportPreparationResult = asyncHandler(async (req, res) => {
     return res.status(404).json({ success: false, message: 'Document not found' });
   }
 
-  try {
-    if (preparationStatus === 'prepared') {
-      await recalculateOrderPricingByDocument(documentId);
-    } else if (preparationStatus === 'failed') {
-      const { findOrderIdsByDocumentId, query } = await import('../db/repository.js');
-      const orderIds = await findOrderIdsByDocumentId(documentId);
-      const failMessage = errorMessage || 'Document conversion failed. Please save as PDF and try again.';
-      for (const orderId of orderIds) {
-        await query(
-          `update print_orders 
-           set status = 'cancelled', 
-               price_snapshot = jsonb_set(coalesce(price_snapshot, '{}'::jsonb), '{message}', $1::jsonb)
-           where id = $2 and hub_id = $3`,
-          [JSON.stringify(failMessage), orderId, req.agent.hubId]
-        );
-      }
-    }
-  } catch (err) {
-    console.error(`[AgentController] Error handling preparation status for document ${documentId}:`, err);
-  }
+  // We no longer update order prices or cancel orders here because
+  // document conversion happens independently of order creation.
 
   res.json({ success: true, document: result });
 });

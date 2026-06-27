@@ -332,6 +332,15 @@ export default function UploadPage({
     if (setReprintSourceDocuments) setReprintSourceDocuments([]);
     if (setReprintDocumentExpired) setReprintDocumentExpired(false);
     const files = Array.from(event.target.files || []);
+    
+    // Check for large office files (>100MB)
+    const largeOfficeFiles = files.filter(f => detectUploadFileKind(f) === "office" && f.size > 100 * 1024 * 1024);
+    if (largeOfficeFiles.length > 0) {
+      alert("One or more Office documents exceed 100MB. Please convert them to PDF yourself and upload the PDF.");
+      event.target.value = "";
+      return;
+    }
+
     const firstFile = files[0] || null;
     const hasOfficeFile = files.some((file) => detectUploadFileKind(file) === "office");
     setUploadNotice(hasOfficeFile
@@ -364,6 +373,13 @@ export default function UploadPage({
       const files = Array.from(e.clipboardData?.files || []).filter(isAllowedUploadFile);
       if (files.length > 0) {
         const hasOfficeFile = files.some((file) => detectUploadFileKind(file) === "office");
+        const largeOfficeFiles = files.filter(f => detectUploadFileKind(f) === "office" && f.size > 100 * 1024 * 1024);
+        
+        if (largeOfficeFiles.length > 0) {
+          alert("One or more pasted Office documents exceed 100MB. Please convert them to PDF yourself and upload the PDF.");
+          return;
+        }
+
         setUploadNotice(hasOfficeFile
           ? "DOCX, PPTX and XLSX files will be converted to PDF by the print hub's desktop agent after you continue. This usually takes 10–30 seconds. You'll see the exact page count and price once conversion completes."
           : "");

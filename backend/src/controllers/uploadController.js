@@ -203,6 +203,7 @@ export const uploadDocument = asyncHandler(async (req, res) => {
     preparedAt: null,
     guestTokenHash,
     expiresAt,
+    hubId: req.body.hubId || null,
     createdAt: new Date().toISOString()
   });
 
@@ -211,5 +212,29 @@ export const uploadDocument = asyncHandler(async (req, res) => {
     message: 'Document uploaded securely',
     document,
     guestToken
+  });
+});
+
+export const assignHub = asyncHandler(async (req, res) => {
+  const { documentId } = req.params;
+  const { hubId } = req.body;
+
+  if (!hubId) {
+    return res.status(400).json({ success: false, message: 'hubId is required' });
+  }
+
+  // Optionally verify that document exists and user owns it or has guest access
+  // For now, we'll just assign it (similar to how documents are created)
+  const { updateDocumentHub } = await import('../db/repository.js');
+  const document = await updateDocumentHub(documentId, hubId);
+
+  if (!document) {
+    return res.status(404).json({ success: false, message: 'Document not found' });
+  }
+
+  res.json({
+    success: true,
+    message: 'Hub assigned successfully',
+    document
   });
 });

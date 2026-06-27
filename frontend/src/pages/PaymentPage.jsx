@@ -88,6 +88,9 @@ export default function PaymentPage({
   const isMultiFileOrder = Array.isArray(backendPrice?.files) && backendPrice.files.length > 1;
   const isCancelled = normalizeStatus(order?.rawStatus || order?.status) === "cancelled";
   const cancellationReason = order?.priceSnapshot?.message || order?.price_snapshot?.message || null;
+  const failedDocument = order?.documents?.find(d => d.preparation_status === 'failed');
+  const conversionFailed = Boolean(failedDocument);
+  const conversionFailedMessage = failedDocument?.preparation_error_message || "Document conversion failed. Please save as PDF and try again or do it from mobile app.";
   const displayValue = (value) => (isPricingPending ? "Pending" : (value || value === 0 ? value : "Pending"));
   const displayMoney = (value) => (isPricingPending ? "Pending" : formatCurrency(value));
 
@@ -230,7 +233,14 @@ export default function PaymentPage({
         </div>
 
         {/* Validation: zero amount */}
-        {isPricingPending && !paymentLoading && (
+        {conversionFailed && (
+          <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-900">
+            <p className="font-bold">Conversion Failed</p>
+            <p className="mt-1">{conversionFailedMessage}</p>
+          </div>
+        )}
+
+        {isPricingPending && !conversionFailed && !paymentLoading && (
           <p className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-700">
             Hub conversion is pending. The desktop agent must convert and verify the file before the final bill/payment request can be created.
           </p>
@@ -256,7 +266,7 @@ export default function PaymentPage({
       {/* Floating Action Bar */}
       <div className="fixed bottom-[calc(84px+env(safe-area-inset-bottom))] left-2 right-2 sm:left-4 sm:right-4 z-40 rounded-2xl border bg-white/90 p-2 shadow-2xl backdrop-blur md:static md:bottom-auto md:z-auto md:mt-6 md:block md:border-0 md:bg-transparent md:p-0 md:shadow-none md:backdrop-blur-none">
         <button
-          disabled={isDisabled}
+          disabled={isDisabled || conversionFailed}
           onClick={handlePaymentClick}
           className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-3 sm:px-4 py-3 text-sm sm:text-base font-semibold whitespace-normal leading-tight text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400 disabled:opacity-70 md:rounded-2xl"
         >

@@ -1437,6 +1437,10 @@ export default function App() {
                formData.append("printReadyFileType", "application/pdf");
              }
           }
+          
+          if (selectedCentre) {
+            formData.append("hubId", selectedCentre.id || selectedCentre.code);
+          }
 
           const uploadData = await apiRequest("/api/uploads", {
             method: "POST",

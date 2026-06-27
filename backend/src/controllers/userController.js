@@ -75,7 +75,9 @@ function buildDocuments(order, files) {
     charged_pages: file.sheetCount,
     amount_paise: file.amountPaise,
     print_sequence: file.printSequence,
-    print_options: file.printOptions || {}
+    print_options: file.printOptions || {},
+    preparation_status: file.document?.preparationStatus,
+    preparation_error_message: file.document?.preparationErrorMessage
   }));
 }
 
