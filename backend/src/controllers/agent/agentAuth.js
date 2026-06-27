@@ -621,7 +621,7 @@ const reportVerificationResult = asyncHandler(async (req, res) => {
   // 2. Automate Bill Confirmation if prepared
   if (preparationStatus === 'prepared') {
     // We import confirmOrderBill to run the backend verification logic
-    const { confirmOrderBill } = await import('../services/orderConfigurationService.js');
+    const { confirmOrderBill } = await import('../../services/orderConfigurationService.js');
     try {
       // confirmOrderBill will automatically recalculate and set the bill_status = confirmed / mismatch
       // and allow payment requests.
@@ -632,7 +632,7 @@ const reportVerificationResult = asyncHandler(async (req, res) => {
       return res.status(400).json({ success: false, message: err.message || 'Failed to confirm bill' });
     }
   } else if (preparationStatus === 'failed') {
-    const { query } = await import('../db/repository.js');
+    const { query } = await import('../../db/repository.js');
     const failMessage = errorMessage || 'Document conversion failed. Please save as PDF and try again.';
     try {
       await query(
