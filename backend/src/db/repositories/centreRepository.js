@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import { query, executor, timestamp, number, isUuid, centreSelect } from './common.js';
+import { mapCentre } from './mappers.js';
 
 export async function listCentres() {
   const result = await query(`${centreSelect} order by c.created_at desc`);

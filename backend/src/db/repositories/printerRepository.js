@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import { query, executor, timestamp, number, isUuid, centreSelect } from './common.js';
+import { mapPrinter, mapAgentPrinter, mapAgent } from './mappers.js';
 
 export async function createPrinter(printer) {
   const result = await query(

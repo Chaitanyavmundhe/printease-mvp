@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import { query, executor, timestamp, number, isUuid, centreSelect } from './common.js';
+import { mapUser } from './mappers.js';
 
 export async function findUserById(id, client) {
   const result = await executor(client).query(

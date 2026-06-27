@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import { query, executor, timestamp, number, isUuid, centreSelect } from './common.js';
+import { mapPrintJob } from './mappers.js';
 
 export async function createPrintJob(job, client) {
   const result = await executor(client).query(

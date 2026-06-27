@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import { query, executor, timestamp, number, isUuid, centreSelect } from './common.js';
+import { mapDocument, mapPairingSession, mapAgent } from './mappers.js';
 
 export async function getNextConversionJobForAgent(hubId, client) {
   const result = await executor(client).query(

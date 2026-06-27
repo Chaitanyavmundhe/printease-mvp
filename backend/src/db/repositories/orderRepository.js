@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 import { query, executor, timestamp, number, isUuid, centreSelect } from './common.js';
+import { mapOrder, mapOrderFile, mapPayment, mapPrintJob } from './mappers.js';
 
 export async function createOrder(order, client) {
   const result = await executor(client).query(
