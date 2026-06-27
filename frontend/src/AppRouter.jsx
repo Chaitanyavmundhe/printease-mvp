@@ -2,22 +2,23 @@ import React, { Suspense } from "react";
 import { Route, Routes, Navigate } from "react-router-dom";
 import Navbar from "./components/Navbar";
 import BackendStatus from "./components/BackendStatus";
-import HomePage from "./pages/HomePage";
-import AuthPage from "./pages/AuthPage";
-import UserDashboard from "./pages/UserDashboard";
-import HubDashboard from "./pages/HubDashboard";
-import ProfilePage from "./pages/ProfilePage";
-import HubPricingPage from "./pages/HubPricingPage";
-import HubPrinterAgentPage from "./pages/HubPrinterAgentPage";
-import ApproveAgentPage from "./pages/ApproveAgentPage";
-import DesktopAgentPage from "./pages/DesktopAgentPage";
-import CentreCodePage from "./pages/CentreCodePage";
-import UploadPage from "./pages/UploadPage";
-import PaymentPage from "./pages/PaymentPage";
-import TrackPage from "./pages/TrackPage";
-import HistoryPage from "./pages/HistoryPage";
-import PlatformStatsPage from "./pages/PlatformStatsPage";
+const HomePage = React.lazy(() => import("./pages/HomePage"));
+const AuthPage = React.lazy(() => import("./pages/AuthPage"));
+const UserDashboard = React.lazy(() => import("./pages/UserDashboard"));
+const HubDashboard = React.lazy(() => import("./pages/HubDashboard"));
+const ProfilePage = React.lazy(() => import("./pages/ProfilePage"));
+const HubPricingPage = React.lazy(() => import("./pages/HubPricingPage"));
+const HubPrinterAgentPage = React.lazy(() => import("./pages/HubPrinterAgentPage"));
+const ApproveAgentPage = React.lazy(() => import("./pages/ApproveAgentPage"));
+const DesktopAgentPage = React.lazy(() => import("./pages/DesktopAgentPage"));
+const CentreCodePage = React.lazy(() => import("./pages/CentreCodePage"));
+const UploadPage = React.lazy(() => import("./pages/UploadPage"));
+const PaymentPage = React.lazy(() => import("./pages/PaymentPage"));
+const TrackPage = React.lazy(() => import("./pages/TrackPage"));
+const HistoryPage = React.lazy(() => import("./pages/HistoryPage"));
+const PlatformStatsPage = React.lazy(() => import("./pages/PlatformStatsPage"));
 import { ROUTES, RouteErrorBoundary, RouteNotice } from "./utils/appHelpers.jsx";
+import LoadingScreen from "./components/LoadingScreen.jsx";
 
 const HubHistoryPage = React.lazy(() => import("./pages/HubHistoryPage"));
 
@@ -67,8 +68,9 @@ return (
         <BackendStatus />
 
         <RouteErrorBoundary>
-          <Routes>
-            <Route
+          <Suspense fallback={<LoadingScreen />}>
+            <Routes>
+              <Route
               path={ROUTES.home}
               element={
                 <HomePage
@@ -250,10 +252,10 @@ return (
             <Route path={ROUTES.orderHistory} element={<Navigate to={ROUTES.history} replace />} />
             <Route path={ROUTES.usageHistory} element={<Navigate to={ROUTES.history} replace />} />
             <Route path="*" element={<Navigate to={ROUTES.home} replace />} />
-          </Routes>
+            </Routes>
+          </Suspense>
         </RouteErrorBoundary>
       </main>
     </div>
   );
 }
-
