@@ -6,17 +6,17 @@ import { query, executor, timestamp, number, isUuid, centreSelect } from './comm
 import { mapCentre } from './mappers.js';
 
 export async function listCentres() {
-  const result = await query(`${centreSelect} order by c.created_at desc`);
+  const result = await query(centreSelect + " order by c.created_at desc");
   return result.rows.map(mapCentre);
 }
 
 export async function findCentreByCode(code, client) {
-  const result = await executor(client).query(`${centreSelect} where c.centre_code = $1`, [code]);
+  const result = await executor(client).query(centreSelect + " where c.centre_code = $1", [code]);
   return mapCentre(result.rows[0]);
 }
 
 export async function findCentreById(id, client) {
-  const result = await executor(client).query(`${centreSelect} where c.id = $1`, [id]);
+  const result = await executor(client).query(centreSelect + " where c.id = $1", [id]);
   return mapCentre(result.rows[0]);
 }
 
@@ -24,7 +24,7 @@ export async function findCentreForUser(user, client) {
   if (!user || user.role !== 'hub') return null;
 
   const result = await executor(client).query(
-    `${centreSelect} where c.id = $1 or c.owner_id = $2 limit 1`,
+    centreSelect + " where c.id = $1 or c.owner_id = $2 limit 1",
     [user.centreId, user.id]
   );
 
