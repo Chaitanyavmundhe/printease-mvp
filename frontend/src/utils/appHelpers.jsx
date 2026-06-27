@@ -1,5 +1,6 @@
 import { Component, useEffect, useMemo, useRef, useState, lazy, Suspense } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { clearStoredAuth, isDesktop, saveStoredAuth } from "./desktopBridge";
 
 const ROUTES = {
   home: "/",
