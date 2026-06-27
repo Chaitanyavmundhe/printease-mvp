@@ -106,7 +106,7 @@ export const uploadDocument = asyncHandler(async (req, res) => {
   // Never mark a document prepared unless the backend has a trusted PDF page count.
   // Office/large-format documents are uploaded as originals and the paired hub
   // desktop later converts them, uploads the PDF, and lets the backend verify it.
-  const needsDesktopPrep = Boolean(!hasTrustedPrintReadyPageCount && canDesktopPrepare && (requestedDesktopPrep || !pageCount));
+  const needsDesktopPrep = Boolean(!hasTrustedPrintReadyPageCount && canDesktopPrepare && (isOfficeFormat || requestedDesktopPrep || !pageCount));
   const preparationStatus = needsDesktopPrep ? 'pending' : 'prepared';
   if (needsDesktopPrep) {
     pageCount = null;

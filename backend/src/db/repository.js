@@ -890,7 +890,7 @@ export async function listPendingPaymentOrderFilesForAgentPredownload(hubId, { l
      join print_order_files pof on pof.order_id = po.id
      join documents d on d.id = pof.document_id
      where po.hub_id = $1
-       and po.payment_status in ('not_requested', 'requested', 'failed')
+       and lower(coalesce(po.payment_status, '')) in ('draft', 'pending', 'not_requested', 'requested', 'failed')
        and po.status not in (
          'cancelled',
          'completed'
