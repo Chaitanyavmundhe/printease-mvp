@@ -3,6 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
+import logger from './utils/logger.js';
 import { testDatabaseConnection } from './config/db.js';
 
 import authRoutes from './routes/authRoutes.js';
@@ -109,7 +110,7 @@ app.use(cors({
 
     if (isAllowedDesktopOrigin(origin)) {
       if (process.env.NODE_ENV !== 'production') {
-        console.log('[CORS DESKTOP ALLOWED]', { origin });
+        logger.info('[CORS DESKTOP ALLOWED]', { origin });
       }
       return callback(null, true);
     }
@@ -120,7 +121,7 @@ app.use(cors({
       return callback(null, true);
     }
 
-    console.error('[CORS BLOCKED]', {
+    logger.error('[CORS BLOCKED]', {
       origin,
       allowedOrigins: [...allowedOrigins],
       desktopAppOrigin,
@@ -214,7 +215,7 @@ function getDatabaseErrorMessage(err) {
 }
 
 app.use((err, req, res, next) => {
-  console.error('[SERVER ERROR]', {
+  logger.error('[SERVER ERROR]', {
     message: err.message,
     code: err.code,
     constraint: err.constraint,
