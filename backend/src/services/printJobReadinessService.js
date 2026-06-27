@@ -53,15 +53,28 @@ export function verifyPrintFilesReadiness(orderFiles, orderWithDocument) {
   const fileSha256 = firstFile?.document?.printReadySha256 || firstFile?.document?.fileSha256 || orderWithDocument?.document_file_sha256;
   const fileType = firstFile?.document?.printReadyStoragePath ? 'application/pdf' : (firstFile?.document?.fileType || orderWithDocument?.document_file_type || 'application/pdf');
 
+  const isFileReadyForPrint = (file) => {
+    const document = file?.document || {};
+    const mimeType = document.fileType || 'application/pdf';
+    const hasOriginal = Boolean(document.storagePath && document.fileSha256);
+    const hasPrintReadyPdf = Boolean(document.printReadyStoragePath && document.printReadySha256);
+    const needsDesktopPreparation = isDesktopPreparableMimeType(mimeType) && !isPrintableUploadMimeType(mimeType);
+
+    // Office/OpenDocument files are allowed for upload, but they are not safe to
+    // queue for printing until the desktop conversion agent has uploaded a
+    // backend-verified PDF. This keeps cash collection from printing originals.
+    if (needsDesktopPreparation || document.requiresDesktopPreparation) {
+      return hasPrintReadyPdf;
+    }
+
+    return hasPrintReadyPdf || (hasOriginal && isPrintableUploadMimeType(mimeType));
+  };
+
   const allFilesPrintable = orderFiles.every((file) => {
-    const isDocAvailable = Boolean(file.document?.storagePath || file.document?.printReadyStoragePath);
-    const hasHash = Boolean(file.document?.fileSha256 || file.document?.printReadySha256);
-    const isPrintReady = Boolean(file.document?.printReadyStoragePath);
-    const mimeType = file.document?.fileType || 'application/pdf';
-    return isDocAvailable && hasHash && (isPrintReady || isPrintableUploadMimeType(mimeType) || isDesktopPreparableMimeType(mimeType));
+    return isFileReadyForPrint(file);
   });
 
-  const isFirstFilePrintable = Boolean(firstFile?.document?.printReadyStoragePath) || isPrintableUploadMimeType(fileType) || isDesktopPreparableMimeType(fileType);
+  const isFirstFilePrintable = isFileReadyForPrint(firstFile);
   const isReady = Boolean(storagePath && fileSha256 && isFirstFilePrintable && allFilesPrintable && isPrintableOrderStatus(orderWithDocument?.status));
 
   return {

@@ -2,7 +2,7 @@ import pg from 'pg';
 import dotenv from 'dotenv';
 dotenv.config();
 
-import { query, executor, timestamp, number, isUuid, centreSelect } from './common.js';
+import { query, executor, timestamp, number, isUuid, centreSelect, normalizeAgentPrinterStatus } from './common.js';
 import { mapPrinter, mapAgentPrinter, mapAgent } from './mappers.js';
 
 export async function createPrinter(printer) {

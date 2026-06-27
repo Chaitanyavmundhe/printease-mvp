@@ -522,10 +522,25 @@ export const reportPreparationResult = asyncHandler(async (req, res) => {
     return res.status(404).json({ success: false, message: 'Document not found' });
   }
 
-  // We no longer update order prices or cancel orders here because
-  // document conversion happens independently of order creation.
+  let updatedOrders = null;
+  let pricingUpdateError = null;
+  if (preparationStatus === 'prepared') {
+    // Conversion is document-scoped, but one document can already belong to one
+    // or more pending orders. Recalculate those bills only after the backend has
+    // verified and stored the converted PDF, never from a frontend-supplied page
+    // count or price.
+    try {
+      updatedOrders = await recalculateOrderPricingByDocument(documentId);
+    } catch (error) {
+      pricingUpdateError = error.message || 'Could not refresh related order pricing.';
+      console.warn('[AGENT_PREPARATION] Document prepared but related order pricing refresh failed', {
+        documentId,
+        error: pricingUpdateError
+      });
+    }
+  }
 
-  res.json({ success: true, document: result });
+  res.json({ success: true, document: result, updatedOrders, pricingUpdateError });
 });
 
 export const getPendingVerificationJobs = asyncHandler(async (req, res) => {

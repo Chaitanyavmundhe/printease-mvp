@@ -87,6 +87,7 @@ return (
                   updateOrderStatus={updateOrderStatus}
                   refreshOrders={() => loadOrdersForSession(currentUser, centres)}
                   onOrderSaved={applySavedOrderUpdate}
+                  orders={orders}
                 />
               }
             />
