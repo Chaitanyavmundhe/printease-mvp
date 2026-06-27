@@ -84,7 +84,7 @@ export default function TrackPage({
             <XCircle className="mt-0.5 text-rose-600" size={20} />
             <div>
               <p className="font-semibold text-rose-700">Order Cancelled</p>
-              <p className="mt-1">This order was cancelled. Please check with the printing centre for details or register a new print job.</p>
+              <p className="mt-1">{order?.priceSnapshot?.message || order?.price_snapshot?.message || "This order was cancelled. Please check with the printing centre for details or register a new print job."}</p>
             </div>
           </div>
         </div>
