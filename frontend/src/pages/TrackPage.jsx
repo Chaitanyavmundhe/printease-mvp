@@ -3,8 +3,8 @@ import Card from "../components/Card";
 import Row from "../components/Row";
 
 const orderStatuses = [
-  "Converting Document",
-  "Conversion Done",
+  "Preparing Bill",
+  "Bill Ready",
   "Payment Requested",
   "Payment Collected",
   "Queued for Printing",
@@ -14,8 +14,8 @@ const orderStatuses = [
 
 const statusMap = {
   draft_uploaded: "Draft Uploaded",
-  awaiting_hub_bill_confirmation: "Converting Document",
-  bill_confirmed: "Conversion Done",
+  awaiting_hub_bill_confirmation: "Preparing Bill",
+  bill_confirmed: "Bill Ready",
   payment_requested: "Payment Requested",
   payment_collected: "Payment Collected",
   queued_for_print: "Queued for Printing",

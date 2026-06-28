@@ -346,12 +346,16 @@ function normalizeOrder(order, centreList = []) {
   const rawPages = order.pages ?? order.printablePageCount ?? order.printable_page_count ?? order.selectedPageCount ?? order.selected_page_count ?? null;
   const normalizedPages = Number(rawPages);
   const priceSnapshot = order.priceSnapshot || order.price_snapshot || null;
+  const rawStatusKey = String(rawStatus).toLowerCase();
   const pricingPending = Boolean(
-    order.pricingPending ||
-    order.pricing_pending ||
-    priceSnapshot?.pricingPending ||
-    String(rawStatus).toLowerCase() === "awaiting_hub_bill_confirmation" ||
-    String(rawBillStatus).toLowerCase() === "awaiting_hub_confirmation"
+    rawStatusKey !== "bill_confirmed" &&
+    (
+      order.pricingPending ||
+      order.pricing_pending ||
+      priceSnapshot?.pricingPending ||
+      rawStatusKey === "awaiting_hub_bill_confirmation" ||
+      String(rawBillStatus).toLowerCase() === "awaiting_hub_confirmation"
+    )
   );
 
   return {

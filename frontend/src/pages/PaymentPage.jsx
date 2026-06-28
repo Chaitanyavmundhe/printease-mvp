@@ -1,6 +1,8 @@
+import { useEffect, useMemo, useState } from "react";
 import { Clock, CreditCard, IndianRupee, QrCode, ShieldCheck } from "lucide-react";
 import Card from "../components/Card";
 import Row from "../components/Row";
+import { buildPaymentPriceFromOrder } from "../utils/paymentOrderPricing";
 
 const paymentOptions = [
   {
@@ -36,6 +38,7 @@ function normalizeStatus(value) {
 function hasPendingPricing(price, order) {
   const rawStatus = normalizeStatus(order?.rawStatus || order?.status);
   if (rawStatus === "cancelled") return false;
+  if (rawStatus === "bill_confirmed") return false;
 
   const billStatus = normalizeStatus(order?.billStatus || order?.bill_status);
   const snapshot = order?.priceSnapshot || order?.price_snapshot || {};
@@ -73,29 +76,76 @@ export default function PaymentPage({
   copies,
   backendPrice,
   order,
+  refreshActivePaymentOrder,
   paymentMethod = "manual",
   setPaymentMethod,
   handlePayment,
   paymentLoading,
   paymentError,
 }) {
-  const isPricingPending = hasPendingPricing(backendPrice, order);
-  const amount = isPricingPending ? null : (backendPrice?.totalAmount ?? order?.amount ?? null);
-  const rate = isPricingPending ? null : (backendPrice?.pricePerPage ?? backendPrice?.files?.[0]?.pricePerPage ?? null);
-  const selectedPageCount = Number(backendPrice?.selectedPageCount || order?.selectedPageCount || pages || 0);
+  const [liveOrder, setLiveOrder] = useState(order);
+  const [livePrice, setLivePrice] = useState(backendPrice);
+  const [refreshError, setRefreshError] = useState("");
+  const [refreshingBill, setRefreshingBill] = useState(false);
+
+  useEffect(() => {
+    setLiveOrder(order);
+  }, [order]);
+
+  useEffect(() => {
+    setLivePrice(backendPrice);
+  }, [backendPrice]);
+
+  const effectiveOrder = liveOrder || order;
+  const effectivePrice = useMemo(
+    () => buildPaymentPriceFromOrder(effectiveOrder, livePrice || backendPrice),
+    [backendPrice, effectiveOrder, livePrice]
+  );
+  const isPricingPending = hasPendingPricing(effectivePrice, effectiveOrder);
+  const amount = isPricingPending ? null : (effectivePrice?.totalAmount ?? effectiveOrder?.amount ?? null);
+  const rate = isPricingPending ? null : (effectivePrice?.pricePerPage ?? effectivePrice?.files?.[0]?.pricePerPage ?? null);
+  const selectedPageCount = Number(effectivePrice?.selectedPageCount || effectiveOrder?.selectedPageCount || pages || 0);
   const centreUpi = selectedCentre?.upiId || "";
   const upiQrUrl = selectedCentre?.upiQrImageUrl || "";
-  const isMultiFileOrder = Array.isArray(backendPrice?.files) && backendPrice.files.length > 1;
-  const isCancelled = normalizeStatus(order?.rawStatus || order?.status) === "cancelled";
-  const cancellationReason = order?.priceSnapshot?.message || order?.price_snapshot?.message || null;
-  const failedDocument = order?.documents?.find(d => d.preparation_status === 'failed');
+  const isMultiFileOrder = Array.isArray(effectivePrice?.files) && effectivePrice.files.length > 1;
+  const isCancelled = normalizeStatus(effectiveOrder?.rawStatus || effectiveOrder?.status) === "cancelled";
+  const cancellationReason = effectiveOrder?.priceSnapshot?.message || effectiveOrder?.price_snapshot?.message || null;
+  const failedDocument = effectiveOrder?.documents?.find(d => d.preparation_status === 'failed');
   const conversionFailed = Boolean(failedDocument);
   const conversionFailedMessage = failedDocument?.preparation_error_message || "Document conversion failed. Please save as PDF and try again or do it from mobile app.";
   const displayValue = (value) => (isPricingPending ? "Pending" : (value || value === 0 ? value : "Pending"));
   const displayMoney = (value) => (isPricingPending ? "Pending" : formatCurrency(value));
 
+  useEffect(() => {
+    if (!effectiveOrder?.backendId || !isPricingPending || conversionFailed || !refreshActivePaymentOrder) return;
+
+    let cancelled = false;
+
+    async function refreshBill() {
+      setRefreshingBill(true);
+      try {
+        const refreshed = await refreshActivePaymentOrder(effectiveOrder.backendId);
+        if (cancelled || !refreshed) return;
+        if (refreshed.order) setLiveOrder(refreshed.order);
+        if (refreshed.price) setLivePrice(refreshed.price);
+        setRefreshError("");
+      } catch (error) {
+        if (!cancelled) setRefreshError(error.message || "Could not refresh the converted bill yet.");
+      } finally {
+        if (!cancelled) setRefreshingBill(false);
+      }
+    }
+
+    refreshBill();
+    const interval = window.setInterval(refreshBill, 3500);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [conversionFailed, effectiveOrder?.backendId, isPricingPending, refreshActivePaymentOrder]);
+
   const handlePaymentClick = () => {
-    const printablePages = backendPrice?.printablePageCount || (selectedPageCount * (copies || 1));
+    const printablePages = effectivePrice?.printablePageCount || (selectedPageCount * (copies || 1));
     if (!currentUser && printablePages > 5) {
       startLogin("user");
       return;
@@ -105,7 +155,7 @@ export default function PaymentPage({
 
   const buttonLabel =
     isPricingPending
-      ? "Converting Document..."
+      ? "Preparing verified bill..."
       : paymentMethod === "razorpay"
       ? `Pay ${formatCurrency(amount)}`
       : paymentMethod === "upi_qr"
@@ -149,10 +199,10 @@ export default function PaymentPage({
         <div className="mt-6 space-y-3 rounded-2xl bg-slate-50 p-4">
           <Row label="Centre" value={selectedCentre?.name || "N/A"} />
           <Row label="Document" value={documentName || "Uploaded Document"} />
-          <Row label="Original Pages" value={displayValue(backendPrice?.originalPageCount || pages)} />
-          <Row label="Selected Pages" value={displayValue(backendPrice?.selectedPageCount || pages)} />
-          <Row label="Printable Pages" value={displayValue(backendPrice?.printablePageCount || (Number(pages || 0) > 0 ? Number(pages || 0) * Number(copies || 0) : null))} />
-          <Row label="Sheets" value={displayValue(backendPrice?.sheetCount)} />
+          <Row label="Original Pages" value={displayValue(effectivePrice?.originalPageCount || pages)} />
+          <Row label="Selected Pages" value={displayValue(effectivePrice?.selectedPageCount || pages)} />
+          <Row label="Printable Pages" value={displayValue(effectivePrice?.printablePageCount || (Number(pages || 0) > 0 ? Number(pages || 0) * Number(copies || 0) : null))} />
+          <Row label="Sheets" value={displayValue(effectivePrice?.sheetCount)} />
           {isMultiFileOrder ? (
             <Row label="Copies / Rate" value="Shown per file below" />
           ) : (
@@ -170,7 +220,7 @@ export default function PaymentPage({
         {isMultiFileOrder && (
           <div className="mt-4 space-y-2 rounded-2xl border p-4 text-sm">
             <p className="font-semibold">Files</p>
-            {backendPrice.files.map((file) => (
+            {effectivePrice.files.map((file) => (
               <Row
                 key={file.documentId || file.fileName}
                 label={`${file.fileName || "Document"} — ${file.pricingPending ? "pending" : `${file.selectedPageCount}p × ${file.copies}`}`}
@@ -242,7 +292,15 @@ export default function PaymentPage({
 
         {isPricingPending && !conversionFailed && !paymentLoading && (
           <p className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-700">
-            Hub conversion is pending. The desktop agent must convert and verify the file before the final bill/payment request can be created.
+            {refreshingBill
+              ? "Preparing the verified bill from the converted document. This page refreshes automatically."
+              : "Waiting for the desktop agent to return the verified bill. The payment request unlocks automatically after that."}
+          </p>
+        )}
+
+        {refreshError && isPricingPending && !conversionFailed && (
+          <p className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
+            {refreshError}
           </p>
         )}
 

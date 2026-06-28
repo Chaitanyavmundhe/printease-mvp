@@ -1,5 +1,5 @@
 import AppRouter from "./AppRouter";
-import { Component, useEffect, useMemo, useRef, useState, lazy, Suspense } from "react";
+import { Component, useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { emitOrderChanged } from "./utils/appEvents";
 import Navbar from "./components/Navbar";
@@ -9,7 +9,7 @@ import { initialCentres, initialOrders } from "./data/demoData";
 import { calculateTotalAmount, countSelectedPages, getPricePerPage } from "./utils/price";
 import { countSelectedPagesPreview, estimatePricePreview } from "./utils/printEstimate";
 import { clearStoredAuth, getStoredAuth, isDesktop, onPrintersUpdated, saveStoredAuth } from "./utils/desktopBridge";
-import { apiRequest, invalidateUserHistory, createDocumentSignedDownload, getOrderDetail, reprintOrder } from "./services/api";
+import { apiRequest, invalidateUserHistory, createDocumentSignedDownload, getOrderDetail, getOrderStatus, reprintOrder } from "./services/api";
 import { loadRazorpayCheckout } from "./utils/razorpay";
 import { saveOrderToLocalHistory } from "./utils/localHistory";
 import {
@@ -19,6 +19,7 @@ import {
 } from "./utils/supabaseAuth";
 import { handleDesktopAutoRegistration } from "./utils/desktopAutoRegistration";
 import { prepareBrowserPrintReadyFile } from "./utils/filePreparation/prepareBrowserPrintReadyFile";
+import { buildPaymentPriceFromOrder } from "./utils/paymentOrderPricing";
 
 import { persistAuthSession, getPageFromPath, RouteNotice, formatStatus, buildPrintOptions, normalizeCentre, normalizeReprintSourceDocument, upsertCentre, toFrontendRole, findCentreForUser, toCurrentUser, toDisplayLabel, normalizeUsername, getUsernameBaseCandidates, getSupabaseDisplayName, generateStrongPasswordValue, formatOrderDate, extractCustomerName, normalizeOrder, upsertOrder, clearAuthSession, ROUTES } from "./utils/appHelpers.jsx";
 
@@ -1764,6 +1765,26 @@ export default function App() {
     return savedOrder;
   }
 
+  const refreshActivePaymentOrder = useCallback(async (orderId = order?.backendId || order?.id) => {
+    if (!orderId) return null;
+
+    const data = await getOrderStatus(orderId, { orderAccessToken });
+    const rawOrder = data.order;
+    if (!rawOrder) return null;
+
+    const refreshedOrder = normalizeOrder(rawOrder, centres);
+    const refreshedPrice = buildPaymentPriceFromOrder(rawOrder, backendPrice);
+
+    setOrder(refreshedOrder);
+    setBackendPrice(refreshedPrice);
+    setOrders((prev) => upsertOrder(prev, refreshedOrder));
+    setLastOrdersUpdatedAt(new Date().toISOString());
+    emitOrderChanged();
+    invalidateUserHistory(currentUser?.id || "me");
+
+    return { order: refreshedOrder, price: refreshedPrice, rawOrder };
+  }, [backendPrice, centres, currentUser?.id, order?.backendId, order?.id, orderAccessToken]);
+
   useEffect(() => {
     if (!currentUser) return;
 
@@ -1858,7 +1879,7 @@ export default function App() {
       reprintWithSettings, reprintWithSameSettings,
       prioritizedCentres, selectCentreAndUpload, selectCentreByCode, loadOrdersForSession, applySavedOrderUpdate,
       generateStrongPassword, approvalReturnPath, documentFile, setDocumentFile, setReprintDocumentExpired,
-      pricePerPage, estimatedSelectedPageCount, totalAmount, backendPrice, setBackendPrice, lastOrdersUpdatedAt
+      pricePerPage, estimatedSelectedPageCount, totalAmount, backendPrice, setBackendPrice, refreshActivePaymentOrder, lastOrdersUpdatedAt
     }} />
   );
 }

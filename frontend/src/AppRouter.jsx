@@ -46,7 +46,7 @@ export default function AppRouter(props) {
     reprintWithSettings, reprintWithSameSettings,
     prioritizedCentres, selectCentreAndUpload, selectCentreByCode, loadOrdersForSession, applySavedOrderUpdate,
     generateStrongPassword, approvalReturnPath, documentFile, setDocumentFile, setReprintDocumentExpired,
-    pricePerPage, estimatedSelectedPageCount, totalAmount, backendPrice, setBackendPrice, lastOrdersUpdatedAt
+    pricePerPage, estimatedSelectedPageCount, totalAmount, backendPrice, setBackendPrice, refreshActivePaymentOrder, lastOrdersUpdatedAt
   } = props;
 
 return (
@@ -225,7 +225,7 @@ return (
             path={ROUTES.payment}
             element={
               selectedCentre && order ? (
-                <PaymentPage currentUser={currentUser} startLogin={startLogin} selectedCentre={selectedCentre} documentName={documentName} pages={pages} copies={copies} backendPrice={backendPrice} order={order} paymentMethod={paymentMethod} setPaymentMethod={setPaymentMethod} handlePayment={handlePayment} paymentLoading={paymentLoading} paymentError={paymentError} />
+                <PaymentPage currentUser={currentUser} startLogin={startLogin} selectedCentre={selectedCentre} documentName={documentName} pages={pages} copies={copies} backendPrice={backendPrice} order={order} refreshActivePaymentOrder={refreshActivePaymentOrder} paymentMethod={paymentMethod} setPaymentMethod={setPaymentMethod} handlePayment={handlePayment} paymentLoading={paymentLoading} paymentError={paymentError} />
               ) : (
                 <RouteNotice title="Payment Not Ready" message="Please select a centre and upload a document first." actionLabel="Select Centre" onAction={() => navigate("centre")} />
               )
