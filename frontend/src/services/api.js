@@ -275,7 +275,7 @@ export function getOrderDocuments(orderId) {
 }
 
 export function getOrderStatus(orderId, { orderAccessToken } = {}) {
-  return apiRequest(`/api/orders/${encodeURIComponent(orderId)}`, {
+  return apiRequest(`/api/orders/${encodeURIComponent(orderId)}?_t=${Date.now()}`, {
     headers: orderAccessToken ? { "x-order-access-token": orderAccessToken } : {},
   });
 }

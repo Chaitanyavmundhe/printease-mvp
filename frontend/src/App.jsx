@@ -1383,7 +1383,10 @@ export default function App() {
     });
     setUpiQr(nextCentre?.upiQrImageUrl ? { imageUrl: nextCentre.upiQrImageUrl } : null);
     setPaymentError("");
-    navigate("track");
+
+    const activeOrderId = paymentOrder.backendId || paymentOrder.id;
+    localStorage.setItem("printease_active_order_id", activeOrderId);
+    navigate(`track?order=${activeOrderId}`);
   }
 
   async function reprintWithSettings(historyOrder) {
@@ -1609,11 +1612,14 @@ export default function App() {
       setSelectedCentre(nextCentre);
       setPendingPayment(null);
       setUpiQr(null);
+
+      const activeOrderId = createdOrder.backendId || createdOrder.id;
+      localStorage.setItem("printease_active_order_id", activeOrderId);
       
       if (response.nextAction === "payment_required") {
-        navigate("payment");
+        navigate(`payment?order=${activeOrderId}`);
       } else {
-        navigate("track");
+        navigate(`track?order=${activeOrderId}`);
       }
     } catch (err) {
       alert(err.message || "Could not reprint order. You may need to upload the file again.");
