@@ -383,6 +383,7 @@ function normalizeOrder(order, centreList = []) {
     latestConfigSource: order.latestConfigSource || order.latest_config_source || null,
     priceSnapshot,
     printConfigSnapshot: order.printConfigSnapshot || order.print_config_snapshot || order.printOptions || order.print_options || null,
+    documents: order.documents || [],
   };
 }
 

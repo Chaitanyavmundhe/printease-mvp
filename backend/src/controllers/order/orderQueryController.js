@@ -449,7 +449,30 @@ export const getOrderById = asyncHandler(async (req, res) => {
     return res.status(404).json({ success: false, message: 'Order not found' });
   }
 
-  res.json({ success: true, order: privateOrder(order), public: false });
+  // Fetch the order files and documents list to include in response
+  const orderFiles = await listOrderFiles(order.id);
+  const documents = orderFiles.map(file => ({
+    id: file.documentId,
+    documentId: file.documentId,
+    fileName: file.document?.fileName || null,
+    fileType: file.document?.fileType || null,
+    fileSizeBytes: file.document?.fileSizeBytes || null,
+    requiresDesktopPreparation: file.document?.requiresDesktopPreparation || false,
+    preparedPageCount: file.document?.preparedPageCount || null,
+    pageCount: file.document?.pageCount || null,
+    preparationStatus: file.document?.preparationStatus || 'prepared',
+    preparationErrorCode: file.document?.preparationErrorCode || null,
+    preparationErrorMessage: file.document?.preparationErrorMessage || null
+  }));
+
+  res.json({
+    success: true,
+    order: {
+      ...privateOrder(order),
+      documents
+    },
+    public: false
+  });
 });
 
 export const getMyOrders = asyncHandler(async (req, res) => {

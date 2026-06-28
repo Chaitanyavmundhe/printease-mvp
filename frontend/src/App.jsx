@@ -910,8 +910,45 @@ export default function App() {
     selectCentreByCode(trimmedCode, { replace: true });
   }, [location.pathname, location.search, centres]);
 
+  useEffect(() => {
+    async function restoreActiveOrder() {
+      const params = new URLSearchParams(location.search);
+      const urlOrderId = params.get("order") || params.get("orderId") || params.get("order_id");
+      
+      const isPaymentOrTrackPage = ["payment", "track"].includes(page);
+      const activeOrderId = urlOrderId || (isPaymentOrTrackPage ? localStorage.getItem("printease_active_order_id") : null);
+
+      if (!activeOrderId) return;
+
+      try {
+        const data = await getOrderStatus(activeOrderId, { orderAccessToken });
+        if (data && data.order) {
+          const refreshedOrder = normalizeOrder(data.order, centres);
+          const refreshedPrice = buildPaymentPriceFromOrder(data.order, backendPrice);
+
+          setOrder(refreshedOrder);
+          setBackendPrice(refreshedPrice);
+          
+          const centre = centres.find((c) => c.id === refreshedOrder.centreId || c.code === refreshedOrder.centreCode);
+          if (centre) {
+            setSelectedCentre(centre);
+          }
+          
+          localStorage.setItem("printease_active_order_id", activeOrderId);
+        }
+      } catch (err) {
+        console.error("Failed to restore active order:", err);
+      }
+    }
+
+    restoreActiveOrder();
+  }, [location.search, centres, page]);
+
   function startDirectUpload() {
     setSelectedCentre(null);
+    setOrder(null);
+    setBackendPrice(null);
+    localStorage.removeItem("printease_active_order_id");
     setPaymentError("");
     navigate("upload");
   }
@@ -1142,6 +1179,7 @@ export default function App() {
       setOrder(nextOrder);
       setBackendPrice(orderData.price || null);
       
+      localStorage.setItem("printease_active_order_id", nextOrder.backendId || nextOrder.id);
       saveOrderToLocalHistory(nextOrder, defaultPrintOptions, orderData.price, uploadedDocuments);
       invalidateUserHistory(currentUser?.id || "me");
 
