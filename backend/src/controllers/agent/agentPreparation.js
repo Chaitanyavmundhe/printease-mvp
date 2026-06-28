@@ -35,7 +35,7 @@ import { toAgentJobPayload } from '../../services/agentJobPayloadService.js';
 import { resolveDownloadUrl } from '../../services/agentJobPayloadService.js';
 import { PRINT_JOB_STATUSES, PAIRING_STATUSES } from '../../constants/statuses.js';
 import { getPrintReadyFile } from '../../utils/printReadyPdf.js';
-import { confirmOrderBill, recalculateOrderPricingByDocument } from '../../services/orderConfigurationService.js';
+import { confirmOrderBillInTransaction, recalculateOrderPricingByDocumentInTransaction } from '../../services/orderConfigurationService.js';
 import { verifyAndStoreHubConvertedDocument } from '../../services/documentVerificationService.js';
 
 const JOB_STATUS_TO_ORDER_STATUS = {
@@ -509,39 +509,48 @@ export const reportPreparationResult = asyncHandler(async (req, res) => {
     }
   }
 
-  const result = await updateDocumentPreparation(documentId, {
-    preparedPageCount,
-    preparationStatus,
-    preparationErrorCode: errorCode,
-    preparationErrorMessage: errorMessage,
-    printReadyStoragePath,
-    printReadySha256,
-    preparedAt: new Date().toISOString()
-  });
+  try {
+    const { document, updatedOrders } = await withTransaction(async (client) => {
+      const updatedDocument = await updateDocumentPreparation(documentId, {
+        preparedPageCount,
+        preparationStatus,
+        preparationErrorCode: errorCode,
+        preparationErrorMessage: errorMessage,
+        printReadyStoragePath,
+        printReadySha256,
+        preparedAt: new Date().toISOString()
+      }, client);
 
-  if (!result) {
-    return res.status(404).json({ success: false, message: 'Document not found' });
-  }
+      if (!updatedDocument) {
+        return { document: null, updatedOrders: null };
+      }
 
-  let updatedOrders = null;
-  let pricingUpdateError = null;
-  if (preparationStatus === 'prepared') {
-    // Conversion is document-scoped, but one document can already belong to one
-    // or more pending orders. Recalculate those bills only after the backend has
-    // verified and stored the converted PDF, never from a frontend-supplied page
-    // count or price.
-    try {
-      updatedOrders = await recalculateOrderPricingByDocument(documentId);
-    } catch (error) {
-      pricingUpdateError = error.message || 'Could not refresh related order pricing.';
-      console.warn('[AGENT_PREPARATION] Document prepared but related order pricing refresh failed', {
-        documentId,
-        error: pricingUpdateError
-      });
+      if (preparationStatus !== 'prepared') {
+        return { document: updatedDocument, updatedOrders: null };
+      }
+
+      // Keep document preparation and order bill confirmation atomic. If pricing
+      // refresh fails, the document remains pending so the desktop can retry
+      // instead of leaving the customer stuck on "Preparing verified bill".
+      const refreshedOrders = await recalculateOrderPricingByDocumentInTransaction(documentId, client);
+      return { document: updatedDocument, updatedOrders: refreshedOrders };
+    });
+
+    if (!document) {
+      return res.status(404).json({ success: false, message: 'Document not found' });
     }
-  }
 
-  res.json({ success: true, document: result, updatedOrders, pricingUpdateError });
+    res.json({ success: true, document, updatedOrders });
+  } catch (error) {
+    console.error('[AGENT_PREPARATION] Document preparation rejected during bill refresh', {
+      documentId,
+      error: error.message || String(error)
+    });
+    return res.status(409).json({
+      success: false,
+      message: error.message || 'Converted document was verified, but the order bill could not be refreshed. The desktop agent will retry.'
+    });
+  }
 });
 
 export const getPendingVerificationJobs = asyncHandler(async (req, res) => {
@@ -619,33 +628,52 @@ export const reportVerificationResult = asyncHandler(async (req, res) => {
     }
   }
   
-  // 1. Update Document Preparation Status
-  const result = await updateDocumentPreparation(documentId, {
-    preparedPageCount,
-    preparationStatus,
-    preparationErrorCode: errorCode,
-    preparationErrorMessage: errorMessage,
-    printReadyStoragePath,
-    printReadySha256,
-    preparedAt: new Date().toISOString()
-  });
+  let reportedDocument = null;
+  try {
+    const { document, order: updatedOrder } = await withTransaction(async (client) => {
+      const updatedDocument = await updateDocumentPreparation(documentId, {
+        preparedPageCount,
+        preparationStatus,
+        preparationErrorCode: errorCode,
+        preparationErrorMessage: errorMessage,
+        printReadyStoragePath,
+        printReadySha256,
+        preparedAt: new Date().toISOString()
+      }, client);
 
-  if (!result) {
-    return res.status(404).json({ success: false, message: 'Document not found' });
+      if (!updatedDocument) {
+        return { document: null, order: null };
+      }
+
+      if (preparationStatus !== 'prepared') {
+        return { document: updatedDocument, order: null };
+      }
+
+      // Keep verification and bill confirmation atomic. A failed bill refresh
+      // should not leave this document permanently marked prepared.
+      const confirmedOrder = await confirmOrderBillInTransaction({
+        orderId: jobId,
+        hubId: req.agent.hubId,
+        client
+      });
+      return { document: updatedDocument, order: confirmedOrder };
+    });
+
+    if (!document) {
+      return res.status(404).json({ success: false, message: 'Document not found' });
+    }
+
+    reportedDocument = document;
+
+    if (preparationStatus === 'prepared') {
+      return res.json({ success: true, document, order: updatedOrder });
+    }
+  } catch (err) {
+    console.error(`[AgentController] Error confirming bill for order ${jobId}:`, err);
+    return res.status(409).json({ success: false, message: err.message || 'Failed to confirm bill' });
   }
 
-  // 2. Automate Bill Confirmation if prepared
-  if (preparationStatus === 'prepared') {
-    try {
-      // confirmOrderBill will automatically recalculate and set the bill_status = confirmed / mismatch
-      // and allow payment requests.
-      const updatedOrder = await confirmOrderBill({ orderId: jobId, hubId: req.agent.hubId, agentId: req.agent.id, isAutomatic: true });
-      return res.json({ success: true, document: result, order: updatedOrder });
-    } catch (err) {
-      console.error(`[AgentController] Error confirming bill for order ${jobId}:`, err);
-      return res.status(400).json({ success: false, message: err.message || 'Failed to confirm bill' });
-    }
-  } else if (preparationStatus === 'failed') {
+  if (preparationStatus === 'failed') {
     const failMessage = errorMessage || 'Document conversion failed. Please save as PDF and try again.';
     try {
       await query(
@@ -660,5 +688,5 @@ export const reportVerificationResult = asyncHandler(async (req, res) => {
     }
   }
 
-  res.json({ success: true, document: result });
+  res.json({ success: true, document: reportedDocument });
 });

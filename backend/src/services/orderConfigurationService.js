@@ -424,47 +424,51 @@ async function calculateAndPersistTrustedOrderBill({ client, order, source = 'de
   };
 }
 
-export async function recalculateOrderPricingByDocument(documentId) {
-  return await withTransaction(async (client) => {
-    const orderIds = await findOrderIdsByDocumentId(documentId, client);
-    if (!orderIds || orderIds.length === 0) return null;
+export async function recalculateOrderPricingByDocumentInTransaction(documentId, client) {
+  const orderIds = await findOrderIdsByDocumentId(documentId, client);
+  if (!orderIds || orderIds.length === 0) return null;
 
-    const results = [];
-    for (const orderId of orderIds) {
-      const order = await findOrderByIdOrCode(orderId, client);
-      if (!order) continue;
-
-      const result = await calculateAndPersistTrustedOrderBill({
-        client,
-        order,
-        source: 'desktop_agent_preparation'
-      });
-      if (result?.order) results.push(result.order);
-    }
-    return results;
-  });
-}
-
-export async function confirmOrderBill({ orderId, hubId }) {
-  return await withTransaction(async (client) => {
+  const results = [];
+  for (const orderId of orderIds) {
     const order = await findOrderByIdOrCode(orderId, client);
-    if (!order) {
-      throw new Error('Order not found');
-    }
-    if (order.centreId !== hubId) {
-      throw new Error('Order does not belong to this hub');
-    }
+    if (!order) continue;
 
     const result = await calculateAndPersistTrustedOrderBill({
       client,
       order,
-      source: 'hub_bill_confirmation'
+      source: 'desktop_agent_preparation'
     });
+    if (result?.order) results.push(result.order);
+  }
+  return results;
+}
 
-    if (!result?.order) {
-      throw new Error('Bill cannot be confirmed until all documents are prepared.');
-    }
+export async function recalculateOrderPricingByDocument(documentId) {
+  return await withTransaction((client) => recalculateOrderPricingByDocumentInTransaction(documentId, client));
+}
 
-    return result.order;
+export async function confirmOrderBillInTransaction({ orderId, hubId, client }) {
+  const order = await findOrderByIdOrCode(orderId, client);
+  if (!order) {
+    throw new Error('Order not found');
+  }
+  if (order.centreId !== hubId) {
+    throw new Error('Order does not belong to this hub');
+  }
+
+  const result = await calculateAndPersistTrustedOrderBill({
+    client,
+    order,
+    source: 'hub_bill_confirmation'
   });
+
+  if (!result?.order) {
+    throw new Error('Bill cannot be confirmed until all documents are prepared.');
+  }
+
+  return result.order;
+}
+
+export async function confirmOrderBill({ orderId, hubId }) {
+  return await withTransaction((client) => confirmOrderBillInTransaction({ orderId, hubId, client }));
 }
