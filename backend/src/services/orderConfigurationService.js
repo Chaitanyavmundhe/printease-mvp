@@ -386,7 +386,7 @@ async function calculateAndPersistTrustedOrderBill({ client, order, source = 'de
     latestConfiguredByRole: 'system',
     latestConfiguredByUserId: null,
     latestConfiguredByHubId: null,
-    latestConfigSource: source,
+    latestConfigSource: ['initial_user', 'hub_manual_override', 'system_default', 'reprint_prefill'].includes(source) ? source : 'system_default',
     printConfigSnapshot: orderPrintOptions,
     priceSnapshot: newPriceSnapshot,
     totalAmountPaise,
