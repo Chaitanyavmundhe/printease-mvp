@@ -47,7 +47,10 @@ const JOB_STATUS_TO_ORDER_STATUS = {
   [PRINT_JOB_STATUSES.CANCELLED]: 'cancelled'
 };
 
-async function agentCanPrepareDocument(documentId, hubId) {
+async function agentCanPrepareDocument(documentId, hubId, document = null) {
+  if (document && document.hubId === hubId) {
+    return true;
+  }
   const orderIds = await findOrderIdsByDocumentId(documentId);
   for (const orderId of orderIds) {
     const order = await findOrderByIdOrCode(orderId);
@@ -84,7 +87,7 @@ async function validateAgentDocumentPreparationInput({ documentId, hubId, prepar
     return { error: { status: 404, message: 'Document not found' } };
   }
 
-  if (!(await agentCanPrepareDocument(documentId, hubId))) {
+  if (!(await agentCanPrepareDocument(documentId, hubId, document))) {
     return { error: { status: 403, message: 'Document does not belong to this hub' } };
   }
 
