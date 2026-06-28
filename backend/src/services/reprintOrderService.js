@@ -236,7 +236,6 @@ export async function createReprintOrder({ originalOrderId, actor, allowDocument
       totalAmountPaise,
       paymentStatus: 'not_requested',
       status: 'bill_confirmed',
-      billStatus: 'confirmed',
       pickupCode: generateShortCode(4),
       createdAt
     }, client);

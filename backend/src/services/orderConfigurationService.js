@@ -283,8 +283,7 @@ async function markOrderBillConfirmed({ client, orderId, totalAmountPaise, price
   const billHash = makeBillHash({ orderId, totalAmountPaise, pricedFiles });
   const result = await executor(client).query(
     `update print_orders
-     set status = 'bill_confirmed',
-         bill_status = 'confirmed'
+     set status = 'bill_confirmed'
      where id = $1
      returning *, hub_id as centre_id`,
     [orderId]
