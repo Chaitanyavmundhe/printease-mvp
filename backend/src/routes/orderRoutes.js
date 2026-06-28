@@ -20,6 +20,7 @@ const limitedOrderRateLimiter = (req, res, next) => {
   return next();
 };
 
+router.post('/preparation', optionalAuthMiddleware, limitedOrderRateLimiter, createOrder);
 router.post('/', optionalAuthMiddleware, limitedOrderRateLimiter, createOrder);
 router.get('/mine', authMiddleware, roleMiddleware('user'), getMyOrders);
 router.get('/centre/mine', authMiddleware, roleMiddleware('hub'), getCentreOrders);
