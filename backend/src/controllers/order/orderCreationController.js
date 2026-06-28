@@ -13,6 +13,7 @@ import {
   updateOrderPayment,
   updateOrderStatus as saveOrderStatus,
   updateGuestDocumentsTokenHash,
+  updateDocumentHub,
   withTransaction
 } from '../../db/repository.js';
 import { assertGuestCanUseDocument, getGuestTokenHashFromRequest, getGuestExpiry } from '../../services/guestAccessService.js';
@@ -352,6 +353,9 @@ export const createOrder = asyncHandler(async (req, res) => {
           createdAt
         }, client);
       orderFiles.push(orderFile);
+
+      // Link the document to the print hub so the agent can fetch it for conversion
+      await updateDocumentHub(file.document.id, order.centreId, client);
     }
 
     if (isLimitedLoginlessOrder && guestTokenHash) {
