@@ -30,3 +30,40 @@ To drastically reduce redundant backend API calls (particularly `/api/user/histo
 
 ## Result
 User history pages now load once per 2-minute window. Heavy order/payment operations no longer crash or overwhelm the backend by forcing background components to constantly request their full history payloads.
+
+## 2026-06-30 Session And Local DB Guard
+
+The shared frontend now keeps browser/desktop order caches scoped by both role and user id:
+
+```txt
+orders_user_<user_id>
+orders_hub_<user_id>
+```
+
+This prevents a hub/user account switch from briefly showing another account's cached orders. The old `orders_<user_id>` key is deleted after a successful fresh load.
+
+`App.jsx` also guards overlapping order loads with a request sequence. If a stale local DB read or slow network response returns after a newer load started, it is ignored instead of overwriting the current page state.
+
+Logout now clears transient order session data:
+
+```txt
+printease_active_order_id
+printease_order_access_token
+```
+
+This keeps guest/order-access tokens from leaking into the next login session on the same browser or desktop install.
+
+The desktop encrypted auth bridge now preserves `refreshToken` when it is supplied. Username/password login is unchanged, but future Google/Supabase refresh support will not be lost between desktop launches.
+
+Keep these files synced between `printease-mvp-main/frontend` and `printease-desk/frontend`:
+
+```txt
+src/App.jsx
+src/AppRouter.jsx
+src/utils/localDb.js
+src/utils/localHistory.js
+src/pages/HistoryPage.jsx
+src/pages/ConversionPage.jsx
+```
+
+Do not reintroduce `frontend/split_router.cjs`; it was an old one-off extraction helper and still referenced removed auth props.
