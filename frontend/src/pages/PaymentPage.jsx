@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Clock, CreditCard, IndianRupee, QrCode, ShieldCheck } from "lucide-react";
 import Card from "../components/Card";
 import Row from "../components/Row";
