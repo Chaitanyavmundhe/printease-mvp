@@ -160,26 +160,43 @@ export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus,
   }
 
   useEffect(() => {
-    if (currentHub?.id) {
+    if (!currentHub?.id) return;
+
+    let interval;
+    let lastRefresh = 0;
+
+    const doRefresh = () => {
+      const now = Date.now();
+      if (now - lastRefresh < 5000) return; // debounce double triggers
+      lastRefresh = now;
       refreshAgentStatus();
-      const interval = setInterval(() => {
-        if (document.visibilityState !== "hidden") {
-          refreshAgentStatus();
-        }
+    };
+
+    doRefresh();
+
+    const startPolling = () => {
+      if (interval) clearInterval(interval);
+      interval = setInterval(() => {
+        if (document.visibilityState === "visible") doRefresh();
       }, 15000);
-      const refreshOnFocus = () => {
-        if (document.visibilityState === "visible") {
-          refreshAgentStatus();
-        }
-      };
-      window.addEventListener("focus", refreshOnFocus);
-      document.addEventListener("visibilitychange", refreshOnFocus);
-      return () => {
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        doRefresh();
+        startPolling();
+      } else {
         clearInterval(interval);
-        window.removeEventListener("focus", refreshOnFocus);
-        document.removeEventListener("visibilitychange", refreshOnFocus);
-      };
-    }
+      }
+    };
+
+    startPolling();
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
   }, [currentHub?.id]);
 
   if (!currentHub) return <Card>Please login as print hub.</Card>;

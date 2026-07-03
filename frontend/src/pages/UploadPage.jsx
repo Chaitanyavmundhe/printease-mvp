@@ -340,7 +340,13 @@ export default function UploadPage({
       ]));
     });
 
-    files.forEach(async (file, index) => {
+    for (let index = 0; index < files.length; index++) {
+      if (preparationRunRef.current !== runId) break;
+      const file = files[index];
+
+      // Yield to main thread so UI stays responsive during rapid PDF processing
+      await new Promise(r => setTimeout(r, 10));
+
       try {
         const prepared = await prepareUploadPreview(file, {
           paperSize: multiFileConfigs[index]?.paperSize || paperSize,
@@ -354,7 +360,7 @@ export default function UploadPage({
         });
         if (preparationRunRef.current !== runId) {
           revokePreparationPreview(prepared);
-          return;
+          break;
         }
 
         setFilePreparationState((prev) => ({
@@ -368,7 +374,7 @@ export default function UploadPage({
           applyPreparedPageCount(index, prepared.pageCount);
         }
       } catch (error) {
-        if (preparationRunRef.current !== runId) return;
+        if (preparationRunRef.current !== runId) break;
         setFilePreparationState((prev) => ({
           ...prev,
           [index]: {
@@ -380,7 +386,7 @@ export default function UploadPage({
           },
         }));
       }
-    });
+    }
   }
 
   function applySelectedFiles(selectedFiles, resetNativeInput) {
@@ -439,25 +445,8 @@ export default function UploadPage({
     });
   }
 
-  async function openFileManagerPicker() {
+  function openFileManagerPicker() {
     setUploadNotice("");
-    const picker = window.showOpenFilePicker;
-    if (typeof picker === "function") {
-      try {
-        const handles = await picker({
-          multiple: true,
-          excludeAcceptAllOption: false,
-          types: FILE_MANAGER_PICKER_TYPES,
-        });
-        const files = await Promise.all(handles.map((handle) => handle.getFile()));
-        applySelectedFiles(files);
-        return;
-      } catch (error) {
-        if (error?.name === "AbortError") return;
-        console.warn("File System Access picker failed; falling back to input picker.", error);
-      }
-    }
-
     fileInputRef.current?.click();
   }
 
@@ -916,7 +905,7 @@ export default function UploadPage({
               <button
                 type="button"
                 onClick={() => handleLocalPreview(0)}
-                className="flex min-h-11 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 shadow-sm transition"
+                className="flex min-h-[44px] items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 shadow-sm transition"
               >
                 <Eye size={14} /> Preview
               </button>
