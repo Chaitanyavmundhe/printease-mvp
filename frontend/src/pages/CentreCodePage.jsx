@@ -30,9 +30,10 @@ export default function CentreCodePage({
     await selectCentreByCode(code);
   }, [selectCentreByCode, setCentreCode]);
 
+  const [centreSort, setCentreSort] = useState("smart");
   const filteredCentres = useMemo(
-    () => rankCentres(centres, { userLocation, query: centreCode }),
-    [centreCode, centres, userLocation]
+    () => rankCentres(centres, { userLocation, query: centreCode, sortBy: centreSort }),
+    [centreCode, centres, userLocation, centreSort]
   );
 
   const mappableCentres = useMemo(
@@ -55,7 +56,11 @@ export default function CentreCodePage({
     ? "Finding..."
     : userLocation
       ? "Location active"
-      : "Use my location";
+      : userLocationStatus === "denied"
+        ? "Location denied"
+        : userLocationStatus === "unsupported"
+          ? "Location not supported"
+          : "Use my location";
 
   return (
     <div className="space-y-8">
@@ -87,6 +92,16 @@ export default function CentreCodePage({
                 placeholder="Search by name, code, area, or price under 5"
                 className="w-full rounded-2xl border bg-slate-50 py-4 pl-14 pr-6 text-lg outline-none focus:bg-white focus:ring-2 focus:ring-slate-300 transition-all"
               />
+            </div>
+            <div className="flex gap-2">
+              <select
+                value={centreSort}
+                onChange={(e) => setCentreSort(e.target.value)}
+                className="w-full rounded-2xl border bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-slate-300"
+              >
+                <option value="smart">Smart Sort</option>
+                <option value="price">Lowest Price</option>
+              </select>
             </div>
             <div className="flex flex-col sm:flex-row gap-3">
               <button

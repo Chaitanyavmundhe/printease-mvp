@@ -141,9 +141,10 @@ export default function HomePage({
   };
 
   const isAndroid = typeof navigator !== "undefined" ? /android/i.test(navigator.userAgent || navigator.vendor || window.opera) : false;
+  const [centreSort, setCentreSort] = useState("smart");
   const filteredCentres = useMemo(
-    () => rankCentres(centres, { orders, userLocation, query: centreSearch }),
-    [centreSearch, centres, orders, userLocation]
+    () => rankCentres(centres, { orders, userLocation, query: centreSearch, sortBy: centreSort }),
+    [centreSearch, centres, orders, userLocation, centreSort]
   );
 
   const mappableCentres = useMemo(
@@ -155,7 +156,11 @@ export default function HomePage({
     ? "Finding..."
     : userLocation
       ? "Location active"
-      : "Use my location";
+      : userLocationStatus === "denied"
+        ? "Location denied"
+        : userLocationStatus === "unsupported"
+          ? "Location not supported"
+          : "Use my location";
 
   function openMapForCentre(centreToFocus = null) {
     setMapCentreToFocus(centreToFocus?.id ? centreToFocus : null);
@@ -385,6 +390,16 @@ export default function HomePage({
                 className="w-full rounded-2xl border bg-white py-3 pl-11 pr-4 text-sm outline-none focus:ring-2 focus:ring-slate-300"
               />
             </label>
+            <div className="flex gap-2">
+              <select
+                value={centreSort}
+                onChange={(e) => setCentreSort(e.target.value)}
+                className="rounded-2xl border bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-slate-300"
+              >
+                <option value="smart">Smart Sort</option>
+                <option value="price">Lowest Price</option>
+              </select>
+            </div>
             <div className="grid gap-2 sm:grid-cols-3">
               <button
                 type="button"

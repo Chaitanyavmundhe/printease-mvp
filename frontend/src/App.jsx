@@ -378,7 +378,7 @@ export default function App() {
       () => {
         setUserLocationStatus("denied");
       },
-      { enableHighAccuracy: false, timeout: 8000, maximumAge: 120000 }
+      { enableHighAccuracy: false, timeout: 15000, maximumAge: 120000 }
     );
   }, []);
 

@@ -190,7 +190,7 @@ export function centreMatchesSearch(centre, query) {
   return tokenizeSearch(normalized).every((token) => haystack.includes(token));
 }
 
-export function rankCentres(centres = [], { orders = [], userLocation = null, query = "" } = {}) {
+export function rankCentres(centres = [], { orders = [], userLocation = null, query = "", sortBy = "smart" } = {}) {
   const usageProfile = buildCentreUsageProfile(orders);
   const now = Date.now();
 
@@ -211,6 +211,18 @@ export function rankCentres(centres = [], { orders = [], userLocation = null, qu
       };
     })
     .sort((left, right) => {
+      const rightAvailable = right.printerOnline || String(right.status || "").toLowerCase() === "available" ? 1 : 0;
+      const leftAvailable = left.printerOnline || String(left.status || "").toLowerCase() === "available" ? 1 : 0;
+      if (rightAvailable !== leftAvailable) return rightAvailable - leftAvailable;
+
+      if (sortBy === "price") {
+        if (left.lowestPrice !== right.lowestPrice) {
+          if (left.lowestPrice === null) return 1;
+          if (right.lowestPrice === null) return -1;
+          return left.lowestPrice - right.lowestPrice;
+        }
+      }
+
       const leftDistance = left.distanceKm;
       const rightDistance = right.distanceKm;
 
@@ -221,10 +233,6 @@ export function rankCentres(centres = [], { orders = [], userLocation = null, qu
         if (leftDistance === null) return 1;
         if (rightDistance === null) return -1;
       }
-
-      const rightAvailable = right.printerOnline || String(right.status || "").toLowerCase() === "available" ? 1 : 0;
-      const leftAvailable = left.printerOnline || String(left.status || "").toLowerCase() === "available" ? 1 : 0;
-      if (rightAvailable !== leftAvailable) return rightAvailable - leftAvailable;
 
       if (right.usageCount !== left.usageCount) return right.usageCount - left.usageCount;
       if (right.recentUseScore !== left.recentUseScore) return right.recentUseScore - left.recentUseScore;
