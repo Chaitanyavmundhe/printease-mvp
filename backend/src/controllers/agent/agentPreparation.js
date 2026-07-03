@@ -345,7 +345,9 @@ const getPredownloadCandidates = asyncHandler(async (req, res) => {
       orderCode: candidate.orderCode,
       pickupCode: candidate.pickupCode,
     };
-    const printReadyFile = await getPrintReadyFile(order, candidate.file);
+    const printReadyFile = await getPrintReadyFile(order, candidate.file, {
+      allowDesktopPreparationSource: true
+    });
     const sourceFileUrl = printReadyFile?.fileUrl || (
       candidate.file.document?.storagePath
         ? `private://${getSupabaseBucketName()}/${candidate.file.document.storagePath}`
@@ -565,7 +567,9 @@ export const getPendingVerificationJobs = asyncHandler(async (req, res) => {
       id: candidate.orderId,
       orderCode: candidate.orderCode,
     };
-    const printReadyFile = await getPrintReadyFile(order, candidate.file);
+    const printReadyFile = await getPrintReadyFile(order, candidate.file, {
+      allowDesktopPreparationSource: true
+    });
     const sourceFileUrl = printReadyFile?.fileUrl || (
       candidate.file.document?.storagePath
         ? `private://${getSupabaseBucketName()}/${candidate.file.document.storagePath}`

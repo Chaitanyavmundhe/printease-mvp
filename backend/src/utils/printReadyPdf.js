@@ -125,7 +125,7 @@ async function buildPrintablePdf(sourceBytes, order, orderFile) {
   return convertPrintableUploadToPdf(sourceBytes, orderFile);
 }
 
-export async function getPrintReadyFile(order, orderFile) {
+export async function getPrintReadyFile(order, orderFile, { allowDesktopPreparationSource = false } = {}) {
   const privateReference = parsePrivateStorageReference(orderFile.document?.fileUrl);
   const bucket = privateReference?.bucket || getSupabaseBucketName();
   const sourcePath = orderFile.document?.printReadyStoragePath || privateReference?.storagePath || orderFile.document?.storagePath;
@@ -139,6 +139,10 @@ export async function getPrintReadyFile(order, orderFile) {
 
   if (!isPrintableUploadMimeType(sourceType)) {
     if (isDesktopPreparableMimeType(sourceType)) {
+      if (!allowDesktopPreparationSource) {
+        return null;
+      }
+
       return {
         fileUrl: `private://${bucket}/${sourcePath}`,
         fileSha256: orderFile.document?.fileSha256,

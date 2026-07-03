@@ -5,7 +5,7 @@ import DocumentPreviewModal from "../components/DocumentPreviewModal";
 import Row from "../components/Row";
 import { calculateTotalAmount, getPricePerPage, countSelectedPages } from "../utils/price";
 import { countSelectedPagesPreview, estimatePrintablePages, estimateGuestLimitExceeded, estimateSheets, estimatePricePreview, estimatePrintBreakdown } from "../utils/printEstimate";
-import { ALLOWED_UPLOAD_ACCEPT, isAllowedUploadFile } from "../constants/upload";
+import { FILE_MANAGER_PICKER_TYPES, FILE_MANAGER_UPLOAD_ACCEPT, isAllowedUploadFile } from "../constants/upload";
 import { detectUploadFileKind } from "../utils/filePreparation/detectUploadFileKind";
 import {
   PREPARATION_STATUS,
@@ -61,6 +61,7 @@ export default function UploadPage({
 }) {
   const [selectedFileIndexes, setSelectedFileIndexes] = useState([]);
   const [modalFileIndex, setModalFileIndex] = useState(null);
+  const fileInputRef = useRef(null);
   const longPressTimerRef = useRef(null);
   const preparationRunRef = useRef(0);
   const filePreparationStateRef = useRef({});
@@ -382,17 +383,26 @@ export default function UploadPage({
     });
   }
 
-  function handleFileChange(event) {
+  function applySelectedFiles(selectedFiles, resetNativeInput) {
     try {
       setBackendPrice?.(null);
       if (setReprintSourceDocuments) setReprintSourceDocuments([]);
       if (setReprintDocumentExpired) setReprintDocumentExpired(false);
-      const files = Array.from(event.target.files || []);
+      const incomingFiles = Array.from(selectedFiles || []);
+      const files = incomingFiles.filter(isAllowedUploadFile);
+      if (incomingFiles.length && files.length !== incomingFiles.length) {
+        setUploadNotice("Some selected files are not supported and were skipped.");
+      }
+      if (incomingFiles.length && files.length === 0) {
+        setUploadNotice("Selected file type is not supported. Please choose a PDF, image, Office, OpenDocument, text, CSV, or JSON file.");
+        resetNativeInput?.();
+        return;
+      }
       
       const largeOfficeFiles = files.filter(f => detectUploadFileKind(f) === "office" && f.size > 100 * 1024 * 1024);
       if (largeOfficeFiles.length > 0) {
         alert("One or more Office documents exceed 100MB. Please convert them to PDF yourself and upload the PDF.");
-        event.target.value = "";
+        resetNativeInput?.();
         return;
       }
   
@@ -421,6 +431,34 @@ export default function UploadPage({
       console.error("File selection failed:", error);
       setUploadNotice("Could not read selected file. Please try again.");
     }
+  }
+
+  function handleFileChange(event) {
+    applySelectedFiles(event.target.files, () => {
+      event.target.value = "";
+    });
+  }
+
+  async function openFileManagerPicker() {
+    setUploadNotice("");
+    const picker = window.showOpenFilePicker;
+    if (typeof picker === "function") {
+      try {
+        const handles = await picker({
+          multiple: true,
+          excludeAcceptAllOption: false,
+          types: FILE_MANAGER_PICKER_TYPES,
+        });
+        const files = await Promise.all(handles.map((handle) => handle.getFile()));
+        applySelectedFiles(files);
+        return;
+      } catch (error) {
+        if (error?.name === "AbortError") return;
+        console.warn("File System Access picker failed; falling back to input picker.", error);
+      }
+    }
+
+    fileInputRef.current?.click();
   }
 
   useEffect(() => {
@@ -799,12 +837,24 @@ export default function UploadPage({
         )}
 
         <div className="mt-4 sm:mt-6">
-          <label className="cursor-pointer rounded-2xl border border-dashed bg-slate-50 p-4 sm:p-6 text-center hover:bg-slate-100 flex flex-col mb-4">
-            <input type="file" accept={ALLOWED_UPLOAD_ACCEPT} multiple onChange={handleFileChange} className="hidden" />
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept={FILE_MANAGER_UPLOAD_ACCEPT}
+            multiple
+            onChange={handleFileChange}
+            className="hidden"
+            tabIndex={-1}
+          />
+          <button
+            type="button"
+            onClick={openFileManagerPicker}
+            className="mb-4 flex w-full cursor-pointer flex-col rounded-2xl border border-dashed bg-slate-50 p-4 text-center hover:bg-slate-100 sm:p-6"
+          >
             {displayFiles.length > 0 ? <FileText className="mx-auto mb-3 text-slate-400" size={32} /> : <Upload className="mx-auto mb-3 text-slate-400" size={32} />}
             <p className="font-semibold text-sm sm:text-base px-2 leading-tight break-words">{selectedFileLabel || "Choose one or more documents"}</p>
             <p className="text-xs sm:text-sm text-slate-500 mt-1 px-2 leading-tight">{selectedFileCount ? (selectedFileSize ? `${Math.ceil(selectedFileSize / 1024)} KB selected` : "Documents selected from history") : "Select multiple supported files"}</p>
-          </label>
+          </button>
 
           {uploadNotice && (
             <div className="mb-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">

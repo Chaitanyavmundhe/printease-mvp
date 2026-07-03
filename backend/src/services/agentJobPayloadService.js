@@ -44,10 +44,13 @@ export async function resolveDownloadUrl(fileUrl) {
   return data.signedUrl;
 }
 
+function isPdfPayloadFile(file) {
+  return String(file?.fileType || '').toLowerCase() === 'application/pdf' && Boolean(file?.fileUrl);
+}
+
 export async function toAgentJobPayload(job) {
   if (!job) return null;
 
-  const signedFileUrl = await resolveDownloadUrl(job.fileUrl);
   const [order, orderFiles, hub] = await Promise.all([
     findOrderByIdOrCode(job.orderId),
     listOrderFiles(job.orderId),
@@ -105,9 +108,10 @@ export async function toAgentJobPayload(job) {
       conversionPlacement: file.document?.conversionPlacement || null,
       requiresDesktopPreparation: Boolean(file.document?.requiresDesktopPreparation)
     };
-  })).then((items) => items.filter((file) => file.fileUrl));
+  })).then((items) => items.filter(isPdfPayloadFile));
 
   const basePrintOptions = job.printOptions || files[0]?.printOptions || {};
+  const primaryFile = files[0] || null;
 
   return {
     jobId: job.id,
@@ -118,10 +122,10 @@ export async function toAgentJobPayload(job) {
     agentId: job.agentId,
     sourceBackendUrl: OFFICIAL_BACKEND_URL,
     files,
-    fileUrl: signedFileUrl,
-    fileSha256: job.fileSha256,
-    fileHash: job.fileSha256,
-    fileType: job.fileType,
+    fileUrl: primaryFile?.fileUrl || null,
+    fileSha256: primaryFile?.fileSha256 || null,
+    fileHash: primaryFile?.fileSha256 || null,
+    fileType: primaryFile?.fileType || null,
     copies: job.copies,
     paperSize: job.paperSize,
     colorMode: job.colorMode,
@@ -132,7 +136,7 @@ export async function toAgentJobPayload(job) {
     },
     paymentVerified: true,
     approvedForPrint: true,
-    printable: true,
+    printable: files.length > 0,
     printerName: job.printerName || null,
     printerProfiles,
     status: job.status,

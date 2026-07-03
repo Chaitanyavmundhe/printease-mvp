@@ -18,6 +18,7 @@ import {
 import { handleDesktopAutoRegistration } from "./utils/desktopAutoRegistration";
 import { prepareBrowserPrintReadyFile } from "./utils/filePreparation/prepareBrowserPrintReadyFile";
 import { buildPaymentPriceFromOrder } from "./utils/paymentOrderPricing";
+import { rankCentres } from "./utils/centreDiscovery";
 
 import { persistAuthSession, getPageFromPath, buildPrintOptions, normalizeCentre, normalizeReprintSourceDocument, upsertCentre, toFrontendRole, findCentreForUser, toCurrentUser, normalizeUsername, getUsernameBaseCandidates, getSupabaseDisplayName, generateStrongPasswordValue, normalizeOrder, upsertOrder, clearAuthSession, ROUTES } from "./utils/appHelpers.jsx";
 import { localDbDelete, localDbDeletePrefix, localDbGet, localDbSet } from "./utils/localDb";
@@ -42,6 +43,8 @@ export default function App() {
   const page = getPageFromPath(location.pathname);
   const [profileOpen, setProfileOpen] = useState(false);
   const [desktopAvailable, setDesktopAvailable] = useState(() => isDesktop());
+  const [userLocation, setUserLocation] = useState(null);
+  const [userLocationStatus, setUserLocationStatus] = useState("idle");
   const [authRole, setAuthRole] = useState("user");
   const [authMode, setAuthMode] = useState("login");
   const [currentUser, setCurrentUser] = useState(() => {
@@ -356,28 +359,60 @@ export default function App() {
     hubActivityStore.refresh = () => loadOrdersForSession(currentUser, centres);
   }, [currentUser, centres]);
 
-  const prioritizedCentres = useMemo(() => {
-    const usageByCentre = new Map();
-
-    for (const item of orders) {
-      const keys = [item.centreId, item.centreCode].filter(Boolean);
-      for (const key of keys) {
-        usageByCentre.set(String(key), (usageByCentre.get(String(key)) || 0) + 1);
-      }
+  const requestUserLocation = useCallback(() => {
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setUserLocationStatus("unsupported");
+      return;
     }
 
-    return [...centres].sort((left, right) => {
-      const rightUsage = (usageByCentre.get(String(right.id)) || 0) + (usageByCentre.get(String(right.code)) || 0);
-      const leftUsage = (usageByCentre.get(String(left.id)) || 0) + (usageByCentre.get(String(left.code)) || 0);
-      if (rightUsage !== leftUsage) return rightUsage - leftUsage;
+    setUserLocationStatus("locating");
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setUserLocation({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy: position.coords.accuracy,
+        });
+        setUserLocationStatus("ready");
+      },
+      () => {
+        setUserLocationStatus("denied");
+      },
+      { enableHighAccuracy: false, timeout: 8000, maximumAge: 120000 }
+    );
+  }, []);
 
-      const rightAvailable = right.printerOnline || String(right.status || "").toLowerCase() === "available" ? 1 : 0;
-      const leftAvailable = left.printerOnline || String(left.status || "").toLowerCase() === "available" ? 1 : 0;
-      if (rightAvailable !== leftAvailable) return rightAvailable - leftAvailable;
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !navigator.permissions || !navigator.geolocation) return undefined;
 
-      return String(left.name || "").localeCompare(String(right.name || ""));
-    });
-  }, [centres, orders]);
+    let cancelled = false;
+    let permissionStatus = null;
+    navigator.permissions
+      .query({ name: "geolocation" })
+      .then((status) => {
+        if (cancelled) return;
+        permissionStatus = status;
+        if (status.state === "granted") requestUserLocation();
+        status.onchange = () => {
+          if (status.state === "granted") requestUserLocation();
+          if (status.state === "denied") {
+            setUserLocation(null);
+            setUserLocationStatus("denied");
+          }
+        };
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+      if (permissionStatus) permissionStatus.onchange = null;
+    };
+  }, [requestUserLocation]);
+
+  const prioritizedCentres = useMemo(
+    () => rankCentres(centres, { orders, userLocation }),
+    [centres, orders, userLocation]
+  );
 
   useEffect(() => {
     if (authMode !== "register" && authMode !== "profile") return;
@@ -2017,6 +2052,7 @@ export default function App() {
       startDirectUpload, orders, centres, startRazorpayForExistingOrder, createUpiQrForExistingOrder, openPaymentRequest,
       reprintWithSettings, reprintWithSameSettings,
       prioritizedCentres, selectCentreAndUpload, selectCentreByCode, loadOrdersForSession, applySavedOrderUpdate,
+      userLocation, userLocationStatus, requestUserLocation,
       generateStrongPassword, approvalReturnPath, documentFile, setDocumentFile, setReprintDocumentExpired,
       pricePerPage, estimatedSelectedPageCount, totalAmount, backendPrice, setBackendPrice, refreshActivePaymentOrder, lastOrdersUpdatedAt
     }} />

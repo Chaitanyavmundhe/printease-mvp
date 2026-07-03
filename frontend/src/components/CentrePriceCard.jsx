@@ -15,7 +15,15 @@ export default function CentrePriceCard({ centre, onUpload, onOpenMap }) {
           {hasLocation && (
             <p className="mt-1 text-xs text-slate-500 flex items-center gap-1">
               <MapPin size={11} className="text-emerald-600 flex-shrink-0" />
-              <span className="truncate">{[centre.city, centre.area].filter(Boolean).join(", ") || "Location shared"}</span>
+              <span className="truncate">
+                {[centre.city, centre.area].filter(Boolean).join(", ") || "Location shared"}
+                {centre.distanceLabel ? ` · ${centre.distanceLabel}` : ""}
+              </span>
+            </p>
+          )}
+          {centre.usageCount > 0 && (
+            <p className="mt-1 text-xs font-medium text-slate-500">
+              Used {centre.usageCount} time{centre.usageCount === 1 ? "" : "s"} from this account
             </p>
           )}
         </div>

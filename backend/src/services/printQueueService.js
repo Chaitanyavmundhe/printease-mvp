@@ -9,7 +9,6 @@ import {
   updateOrderStatus
 } from '../db/repository.js';
 import { OFFICIAL_BACKEND_URL } from '../config/agent.js';
-import { getSupabaseBucketName } from '../config/supabase.js';
 import { generateId } from '../utils/generateCode.js';
 import { getAgentLiveStatus, getPrinterCondition } from '../utils/hubAgentAnalytics.js';
 import { getPrintReadyFile } from '../utils/printReadyPdf.js';
@@ -63,7 +62,7 @@ export async function queuePrintJobIfPaymentReady(orderId, hubId, client) {
     };
   }
 
-  const { firstFile, storagePath, fileSha256, fileType } = readiness;
+  const { firstFile, fileSha256 } = readiness;
 
   const targetAgent = await findBestAgentForHub(hubId, client);
   const printerHint = targetAgent
@@ -75,15 +74,23 @@ export async function queuePrintJobIfPaymentReady(orderId, hubId, client) {
     pickupCode: orderWithDocument.pickup_code
   }, firstFile);
 
+  if (!firstPrintReadyFile?.fileUrl || firstPrintReadyFile.fileType !== 'application/pdf') {
+    return {
+      queued: false,
+      blocked: 'PRINT_READY_PDF_REQUIRED',
+      message: paymentReadyMessage(paymentStatus, 'Order is waiting for a verified PDF before desktop printing.')
+    };
+  }
+
   const printJob = await createPrintJob({
     id: generateId(),
     orderId,
     hubId,
     agentId: targetAgent?.id || null,
     printerName: printerHint || null,
-    fileUrl: firstPrintReadyFile?.fileUrl || `private://${getSupabaseBucketName()}/${storagePath}`,
-    fileSha256: firstPrintReadyFile?.fileSha256 || fileSha256,
-    fileType: firstPrintReadyFile?.fileType || fileType,
+    fileUrl: firstPrintReadyFile.fileUrl,
+    fileSha256: firstPrintReadyFile.fileSha256 || fileSha256,
+    fileType: firstPrintReadyFile.fileType,
     copies: firstFile.copies || orderWithDocument.copies,
     paperSize: firstFile.printOptions?.paperSize || 'A4',
     colorMode: firstFile.printOptions?.colorMode || orderWithDocument.color_type || 'bw',

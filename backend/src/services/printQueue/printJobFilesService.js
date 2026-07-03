@@ -52,12 +52,16 @@ export async function getPrintJobFiles(printJobId, client) {
 }
 
 function mapOrderFileToPrintJobFile({ printJobId, orderFile }) {
+  const hasPrintReadyPdf = Boolean(orderFile.document?.printReadyStoragePath && orderFile.document?.printReadySha256);
+
   return {
     printJobId,
     orderFileId: orderFile.id,
     documentId: orderFile.document?.id || orderFile.documentId,
-    fileSha256: orderFile.document?.fileSha256 || null,
-    fileType: orderFile.document?.fileType || 'application/pdf',
+    fileSha256: hasPrintReadyPdf
+      ? orderFile.document.printReadySha256
+      : orderFile.document?.fileSha256 || null,
+    fileType: hasPrintReadyPdf ? 'application/pdf' : orderFile.document?.fileType || 'application/pdf',
     copies: orderFile.copies,
     printOptions: orderFile.printOptions || {},
     printSequence: orderFile.printSequence || 0

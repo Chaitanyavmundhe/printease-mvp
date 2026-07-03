@@ -22,13 +22,14 @@ import {
   withTransaction
 } from '../db/repository.js';
 import { OFFICIAL_BACKEND_URL } from '../config/agent.js';
-import { getSupabaseBucketName } from '../config/supabase.js';
 import { hashAgentSecret } from '../utils/agentCrypto.js';
 import { buildHubAgentAnalytics, decorateAgent, decoratePrinter } from '../utils/hubAgentAnalytics.js';
 import { generateId } from '../utils/generateCode.js';
 import { PRINT_JOB_STATUSES, PAIRING_STATUSES } from '../constants/statuses.js';
 import { createPrintJobFilesForOrder } from '../services/printQueue/printJobFilesService.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
+import { verifyPrintFilesReadiness } from '../services/printJobReadinessService.js';
+import { getPrintReadyFile } from '../utils/printReadyPdf.js';
 
 function getHubId(req) {
   return req.user?.centreId || req.user?.hubId;
@@ -271,22 +272,26 @@ export const sendOrderToAgent = asyncHandler(async (req, res) => {
   }
 
   const orderFiles = await listOrderFiles(order.id);
-  const firstFile = orderFiles[0];
-  const storagePath = firstFile?.document?.storagePath || order.document_storage_path;
-  const fileSha256 = firstFile?.document?.fileSha256 || order.document_file_sha256;
-  const fileType = firstFile?.document?.fileType || order.document_file_type || 'application/pdf';
+  const readiness = verifyPrintFilesReadiness(orderFiles, order);
 
-  if (!orderFiles.length || !storagePath || !fileSha256) {
+  if (!orderFiles.length || !readiness.isReady) {
     return res.status(400).json({
       success: false,
-      message: 'Order document is not stored in secure private storage'
+      message: 'This order is waiting for all files to become verified PDFs before it can be sent to the desktop agent.'
     });
   }
 
-  if (fileType !== 'application/pdf') {
+  const firstFile = readiness.firstFile;
+  const printReadyFile = await getPrintReadyFile({
+    id: order.id,
+    orderCode: order.order_code || order.orderCode,
+    pickupCode: order.pickup_code || order.pickupCode
+  }, firstFile);
+
+  if (!printReadyFile?.fileUrl || printReadyFile.fileType !== 'application/pdf') {
     return res.status(400).json({
       success: false,
-      message: 'Only PDF documents can be sent to the local agent'
+      message: 'This order is waiting for a verified PDF before it can be sent to the desktop agent.'
     });
   }
 
@@ -328,9 +333,9 @@ export const sendOrderToAgent = asyncHandler(async (req, res) => {
       hubId,
       agentId: selectedAgent.id,
       printerName: printerHint || null,
-      fileUrl: `private://${getSupabaseBucketName()}/${storagePath}`,
-      fileSha256,
-      fileType,
+      fileUrl: printReadyFile.fileUrl,
+      fileSha256: printReadyFile.fileSha256 || readiness.fileSha256,
+      fileType: printReadyFile.fileType,
       copies: order.copies,
       paperSize: 'A4',
       colorMode: order.color_type || 'bw',

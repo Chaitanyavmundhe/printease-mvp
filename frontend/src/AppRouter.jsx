@@ -46,6 +46,7 @@ export default function AppRouter(props) {
     startDirectUpload, orders, centres, startRazorpayForExistingOrder, createUpiQrForExistingOrder, openPaymentRequest,
     reprintWithSettings, reprintWithSameSettings,
     prioritizedCentres, selectCentreAndUpload, selectCentreByCode, loadOrdersForSession, applySavedOrderUpdate,
+    userLocation, userLocationStatus, requestUserLocation,
     generateStrongPassword, approvalReturnPath, documentFile, setDocumentFile, setReprintDocumentExpired,
     pricePerPage, estimatedSelectedPageCount, totalAmount, backendPrice, setBackendPrice, refreshActivePaymentOrder, lastOrdersUpdatedAt
   } = props;
@@ -89,6 +90,9 @@ return (
                   refreshOrders={() => loadOrdersForSession(currentUser, centres)}
                   onOrderSaved={applySavedOrderUpdate}
                   orders={orders}
+                  userLocation={userLocation}
+                  userLocationStatus={userLocationStatus}
+                  requestUserLocation={requestUserLocation}
                 />
               }
             />
@@ -230,7 +234,7 @@ return (
             }
           />
           <Route path={ROUTES.desktopAgent} element={<DesktopAgentPage currentUser={currentUser} />} />
-          <Route path={ROUTES.centre} element={<CentreCodePage centreCode={centreCode} setCentreCode={setCentreCode} handleCentreCode={handleCentreCode} selectCentreByCode={selectCentreByCode} centres={prioritizedCentres} selectCentreAndUpload={selectCentreAndUpload} lookupLoading={centreLookupLoading} lookupError={centreLookupError} autoStartScanner={Boolean(location.state?.autoStartScanner)} />} />
+          <Route path={ROUTES.centre} element={<CentreCodePage centreCode={centreCode} setCentreCode={setCentreCode} handleCentreCode={handleCentreCode} selectCentreByCode={selectCentreByCode} centres={prioritizedCentres} selectCentreAndUpload={selectCentreAndUpload} lookupLoading={centreLookupLoading} lookupError={centreLookupError} autoStartScanner={Boolean(location.state?.autoStartScanner)} userLocation={userLocation} userLocationStatus={userLocationStatus} requestUserLocation={requestUserLocation} />} />
           <Route path={ROUTES.upload} element={<UploadPage currentUser={currentUser} startLogin={startLogin} selectedCentre={selectedCentre} documentFile={documentFile} setDocumentFile={setDocumentFile} documentFiles={documentFiles} setDocumentFiles={setDocumentFiles} reprintSourceDocuments={reprintSourceDocuments} setReprintSourceDocuments={setReprintSourceDocuments} reprintDocumentExpired={reprintDocumentExpired} setReprintDocumentExpired={setReprintDocumentExpired} multiFileConfigs={multiFileConfigs} setMultiFileConfigs={setMultiFileConfigs} documentName={documentName} setDocumentName={setDocumentName} pages={pages} setPages={setPages} selectedPages={selectedPages} setSelectedPages={setSelectedPages} copies={copies} setCopies={setCopies} colorType={colorType} setColorType={setColorType} sideType={sideType} setSideType={setSideType} paperSize={paperSize} setPaperSize={setPaperSize} pagesPerSheet={pagesPerSheet} setPagesPerSheet={setPagesPerSheet} orientation={orientation} setOrientation={setOrientation} printDpi={printDpi} setPrintDpi={setPrintDpi} scaleMode={scaleMode} setScaleMode={setScaleMode} marginMode={marginMode} setMarginMode={setMarginMode} watermark={watermark} setWatermark={setWatermark} watermarkType={watermarkType} setWatermarkType={setWatermarkType} watermarkText={watermarkText} setWatermarkText={setWatermarkText} watermarkPosition={watermarkPosition} setWatermarkPosition={setWatermarkPosition} watermarkOpacity={watermarkOpacity} setWatermarkOpacity={setWatermarkOpacity} watermarkFontSize={watermarkFontSize} setWatermarkFontSize={setWatermarkFontSize} watermarkRotation={watermarkRotation} setWatermarkRotation={setWatermarkRotation} pricePerPage={pricePerPage} estimatedSelectedPageCount={estimatedSelectedPageCount} totalAmount={totalAmount} backendPrice={backendPrice} setBackendPrice={setBackendPrice} preparePayment={preparePayment} paymentLoading={paymentLoading} paymentError={paymentError} navigate={navigate} />} />
           <Route
             path={ROUTES.payment}

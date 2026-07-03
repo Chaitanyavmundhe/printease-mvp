@@ -113,30 +113,26 @@ export async function findNextPrintJobForAgent(agentId, hubId, client) {
          from print_order_files pof
          join documents d on d.id = pof.document_id
          where pof.order_id = po.id
-           and d.storage_path is not null
-           and d.storage_path <> ''
-           and d.file_sha256 is not null
-           and d.file_sha256 <> ''
-           and (
-             lower(coalesce(d.file_type, '')) in (
-               'application/pdf',
-               'image/jpeg',
-               'image/png',
-               'image/webp',
-               'text/plain',
-               'text/csv',
-               'application/json',
-               'application/msword',
-               'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-               'application/vnd.ms-excel',
-               'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-               'application/vnd.ms-powerpoint',
-               'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-               'application/vnd.oasis.opendocument.text',
-               'application/vnd.oasis.opendocument.spreadsheet',
-               'application/vnd.oasis.opendocument.presentation'
+       )
+       and not exists (
+         select 1
+         from print_order_files pof
+         join documents d on d.id = pof.document_id
+         where pof.order_id = po.id
+           and not (
+             (
+               d.print_ready_storage_path is not null
+               and d.print_ready_storage_path <> ''
+               and d.print_ready_sha256 is not null
+               and d.print_ready_sha256 <> ''
              )
-             or d.print_ready_storage_path is not null
+             or (
+               lower(coalesce(d.file_type, '')) = 'application/pdf'
+               and d.storage_path is not null
+               and d.storage_path <> ''
+               and d.file_sha256 is not null
+               and d.file_sha256 <> ''
+             )
            )
        )
      order by pj.created_at asc

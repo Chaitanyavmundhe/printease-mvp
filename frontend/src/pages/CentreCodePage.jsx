@@ -1,8 +1,9 @@
 import { lazy, Suspense, useCallback, useMemo, useState } from "react";
-import { Search, Map } from "lucide-react";
+import { Search, Map, Navigation } from "lucide-react";
 import Card from "../components/Card";
 import CentrePriceCard from "../components/CentrePriceCard";
 import CentreScannerTile from "../components/CentreScannerTile";
+import { hasCentreLocation, rankCentres } from "../utils/centreDiscovery";
 
 // Lazy-load the map modal — only downloaded when user clicks "Map" for the first time.
 // This keeps the desktop bundle untouched since DesktopAgentPage never imports this component.
@@ -18,6 +19,9 @@ export default function CentreCodePage({
   lookupLoading,
   lookupError,
   autoStartScanner = false,
+  userLocation = null,
+  userLocationStatus = "idle",
+  requestUserLocation = () => {},
 }) {
   const [mapOpen, setMapOpen] = useState(false);
 
@@ -26,22 +30,14 @@ export default function CentreCodePage({
     await selectCentreByCode(code);
   }, [selectCentreByCode, setCentreCode]);
 
-  const filteredCentres = useMemo(() => {
-    const query = String(centreCode || "").trim().toLowerCase();
-    if (!query) return centres;
-
-    return centres.filter((centre) =>
-      [centre.name, centre.code, centre.owner, centre.status]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase()
-        .includes(query)
-    );
-  }, [centreCode, centres]);
+  const filteredCentres = useMemo(
+    () => rankCentres(centres, { userLocation, query: centreCode }),
+    [centreCode, centres, userLocation]
+  );
 
   const mappableCentres = useMemo(
-    () => centres.filter((c) => c.locationEnabled && c.latitude != null && c.longitude != null),
-    [centres]
+    () => filteredCentres.filter(hasCentreLocation),
+    [filteredCentres]
   );
 
   const [mapCentreToFocus, setMapCentreToFocus] = useState(null);
@@ -54,6 +50,12 @@ export default function CentreCodePage({
     }
     setMapOpen(true);
   }
+
+  const locationLabel = userLocationStatus === "locating"
+    ? "Finding..."
+    : userLocation
+      ? "Location active"
+      : "Use my location";
 
   return (
     <div className="space-y-8">
@@ -82,7 +84,7 @@ export default function CentreCodePage({
                     handleCentreCode();
                   }
                 }}
-                placeholder="Search by name or code (e.g. 2045)"
+                placeholder="Search by name, code, area, or price under 5"
                 className="w-full rounded-2xl border bg-slate-50 py-4 pl-14 pr-6 text-lg outline-none focus:bg-white focus:ring-2 focus:ring-slate-300 transition-all"
               />
             </div>
@@ -93,6 +95,14 @@ export default function CentreCodePage({
                 className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-2xl bg-slate-900 px-8 py-4 font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50"
               >
                 Search Online
+              </button>
+              <button
+                type="button"
+                onClick={requestUserLocation}
+                disabled={userLocationStatus === "locating"}
+                className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 font-semibold text-emerald-700 hover:bg-emerald-100 transition disabled:opacity-60"
+              >
+                <Navigation size={18} /> {locationLabel}
               </button>
               {mappableCentres.length > 0 ? (
                 <button
@@ -164,6 +174,7 @@ export default function CentreCodePage({
             }}
             onSelectCentre={(centre) => selectCentreAndUpload(centre)}
             focusCentre={mapCentreToFocus}
+            initialUserLocation={userLocation}
           />
         </Suspense>
       )}

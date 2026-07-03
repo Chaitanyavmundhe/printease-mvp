@@ -54,6 +54,7 @@ function buildPopupHtml(centre) {
   const statusLabel = centre.printerOnline ? "Available" : "Unavailable";
   const addrParts = [centre.addressText, centre.area, centre.city].filter(Boolean);
   const addr = addrParts.map(escapeHtml).join(", ");
+  const distanceLabel = escapeHtml(centre.distanceLabel || "");
   const safeName = escapeHtml(centre.name);
   const safeCode = escapeHtml(centre.code);
   const popupButtonId = `map-upload-${safeDomId(centre.id || centre.code)}`;
@@ -63,6 +64,7 @@ function buildPopupHtml(centre) {
       <div style="font-weight:700;font-size:15px;margin-bottom:4px">${safeName}</div>
       <div style="font-size:12px;color:#64748b;margin-bottom:6px">Code: <b>${safeCode}</b></div>
       <span style="display:inline-block;background:${statusColor}20;color:${statusColor};font-size:11px;font-weight:600;border-radius:999px;padding:2px 10px;margin-bottom:8px">${statusLabel}</span>
+      ${distanceLabel ? `<div style="font-size:12px;color:#059669;margin-bottom:6px;font-weight:600">↔ ${distanceLabel}</div>` : ""}
       ${addr ? `<div style="font-size:12px;color:#475569;margin-bottom:8px">📍 ${addr}</div>` : ""}
       <div style="background:#f8fafc;border-radius:8px;padding:8px;font-size:11px;color:#334155;margin-bottom:10px">
         <div>B/W Single: ₹${centre.bwSingle ?? "—"}/page</div>
@@ -77,16 +79,40 @@ function buildPopupHtml(centre) {
   `;
 }
 
-export default function CentreMapModal({ centres, onClose, onSelectCentre, focusCentre }) {
+export default function CentreMapModal({ centres, onClose, onSelectCentre, focusCentre, initialUserLocation = null }) {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
-  const [userLocation, setUserLocation] = useState(null);
+  const userMarkerRef = useRef(null);
+  const [userLocation, setUserLocation] = useState(initialUserLocation);
   const [locationDenied, setLocationDenied] = useState(false);
   const [locating, setLocating] = useState(false);
 
   const mappable = centres.filter(
     (c) => c.locationEnabled && c.latitude != null && c.longitude != null
   );
+
+  function showUserLocation(map, location, openPopup = false) {
+    if (!map || !location) return;
+    const latitude = Number(location.latitude);
+    const longitude = Number(location.longitude);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
+
+    if (userMarkerRef.current) {
+      userMarkerRef.current.setLatLng([latitude, longitude]);
+    } else {
+      userMarkerRef.current = L.circleMarker([latitude, longitude], {
+        radius: 8,
+        color: "#2563eb",
+        fillColor: "#3b82f6",
+        fillOpacity: 0.8,
+        weight: 2,
+      })
+        .addTo(map)
+        .bindPopup("Your location");
+    }
+
+    if (openPopup) userMarkerRef.current.openPopup();
+  }
 
   useEffect(() => {
     if (!mapRef.current || mapInstanceRef.current) return;
@@ -107,6 +133,8 @@ export default function CentreMapModal({ centres, onClose, onSelectCentre, focus
         '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
       maxZoom: 19,
     }).addTo(map);
+
+    showUserLocation(map, initialUserLocation, false);
 
     // Add hub markers
     mappable.forEach((centre) => {
@@ -133,10 +161,17 @@ export default function CentreMapModal({ centres, onClose, onSelectCentre, focus
       });
     });
 
-    // Fit bounds to all markers if multiple
-    if (mappable.length > 1) {
-      const bounds = L.latLngBounds(mappable.map((c) => [c.latitude, c.longitude]));
+    const boundPoints = mappable.map((c) => [c.latitude, c.longitude]);
+    if (initialUserLocation && Number.isFinite(Number(initialUserLocation.latitude)) && Number.isFinite(Number(initialUserLocation.longitude))) {
+      boundPoints.push([Number(initialUserLocation.latitude), Number(initialUserLocation.longitude)]);
+    }
+
+    // Fit bounds to centres plus the private browser-only user marker.
+    if (boundPoints.length > 1) {
+      const bounds = L.latLngBounds(boundPoints);
       map.fitBounds(bounds, { padding: [48, 48] });
+    } else if (boundPoints.length === 1) {
+      map.setView(boundPoints[0], 14);
     }
 
     return () => {
@@ -144,6 +179,12 @@ export default function CentreMapModal({ centres, onClose, onSelectCentre, focus
       mapInstanceRef.current = null;
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!initialUserLocation) return;
+    setUserLocation(initialUserLocation);
+    showUserLocation(mapInstanceRef.current, initialUserLocation, false);
+  }, [initialUserLocation]);
 
   useEffect(() => {
     if (!mapInstanceRef.current || !focusCentre || focusCentre.latitude == null || focusCentre.longitude == null) return;
@@ -164,16 +205,7 @@ export default function CentreMapModal({ centres, onClose, onSelectCentre, focus
         const map = mapInstanceRef.current;
         if (!map) return;
         map.setView([latitude, longitude], 14);
-        L.circleMarker([latitude, longitude], {
-          radius: 8,
-          color: "#2563eb",
-          fillColor: "#3b82f6",
-          fillOpacity: 0.8,
-          weight: 2,
-        })
-          .addTo(map)
-          .bindPopup("Your location")
-          .openPopup();
+        showUserLocation(map, { latitude, longitude }, true);
       },
       () => {
         setLocating(false);

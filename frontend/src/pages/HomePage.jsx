@@ -1,14 +1,17 @@
-import { useCallback, useMemo, useState, useEffect } from "react";
+import { lazy, Suspense, useCallback, useMemo, useState, useEffect } from "react";
 import { motion } from "framer-motion";
 
-import { User, Upload, Store, Plus, Building2, Search, Download, QrCode } from "lucide-react";
+import { User, Upload, Store, Plus, Building2, Search, Download, QrCode, Map, Navigation } from "lucide-react";
 import Card from "../components/Card";
 import CentrePriceCard from "../components/CentrePriceCard";
 import CameraScanLayer from "../components/CameraScanLayer";
 import CentreScannerTile from "../components/CentreScannerTile";
 import HubActiveOrdersManager from "../components/HubActiveOrdersManager";
+import { hasCentreLocation, rankCentres } from "../utils/centreDiscovery";
 
 import QRScanner from "../components/QRScanner";
+
+const CentreMapModal = lazy(() => import("../components/CentreMapModal"));
 
 const SCANNER_MODE_KEY = "printease_scanner_mode";
 const LATEST_DESKTOP_RELEASE_URL = "https://github.com/adityasomde/printease-desk/releases/latest";
@@ -40,10 +43,15 @@ export default function HomePage({
   refreshOrders,
   onOrderSaved,
   orders,
+  userLocation = null,
+  userLocationStatus = "idle",
+  requestUserLocation = () => {},
 }) {
   const [deferredPrompt, setDeferredPrompt] = useState(null);
   const [centreSearch, setCentreSearch] = useState("");
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [mapOpen, setMapOpen] = useState(false);
+  const [mapCentreToFocus, setMapCentreToFocus] = useState(null);
   const [heroScannerActive, setHeroScannerActive] = useState(false);
   const [heroScannerError, setHeroScannerError] = useState("");
   const [scannerMode, setScannerMode] = useState(getSavedScannerMode);
@@ -133,18 +141,26 @@ export default function HomePage({
   };
 
   const isAndroid = typeof navigator !== "undefined" ? /android/i.test(navigator.userAgent || navigator.vendor || window.opera) : false;
-  const filteredCentres = useMemo(() => {
-    const query = centreSearch.trim().toLowerCase();
-    if (!query) return centres;
+  const filteredCentres = useMemo(
+    () => rankCentres(centres, { orders, userLocation, query: centreSearch }),
+    [centreSearch, centres, orders, userLocation]
+  );
 
-    return centres.filter((centre) => {
-      return [centre.name, centre.code, centre.owner, centre.status]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase()
-        .includes(query);
-    });
-  }, [centreSearch, centres]);
+  const mappableCentres = useMemo(
+    () => filteredCentres.filter(hasCentreLocation),
+    [filteredCentres]
+  );
+
+  const locationLabel = userLocationStatus === "locating"
+    ? "Finding..."
+    : userLocation
+      ? "Location active"
+      : "Use my location";
+
+  function openMapForCentre(centreToFocus = null) {
+    setMapCentreToFocus(centreToFocus?.id ? centreToFocus : null);
+    setMapOpen(true);
+  }
 
   if (currentUser?.role === "hub") {
     return (
@@ -359,26 +375,51 @@ export default function HomePage({
             <h3 className="text-2xl font-bold">Available Printing Centres</h3>
             <p className="text-sm text-slate-600">Select a centre directly and upload your document.</p>
           </div>
-          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] lg:w-[560px]">
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] lg:w-[720px]">
             <label className="relative block">
               <Search className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
               <input
                 value={centreSearch}
                 onChange={(event) => setCentreSearch(event.target.value)}
-                placeholder="Search centre by name, code, or area"
+                placeholder="Search name, code, area, or price like under 5 / bw / color"
                 className="w-full rounded-2xl border bg-white py-3 pl-11 pr-4 text-sm outline-none focus:ring-2 focus:ring-slate-300"
               />
             </label>
-            <button onClick={startScanner} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white">
-              <QrCode size={17} />
-              Scan / Code
-            </button>
+            <div className="grid gap-2 sm:grid-cols-3">
+              <button
+                type="button"
+                onClick={requestUserLocation}
+                disabled={userLocationStatus === "locating"}
+                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700 disabled:opacity-60"
+              >
+                <Navigation size={17} />
+                {locationLabel}
+              </button>
+              <button
+                type="button"
+                onClick={() => openMapForCentre()}
+                disabled={mappableCentres.length === 0}
+                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 disabled:opacity-50"
+              >
+                <Map size={17} />
+                Map
+              </button>
+              <button onClick={startScanner} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white">
+                <QrCode size={17} />
+                Scan
+              </button>
+            </div>
           </div>
         </div>
 
         <div className="mt-6 grid gap-4 md:grid-cols-2">
           {filteredCentres.map((centre) => (
-            <CentrePriceCard key={centre.id} centre={centre} onUpload={() => selectCentreAndUpload(centre)} />
+            <CentrePriceCard
+              key={centre.id}
+              centre={centre}
+              onUpload={() => selectCentreAndUpload(centre)}
+              onOpenMap={openMapForCentre}
+            />
           ))}
           {filteredCentres.length === 0 && (
             <div className="rounded-2xl border border-dashed bg-slate-50 p-6 text-center text-sm text-slate-500 md:col-span-2">
@@ -390,6 +431,21 @@ export default function HomePage({
 
       {scannerOpen && (
         <QRScanner onScan={handleScan} onClose={stopScanner} />
+      )}
+
+      {mapOpen && (
+        <Suspense fallback={null}>
+          <CentreMapModal
+            centres={filteredCentres.length > 0 ? filteredCentres : centres}
+            onClose={() => {
+              setMapOpen(false);
+              setMapCentreToFocus(null);
+            }}
+            onSelectCentre={(centre) => selectCentreAndUpload(centre)}
+            focusCentre={mapCentreToFocus}
+            initialUserLocation={userLocation}
+          />
+        </Suspense>
       )}
     </div>
   );
