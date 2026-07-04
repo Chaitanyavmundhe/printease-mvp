@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
-import { X, Download, FileText, Image, FileCode, AlertCircle, Loader2 } from "lucide-react";
+import { X, Download, FileText, Image, FileCode, AlertCircle, Loader2, Settings, Eye } from "lucide-react";
 import InlineDocumentFrame from "./InlineDocumentFrame";
 import FileSettingsPanel from "./upload/FileSettingsPanel";
 import { getDocumentPreviewBlob } from "../services/api";
@@ -119,6 +119,8 @@ export default function DocumentPreviewModal({
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
   };
 
+  const [mobileTab, setMobileTab] = useState("settings"); // "settings" or "preview"
+
   // Render file icon based on kind
   const renderIcon = () => {
     switch (previewKind) {
@@ -141,11 +143,31 @@ export default function DocumentPreviewModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="document-preview-title"
-        className="relative flex h-[95vh] w-[95vw] max-w-[1400px] overflow-hidden rounded-2xl bg-white shadow-2xl flex-col-reverse md:flex-row"
+        className="relative flex h-[95vh] w-[95vw] max-w-[1400px] overflow-hidden rounded-2xl bg-white shadow-2xl flex-col md:flex-row"
       >
         
+        {/* Mobile Tab Toggle (Visible only on small screens) */}
+        <div className="md:hidden flex items-center bg-white border-b border-slate-200 shrink-0">
+          <button
+            onClick={() => setMobileTab("settings")}
+            className={`flex-1 py-3 text-sm font-semibold flex items-center justify-center gap-2 border-b-2 transition ${
+              mobileTab === "settings" ? "border-blue-600 text-blue-600 bg-blue-50/50" : "border-transparent text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            <Settings size={16} /> Settings
+          </button>
+          <button
+            onClick={() => setMobileTab("preview")}
+            className={`flex-1 py-3 text-sm font-semibold flex items-center justify-center gap-2 border-b-2 transition ${
+              mobileTab === "preview" ? "border-blue-600 text-blue-600 bg-blue-50/50" : "border-transparent text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            <Eye size={16} /> Preview
+          </button>
+        </div>
+        
         {/* Left Sidebar: Print Settings */}
-        <div className="flex w-full flex-col border-t md:border-t-0 md:border-r border-slate-200 bg-slate-50 md:w-[340px] h-[50vh] md:h-full shrink-0">
+        <div className={`flex w-full flex-col border-t md:border-t-0 md:border-r border-slate-200 bg-slate-50 md:w-[340px] h-full shrink-0 ${mobileTab === 'settings' ? 'block' : 'hidden md:flex'}`}>
           <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 bg-white shrink-0">
             <h2 className="text-lg font-bold text-slate-800">Print settings</h2>
             <button
@@ -207,7 +229,7 @@ export default function DocumentPreviewModal({
         </div>
 
         {/* Right Main Area: Preview */}
-        <div className="flex-1 flex flex-col bg-slate-200/80 overflow-hidden relative min-h-0">
+        <div className={`flex-1 flex flex-col bg-slate-200/80 overflow-hidden relative min-h-0 ${mobileTab === 'preview' ? 'block' : 'hidden md:flex'}`}>
           
           {/* Top Bar for filename and actions */}
           <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between bg-gradient-to-b from-slate-900/60 to-transparent px-4 py-3 pb-8">

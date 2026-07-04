@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useMemo, useState, useEffect } from "react";
 import { motion } from "framer-motion";
 
-import { User, Upload, Store, Plus, Building2, Search, Download, QrCode, Map, Navigation } from "lucide-react";
+import { User, Upload, Store, Plus, Building2, Search, Download, QrCode, Map, Navigation, IndianRupee } from "lucide-react";
 import Card from "../components/Card";
 import CentrePriceCard from "../components/CentrePriceCard";
 import CameraScanLayer from "../components/CameraScanLayer";
@@ -184,15 +184,15 @@ export default function HomePage({
             <div>
               <h2 className="text-2xl font-black tracking-tight text-slate-950">Print Hub Home</h2>
               <p className="mt-1 text-sm text-slate-600">
-                Download the desktop app and manage incoming print orders from one focused screen.
+                Set pricing and manage incoming print orders from one focused screen.
               </p>
             </div>
             <button
-              onClick={handleDownloadApp}
+              onClick={() => navigate("hubPricing")}
               className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-5 py-4 font-semibold text-white transition hover:bg-slate-800"
             >
-              <Download size={20} />
-              {isAndroid ? "Install Android App" : "Download Desktop App"}
+              <IndianRupee size={20} />
+              Pricing & Payment
             </button>
           </div>
         </Card>

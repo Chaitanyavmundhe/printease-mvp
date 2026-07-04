@@ -412,7 +412,41 @@ export default function UploadPage({
     }
   }
 
-  function applySelectedFiles(selectedFiles, resetNativeInput) {
+  const verifyMagicNumber = (file) => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = (e) => {
+        if (!e.target.result) {
+          resolve(true); // if empty, let it pass and fail later
+          return;
+        }
+        const arr = new Uint8Array(e.target.result);
+        let header = "";
+        for (let i = 0; i < arr.length; i++) {
+          header += arr[i].toString(16).padStart(2, '0');
+        }
+        const mime = (file.type || "").toLowerCase();
+        
+        // Check PDF
+        if (mime === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
+          // %PDF is 25504446
+          if (!header.startsWith("25504446")) return resolve(false);
+        }
+        // Check PNG
+        else if (mime === "image/png" || file.name.toLowerCase().endsWith(".png")) {
+          if (!header.startsWith("89504e47")) return resolve(false);
+        }
+        // Check JPEG
+        else if (mime === "image/jpeg" || file.name.toLowerCase().endsWith(".jpg") || file.name.toLowerCase().endsWith(".jpeg")) {
+          if (!header.startsWith("ffd8")) return resolve(false);
+        }
+        resolve(true);
+      };
+      reader.readAsArrayBuffer(file.slice(0, 4));
+    });
+  };
+
+  async function applySelectedFiles(selectedFiles, resetNativeInput) {
     try {
       setBackendPrice?.(null);
       if (setReprintSourceDocuments) setReprintSourceDocuments([]);
@@ -427,20 +461,40 @@ export default function UploadPage({
         resetNativeInput?.();
         return;
       }
+
+      // Verify Magic Numbers
+      const verifiedFiles = [];
+      for (const file of files) {
+        const isValid = await verifyMagicNumber(file);
+        if (isValid) {
+          verifiedFiles.push(file);
+        }
+      }
+
+      if (verifiedFiles.length !== files.length) {
+        window.alert("One or more files have an invalid format or spoofed extension and were rejected for security reasons.");
+      }
+
+      if (verifiedFiles.length === 0) {
+        resetNativeInput?.();
+        return;
+      }
       
-      const largeOfficeFiles = files.filter(f => detectUploadFileKind(f) === "office" && f.size > 100 * 1024 * 1024);
+      const finalFiles = verifiedFiles;
+      
+      const largeOfficeFiles = finalFiles.filter(f => detectUploadFileKind(f) === "office" && f.size > 100 * 1024 * 1024);
       if (largeOfficeFiles.length > 0) {
         alert("One or more Office documents exceed 100MB. Please convert them to PDF yourself and upload the PDF.");
         resetNativeInput?.();
         return;
       }
   
-      const firstFile = files[0] || null;
-      const hasOfficeFile = files.some((file) => detectUploadFileKind(file) === "office");
+      const firstFile = finalFiles[0] || null;
+      const hasOfficeFile = finalFiles.some((file) => detectUploadFileKind(file) === "office");
       setUploadNotice(hasOfficeFile
         ? "DOCX, PPTX and XLSX files will be converted to PDF by the print hub's desktop agent after you continue. This usually takes 10–30 seconds. You'll see the exact page count and price once conversion completes."
         : "");
-      setDocumentFiles(files);
+      setDocumentFiles(finalFiles);
       setDocumentFile(firstFile);
       if (!firstFile) {
         setDocumentName("");
@@ -588,12 +642,64 @@ export default function UploadPage({
     <FileSettingsPanel activeConfig={activeConfig} setConfigVal={setConfigVal} isCompact={true} />
   );
 
+  const removeFailedFiles = () => {
+    const failedIndices = Object.keys(filePreparationState).filter(
+      (indexStr) => filePreparationState[indexStr]?.status === PREPARATION_STATUS.FAILED
+    ).map(Number);
+    
+    if (failedIndices.length === 0) return;
+
+    // Filter out failed files
+    const newDocFiles = documentFiles.filter((_, i) => !failedIndices.includes(i));
+    const newDisplayFiles = displayFiles.filter((_, i) => !failedIndices.includes(i));
+    
+    // Rebuild dictionaries
+    const newPrepState = {};
+    const newConfigs = {};
+    const newSelectedIndexes = [];
+    
+    let newIndex = 0;
+    for (let i = 0; i < displayFiles.length; i++) {
+      if (!failedIndices.includes(i)) {
+        if (filePreparationState[i]) newPrepState[newIndex] = filePreparationState[i];
+        if (multiFileConfigs[i]) newConfigs[newIndex] = multiFileConfigs[i];
+        if (selectedFileIndexes.includes(i)) newSelectedIndexes.push(newIndex);
+        newIndex++;
+      }
+    }
+
+    setDocumentFiles(newDocFiles);
+    setDisplayFiles(newDisplayFiles);
+    setFilePreparationState(newPrepState);
+    setMultiFileConfigs(newConfigs);
+    setSelectedFileIndexes(newSelectedIndexes);
+    
+    // Auto-proceed if files remain
+    if (newDocFiles.length > 0) {
+      preparePayment(newPrepState);
+    } else {
+      setDocumentFile(null);
+      setDocumentName("");
+      setIsMulti(false);
+    }
+  };
+
   const handlePaymentClick = () => {
     const blockingPreparation = Object.values(filePreparationState).find((item) =>
       [PREPARATION_STATUS.FAILED].includes(item?.status)
     );
     if (blockingPreparation) {
-      window.alert(blockingPreparation.errorMessage || blockingPreparation.message || "Please resolve document errors before continuing.");
+      if (isMulti) {
+        const confirmSkip = window.confirm(
+          "Some documents failed to process. Would you like to remove them and continue to payment with the successful documents?"
+        );
+        if (confirmSkip) {
+          removeFailedFiles();
+          return;
+        }
+      } else {
+        window.alert(blockingPreparation.errorMessage || blockingPreparation.message || "Please resolve document errors before continuing.");
+      }
       return;
     }
 

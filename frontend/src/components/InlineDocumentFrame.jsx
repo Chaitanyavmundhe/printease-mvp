@@ -76,9 +76,9 @@ export default function InlineDocumentFrame({ url, config = {}, title = "Documen
             file={url}
             onLoadSuccess={onDocumentLoadSuccess}
             loading={
-              <div className="flex flex-col items-center gap-2 text-white py-12">
-                <Loader2 className="animate-spin h-8 w-8 text-white" />
-                <p className="text-sm">Loading PDF...</p>
+              <div className="flex flex-col items-center justify-center h-64 space-y-4">
+                <div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                <p className="text-slate-300 font-medium animate-pulse">Parsing Document...</p>
               </div>
             }
             error={
@@ -108,6 +108,11 @@ export default function InlineDocumentFrame({ url, config = {}, title = "Documen
                         renderTextLayer={false}
                         renderAnnotationLayer={false}
                         width={pps > 1 ? undefined : 600}
+                        loading={
+                          <div className="w-full h-full min-h-[300px] bg-slate-200 animate-pulse flex items-center justify-center">
+                            <span className="text-slate-400 font-medium text-sm">Loading page...</span>
+                          </div>
+                        }
                         className="react-pdf-page-wrapper flex items-center justify-center w-full h-full" 
                       />
                     </div>
