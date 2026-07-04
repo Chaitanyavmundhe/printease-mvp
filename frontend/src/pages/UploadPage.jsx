@@ -878,6 +878,7 @@ export default function UploadPage({
     if (!isMulti) return Number(estimatedSelectedPageCount || 0);
     return multiEstimatedFiles.reduce((sum, file) => sum + Number(file.selectedCount || 0), 0);
   }, [isMulti, estimatedSelectedPageCount, multiEstimatedFiles]);
+  const guestLimitIsExceeded = estimateGuestLimitExceeded(guestEstimatedSelectedPages, currentUser);
 
   const toggleSelectAll = () => {
     if (selectedFileIndexes.length === displayFiles.length) {
@@ -898,7 +899,7 @@ export default function UploadPage({
   );
 
   return (
-    <div className="grid gap-4 pb-[calc(6.5rem+env(safe-area-inset-bottom))] sm:gap-6 lg:grid-cols-3 md:pb-0">
+    <div className="grid gap-4 pb-[calc(8rem+env(safe-area-inset-bottom))] sm:gap-6 lg:grid-cols-3 md:pb-0">
       <Card className="lg:col-span-2 p-3 sm:p-5">
         <h2 className="text-xl sm:text-2xl font-bold min-w-0">Upload Document</h2>
         <div className="mt-2 flex flex-wrap items-center gap-2 text-slate-600 text-sm sm:text-base">
@@ -1131,7 +1132,7 @@ export default function UploadPage({
         </div>
       </Card>
       
-      <div className="sticky bottom-[calc(4.25rem+env(safe-area-inset-bottom))] z-40 -mx-3 border-t bg-white/95 p-2 shadow-[0_-8px_15px_rgba(0,0,0,0.08)] backdrop-blur sm:-mx-5 sm:p-3 md:static md:bottom-auto md:z-auto md:mx-0 md:block md:border-t-0 md:bg-transparent md:p-0 md:shadow-none md:backdrop-blur-none">
+      <div className="fixed inset-x-0 bottom-[calc(3.75rem+env(safe-area-inset-bottom))] z-40 border-t bg-white/95 p-2 shadow-[0_-8px_15px_rgba(0,0,0,0.08)] backdrop-blur md:static md:bottom-auto md:z-auto md:block md:border-t-0 md:bg-transparent md:p-0 md:shadow-none md:backdrop-blur-none">
         <Card className="rounded-none border-0 p-0 shadow-none md:rounded-2xl md:border md:p-6 md:shadow-sm">
           
           <div className="mb-2 flex items-center justify-between md:mb-0 md:block">
@@ -1145,17 +1146,28 @@ export default function UploadPage({
             </div>
           </div>
 
-          <div className={`mb-2 rounded-xl border px-3 py-2 text-xs font-semibold md:mb-3 md:mt-4 ${
+          <div className={`mb-2 rounded-xl border px-3 py-1.5 text-xs font-semibold md:mb-3 md:mt-4 md:py-2 ${
             priceReady
               ? "border-emerald-100 bg-emerald-50 text-emerald-800"
               : failedPreparation
                 ? "border-rose-100 bg-rose-50 text-rose-800"
                 : "border-amber-100 bg-amber-50 text-amber-800"
           }`}>
-            {priceSummaryHelp}
+            <span className="hidden md:inline">{priceSummaryHelp}</span>
+            <span className="md:hidden">
+              {hasPreparingFiles
+                ? "Preparing files..."
+                : hasPendingDesktopFiles
+                  ? "Ready for hub bill"
+                  : failedPreparation
+                    ? "Fix file error"
+                    : !hasUsableCentrePricing
+                      ? "Select centre"
+                      : "Ready"}
+            </span>
             {(hasPreparingFiles || activePreparationCount > 0) && (
-              <div className="mt-2 flex items-center gap-3">
-                <p className="flex items-center gap-1.5 text-sm font-semibold text-slate-700">
+              <div className="mt-1.5 flex items-center gap-2 md:mt-2 md:gap-3">
+                <p className="hidden items-center gap-1.5 text-sm font-semibold text-slate-700 min-[390px]:flex">
                   <span>{hasPendingDesktopFiles && !hasPreparingFiles ? "Ready for hub conversion" : "Preparing files"}</span>
                   <span className="flex h-1.5 w-1.5">
                     <span className="absolute inline-flex h-1.5 w-1.5 animate-ping rounded-full bg-emerald-400 opacity-75"></span>
@@ -1174,12 +1186,12 @@ export default function UploadPage({
             )}
           </div>
 
-          <details className="group mb-2 md:hidden">
+          <details className="group mb-1 md:hidden">
             <summary className="flex cursor-pointer items-center text-xs font-semibold text-slate-500 outline-none">
-              <span>View Price Details</span>
+              <span>Details</span>
               <span className="ml-1 transition-transform group-open:rotate-180">▼</span>
             </summary>
-            <div className="mt-2 max-h-[28dvh] space-y-2 overflow-y-auto pb-2 text-xs">
+            <div className="mt-2 max-h-[24dvh] space-y-2 overflow-y-auto pb-2 text-xs">
               {isMulti ? (
                 multiEstimatedFiles.map((file) => (
                   <div key={file.name} className="rounded-xl border border-slate-100 bg-slate-50 p-2">
@@ -1263,12 +1275,12 @@ export default function UploadPage({
           </div>
 
           {!currentUser && (
-            <div className={`mb-2 rounded-xl border p-3 text-xs md:mb-4 md:p-4 md:text-sm ${
-              estimateGuestLimitExceeded(guestEstimatedSelectedPages, currentUser)
+            <div className={`mb-2 rounded-xl border p-2 text-xs md:mb-4 md:p-4 md:text-sm ${guestLimitIsExceeded ? "" : "hidden md:block"} ${
+              guestLimitIsExceeded
                 ? "border-rose-200 bg-rose-50 text-rose-800"
                 : "border-amber-200 bg-amber-50 text-amber-800"
             }`}>
-              {estimateGuestLimitExceeded(guestEstimatedSelectedPages, currentUser) ? (
+              {guestLimitIsExceeded ? (
                 <>
                   <p className="font-semibold">Guest limit exceeded ({guestEstimatedSelectedPages} selected pages).</p>
                   <p className="mt-1">Please login to print more than 5 pages.</p>
@@ -1280,7 +1292,7 @@ export default function UploadPage({
                 </>
               )}
               <button onClick={() => startLogin("user")} className={`mt-2 rounded-xl px-3 py-2 font-semibold text-white md:mt-3 md:px-4 ${
-                estimateGuestLimitExceeded(guestEstimatedSelectedPages, currentUser)
+                guestLimitIsExceeded
                   ? "bg-rose-900 hover:bg-rose-800"
                   : "bg-amber-900 hover:bg-amber-800"
               }`}>Login instead</button>
@@ -1288,14 +1300,14 @@ export default function UploadPage({
           )}
 
 
-          <div className="flex flex-col gap-2 sm:flex-row md:block">
+          <div className="flex gap-2 md:block">
             {!selectedCentre && (
-              <button onClick={() => navigate("centre", { state: { autoStartScanner: true, fromUpload: true } })} className="min-h-11 flex-1 rounded-2xl border bg-white px-2 py-2.5 text-sm font-semibold hover:bg-slate-50 md:mt-6 md:w-full md:px-4 md:py-3 md:text-base">
+              <button onClick={() => navigate("centre", { state: { autoStartScanner: true, fromUpload: true } })} className="min-h-10 flex-1 rounded-2xl border bg-white px-2 py-2 text-xs font-semibold hover:bg-slate-50 md:mt-6 md:w-full md:px-4 md:py-3 md:text-base">
                 Select Centre
               </button>
             )}
 
-            <button onClick={handlePaymentClick} disabled={!canContinueForPayment || paymentLoading} className="min-h-11 flex-1 rounded-2xl bg-slate-900 px-2 py-2.5 text-sm font-semibold text-white disabled:opacity-40 md:mt-3 md:w-full md:px-4 md:py-3 md:text-base">
+            <button onClick={handlePaymentClick} disabled={!canContinueForPayment || paymentLoading} className="min-h-10 flex-1 rounded-2xl bg-slate-900 px-2 py-2 text-xs font-semibold text-white disabled:opacity-40 md:mt-3 md:w-full md:px-4 md:py-3 md:text-base">
               {continueLabel}
             </button>
           </div>
