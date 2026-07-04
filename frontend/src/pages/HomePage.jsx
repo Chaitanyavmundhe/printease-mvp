@@ -291,16 +291,6 @@ export default function HomePage({
                 idleLabel={scannerMode === "classic" ? "Classic QR Scanner" : scannerMode === "ready" ? "Ready to Scan" : "Scan / Select Centre"}
                 idleHint={heroScannerError || (scannerMode === "classic" ? "Tap to open full scanner." : scannerMode === "ready" ? "Tap to start transparent scanner." : "Tap to show transparent scanner.")}
               />
-
-              <button
-                onClick={() => startLogin("user")}
-                className={`flex min-h-16 items-center justify-center gap-2 rounded-2xl border px-4 py-3 font-semibold shadow-sm ${
-                  heroScannerActive ? "border-white/25 bg-white/85 text-slate-950 hover:bg-white" : "bg-white hover:bg-slate-50"
-                }`}
-              >
-                <User size={18} />
-                Login / My Orders
-              </button>
             </div>
           </div>
         </motion.section>
@@ -322,7 +312,7 @@ export default function HomePage({
                 (orders || []).slice(0, 5).map((order) => (
                   <button
                     key={order.id}
-                    onClick={() => navigate("track")}
+                    onClick={() => ["pending", "unpaid"].includes(String(order.status).toLowerCase()) ? navigate("payment") : navigate("track")}
                     className="flex-none snap-start w-[85vw] max-w-[280px] rounded-2xl border border-slate-200 bg-white p-4 shadow-sm text-left hover:border-slate-300 transition"
                   >
                     <div className="flex items-start justify-between gap-2">
@@ -384,66 +374,31 @@ export default function HomePage({
       </div>
 
       <Card>
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h3 className="text-2xl font-bold">Available Printing Centres</h3>
             <p className="text-sm text-slate-600">Select a centre directly and upload your document.</p>
           </div>
-          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] lg:w-[720px]">
-            <label className="relative block">
+          <div className="flex flex-col sm:flex-row gap-3 lg:w-[600px]">
+            <label className="relative block flex-1 min-w-0">
               <Search className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
               <input
                 value={centreSearch}
                 onChange={(event) => setCentreSearch(event.target.value)}
-                placeholder="Search name, code, area, or price like under 5 / bw / color"
+                placeholder="Search name, code, area..."
                 className="w-full rounded-2xl border bg-white py-3 pl-11 pr-4 text-sm outline-none focus:ring-2 focus:ring-slate-300"
               />
             </label>
-            <div className="flex gap-2">
-              <select
-                value={centrePriceFilter}
-                onChange={(e) => setCentrePriceFilter(e.target.value)}
-                className="rounded-2xl border bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-slate-300"
-              >
-                <option value="">Any Price</option>
-                <option value="2">Under ₹2</option>
-                <option value="3">Under ₹3</option>
-                <option value="5">Under ₹5</option>
-              </select>
-              <select
-                value={centreSort}
-                onChange={(e) => setCentreSort(e.target.value)}
-                className="rounded-2xl border bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-slate-300"
-              >
-                <option value="smart">Smart Sort</option>
-                <option value="distance">Nearest</option>
-                <option value="price">Lowest Price</option>
-              </select>
-            </div>
-            <div className="grid gap-2 sm:grid-cols-3">
-              <button
-                type="button"
-                onClick={requestUserLocation}
-                disabled={userLocationStatus === "locating"}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700 disabled:opacity-60"
-              >
-                <Navigation size={17} />
-                {locationLabel}
-              </button>
-              <button
-                type="button"
-                onClick={() => openMapForCentre()}
-                disabled={mappableCentres.length === 0}
-                className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 disabled:opacity-50"
-              >
-                <Map size={17} />
-                Map
-              </button>
-              <button onClick={startScanner} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white">
-                <QrCode size={17} />
-                Scan
-              </button>
-            </div>
+            <select
+              value={centreSort}
+              onChange={(e) => setCentreSort(e.target.value)}
+              className="shrink-0 rounded-2xl border bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-slate-300"
+            >
+              <option value="smart">Smart Sort</option>
+              <option value="price_bw">Lowest Price (B/W)</option>
+              <option value="price_color">Lowest Price (Color)</option>
+              <option value="under_rs">Under ₹5 (B/W) or ₹10 (Color)</option>
+            </select>
           </div>
         </div>
 
