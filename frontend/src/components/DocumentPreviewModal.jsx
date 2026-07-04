@@ -19,6 +19,9 @@ export default function DocumentPreviewModal({
   fetchConvertedPdf,
   config,
   onChangeConfig,
+  onContinue,
+  continueLabel = "Continue",
+  continueDisabled = false,
 }) {
   const [internalBlobUrl, setInternalBlobUrl] = useState("");
   const [isFetching, setIsFetching] = useState(false);
@@ -172,12 +175,34 @@ export default function DocumentPreviewModal({
             >
               Cancel
             </button>
-            <button
-              onClick={onClose}
-              className="rounded-md bg-blue-600 px-6 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition shadow-sm"
-            >
-              Done
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={onClose}
+                className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition shadow-sm hidden md:block"
+              >
+                Done
+              </button>
+              {onContinue && (
+                <button
+                  onClick={() => {
+                    onClose();
+                    onContinue();
+                  }}
+                  disabled={continueDisabled}
+                  className="rounded-md bg-blue-600 px-6 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition shadow-sm disabled:opacity-50"
+                >
+                  {continueLabel}
+                </button>
+              )}
+              {!onContinue && (
+                <button
+                  onClick={onClose}
+                  className="rounded-md bg-blue-600 px-6 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition shadow-sm"
+                >
+                  Done
+                </button>
+              )}
+            </div>
           </div>
         </div>
 

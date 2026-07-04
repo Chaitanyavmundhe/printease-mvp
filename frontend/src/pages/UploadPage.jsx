@@ -1285,6 +1285,9 @@ export default function UploadPage({
               else if (key === "watermarkFontSize") setWatermarkFontSize(val);
             }
           }}
+          onContinue={isMulti ? undefined : handlePaymentClick}
+          continueLabel={continueLabel}
+          continueDisabled={!canContinueForPayment || paymentLoading}
           onDownload={() => {
             if (localPreview.url) {
               const a = window.document.createElement("a");
