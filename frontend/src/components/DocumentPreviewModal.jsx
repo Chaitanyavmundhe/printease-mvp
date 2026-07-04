@@ -142,74 +142,11 @@ export default function DocumentPreviewModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="document-preview-title"
-        className="relative flex h-[95vh] w-[95vw] max-w-[1400px] overflow-hidden rounded-2xl bg-white shadow-2xl flex-col-reverse md:flex-row"
+        className="relative flex h-[95vh] w-[95vw] max-w-[1400px] overflow-hidden rounded-2xl bg-white shadow-2xl flex-col md:flex-row-reverse"
       >
         
-
-        {/* Sidebar / Bottom Area: Print Settings */}
-        <div className="flex w-full flex-col border-t md:border-t-0 md:border-r border-slate-200 bg-slate-50 md:w-[340px] shrink-0 min-h-[40vh] md:min-h-0 md:h-full">
-          <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 bg-white shrink-0">
-            <h2 className="text-lg font-bold text-slate-800">Print settings</h2>
-            <button
-              onClick={onClose}
-              className="rounded-full p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-          
-          <div className="flex-1 overflow-y-auto min-h-0">
-            {config && onChangeConfig ? (
-              <FileSettingsPanel 
-                activeConfig={config} 
-                setConfigVal={onChangeConfig} 
-                layoutType="dialog" 
-              />
-            ) : (
-              <div className="p-6 text-sm text-slate-500">Settings not available for this document.</div>
-            )}
-          </div>
-          
-          <div className="border-t border-slate-200 bg-white p-5 flex items-center justify-between shrink-0">
-            <button
-              onClick={onClose}
-              className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition"
-            >
-              Cancel
-            </button>
-            <div className="flex gap-2">
-              <button
-                onClick={onClose}
-                className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition shadow-sm hidden md:block"
-              >
-                Done
-              </button>
-              {onContinue && (
-                <button
-                  onClick={() => {
-                    onClose();
-                    onContinue();
-                  }}
-                  disabled={continueDisabled}
-                  className="rounded-md bg-blue-600 px-6 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition shadow-sm disabled:opacity-50"
-                >
-                  {continueLabel}
-                </button>
-              )}
-              {!onContinue && (
-                <button
-                  onClick={onClose}
-                  className="rounded-md bg-blue-600 px-6 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition shadow-sm"
-                >
-                  Done
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-
         {/* Right Main Area / Top Area: Preview */}
-        <div className="flex-1 flex flex-col bg-slate-200/80 overflow-hidden relative min-h-[50vh] md:min-h-0">
+        <div className="flex-1 flex flex-col bg-slate-200/80 overflow-hidden relative min-h-[40vh] md:min-h-0 border-b md:border-b-0 md:border-l border-slate-200">
           
           {/* Top Bar for filename and actions */}
           <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between bg-gradient-to-b from-slate-900/60 to-transparent px-4 py-3 pb-8">
@@ -297,6 +234,62 @@ export default function DocumentPreviewModal({
                 )}
               </div>
             )}
+          </div>
+        </div>
+
+        {/* Sidebar / Bottom Area: Print Settings */}
+        <div className="flex w-full flex-col bg-slate-50 md:w-[340px] shrink-0 min-h-[40vh] md:min-h-0 md:h-full">
+          <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 bg-white shrink-0">
+            <h2 className="text-lg font-bold text-slate-800">Print settings</h2>
+          </div>
+          
+          <div className="flex-1 overflow-y-auto min-h-0">
+            {config && onChangeConfig ? (
+              <FileSettingsPanel 
+                activeConfig={config} 
+                setConfigVal={onChangeConfig} 
+                layoutType="dialog" 
+              />
+            ) : (
+              <div className="p-6 text-sm text-slate-500">Settings not available for this document.</div>
+            )}
+          </div>
+          
+          <div className="border-t border-slate-200 bg-white p-5 flex items-center justify-between shrink-0">
+            <button
+              onClick={onClose}
+              className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition"
+            >
+              Cancel
+            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={onClose}
+                className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition shadow-sm hidden md:block"
+              >
+                Done
+              </button>
+              {onContinue && (
+                <button
+                  onClick={() => {
+                    onClose();
+                    onContinue();
+                  }}
+                  disabled={continueDisabled}
+                  className="rounded-md bg-blue-600 px-6 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition shadow-sm disabled:opacity-50"
+                >
+                  {continueLabel}
+                </button>
+              )}
+              {!onContinue && (
+                <button
+                  onClick={onClose}
+                  className="rounded-md bg-blue-600 px-6 py-2 text-sm font-semibold text-white hover:bg-blue-700 transition shadow-sm"
+                >
+                  Done
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>
