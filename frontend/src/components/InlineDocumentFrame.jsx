@@ -23,7 +23,7 @@ export default function InlineDocumentFrame({ url, config = {}, title = "Documen
 
   // Parse selectedPages (e.g., "1,3,5-7")
   const getSelectedPagesList = () => {
-    if (!config.selectedPages || config.selectedPages.trim() === '' || String(config.selectedPages).toLowerCase() === 'all') {
+    if (!config.selectedPages || String(config.selectedPages).trim() === '' || String(config.selectedPages).toLowerCase() === 'all') {
       return Array.from({ length: numPages }, (_, i) => i + 1);
     }
     const result = new Set();
