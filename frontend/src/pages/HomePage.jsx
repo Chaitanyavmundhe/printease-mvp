@@ -390,6 +390,16 @@ export default function HomePage({
               />
             </label>
             <select
+              value={centrePriceFilter}
+              onChange={(e) => setCentrePriceFilter(e.target.value)}
+              className="shrink-0 rounded-2xl border bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-slate-300"
+            >
+              <option value="">Any Price</option>
+              <option value="2">Under ₹2</option>
+              <option value="3">Under ₹3</option>
+              <option value="5">Under ₹5</option>
+            </select>
+            <select
               value={centreSort}
               onChange={(e) => setCentreSort(e.target.value)}
               className="shrink-0 rounded-2xl border bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-slate-300"
@@ -397,7 +407,6 @@ export default function HomePage({
               <option value="smart">Smart Sort</option>
               <option value="price_bw">Lowest Price (B/W)</option>
               <option value="price_color">Lowest Price (Color)</option>
-              <option value="under_rs">Under ₹5 (B/W) or ₹10 (Color)</option>
             </select>
           </div>
         </div>

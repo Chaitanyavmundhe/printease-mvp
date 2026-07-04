@@ -215,11 +215,36 @@ export function rankCentres(centres = [], { orders = [], userLocation = null, qu
       const leftAvailable = left.printerOnline || String(left.status || "").toLowerCase() === "available" ? 1 : 0;
       if (rightAvailable !== leftAvailable) return rightAvailable - leftAvailable;
 
-      if (sortBy === "price") {
-        if (left.lowestPrice !== right.lowestPrice) {
-          if (left.lowestPrice === null) return 1;
-          if (right.lowestPrice === null) return -1;
-          return left.lowestPrice - right.lowestPrice;
+      if (sortBy === "price" || sortBy === "price_bw" || sortBy === "price_color") {
+        const getPrice = (c) => {
+          if (sortBy === "price_bw") {
+            const val = Math.min(
+              c.bwSingle ?? Infinity, 
+              c.bwDouble ?? Infinity, 
+              c.pricing?.bwSingle ?? Infinity, 
+              c.pricing?.bwDouble ?? Infinity
+            );
+            return val === Infinity ? null : val;
+          }
+          if (sortBy === "price_color") {
+            const val = Math.min(
+              c.colorSingle ?? Infinity, 
+              c.colorDouble ?? Infinity, 
+              c.pricing?.colorSingle ?? Infinity, 
+              c.pricing?.colorDouble ?? Infinity
+            );
+            return val === Infinity ? null : val;
+          }
+          return c.lowestPrice;
+        };
+
+        const leftPrice = getPrice(left);
+        const rightPrice = getPrice(right);
+
+        if (leftPrice !== rightPrice) {
+          if (leftPrice === null) return 1;
+          if (rightPrice === null) return -1;
+          return leftPrice - rightPrice;
         }
       }
 
