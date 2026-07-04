@@ -147,7 +147,7 @@ export default function PaymentPage({
     }
 
     refreshBill();
-    const interval = window.setInterval(refreshBill, 5000);
+    const interval = window.setInterval(refreshBill, 3000);
     return () => {
       cancelled = true;
       window.clearInterval(interval);
@@ -198,7 +198,7 @@ export default function PaymentPage({
   }
 
   return (
-    <div className="mx-auto max-w-2xl pb-6 sm:pb-8">
+    <div className="mx-auto max-w-2xl pb-[calc(6rem+env(safe-area-inset-bottom))] sm:pb-8">
       <Card className="p-3 sm:p-5">
         <h2 className="text-xl sm:text-2xl font-bold min-w-0">Payment</h2>
         <p className="mt-2 text-slate-600">
@@ -244,7 +244,7 @@ export default function PaymentPage({
         )}
 
         {/* Payment method selector */}
-        <div className="mt-5 grid gap-2 sm:gap-3 grid-cols-1 sm:grid-cols-3">
+        <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-3 sm:gap-3">
           {paymentOptions.map((option) => {
             const Icon = option.icon;
             const active = paymentMethod === option.id;
@@ -260,12 +260,12 @@ export default function PaymentPage({
                     setPaymentMethod?.(option.id);
                   }
                 }}
-                className={`rounded-2xl border p-4 text-left transition ${
+                className={`rounded-2xl border p-3 text-left transition sm:p-4 ${
                   active ? "border-slate-900 bg-slate-900 text-white shadow-lg" : "bg-white hover:border-slate-400 hover:shadow-sm"
                 }`}
               >
                 <Icon size={20} />
-                <p className="mt-3 font-semibold">{option.title}</p>
+                <p className="mt-2 font-semibold sm:mt-3">{option.title}</p>
                 <p className={`mt-1 text-xs ${active ? "text-slate-200" : "text-slate-500"}`}>{option.description}</p>
               </button>
             );
@@ -331,15 +331,12 @@ export default function PaymentPage({
         )}
       </Card>
 
-      {/* Spacer to prevent form hiding under sticky footer on mobile */}
-      <div className="h-24 md:hidden"></div>
-
       {/* Floating Action Bar */}
-      <div className="fixed bottom-[calc(84px+env(safe-area-inset-bottom))] left-2 right-2 sm:left-4 sm:right-4 z-40 rounded-2xl border bg-white/90 p-2 shadow-2xl backdrop-blur md:static md:bottom-auto md:z-auto md:mt-6 md:block md:border-0 md:bg-transparent md:p-0 md:shadow-none md:backdrop-blur-none">
+      <div className="sticky bottom-[calc(4.25rem+env(safe-area-inset-bottom))] z-40 mt-4 rounded-2xl border bg-white/95 p-2 shadow-2xl backdrop-blur md:static md:bottom-auto md:z-auto md:mt-6 md:block md:border-0 md:bg-transparent md:p-0 md:shadow-none md:backdrop-blur-none">
         <button
           disabled={isDisabled || conversionFailed}
           onClick={handlePaymentClick}
-          className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-3 sm:px-4 py-3 text-sm sm:text-base font-semibold whitespace-normal leading-tight text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400 disabled:opacity-70 md:rounded-2xl"
+          className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-3 py-2.5 text-sm font-semibold leading-tight text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400 disabled:opacity-70 sm:px-4 sm:py-3 sm:text-base md:rounded-2xl"
         >
           <ButtonIcon size={18} className="shrink-0" /> <span className="break-words">{paymentLoading ? loadingLabel : buttonLabel}</span>
         </button>

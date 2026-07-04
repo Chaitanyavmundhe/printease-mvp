@@ -651,8 +651,6 @@ export default function UploadPage({
 
     // Filter out failed files
     const newDocFiles = documentFiles.filter((_, i) => !failedIndices.includes(i));
-    const newDisplayFiles = displayFiles.filter((_, i) => !failedIndices.includes(i));
-    
     // Rebuild dictionaries
     const newPrepState = {};
     const newConfigs = {};
@@ -669,7 +667,6 @@ export default function UploadPage({
     }
 
     setDocumentFiles(newDocFiles);
-    setDisplayFiles(newDisplayFiles);
     setFilePreparationState(newPrepState);
     setMultiFileConfigs(newConfigs);
     setSelectedFileIndexes(newSelectedIndexes);
@@ -680,7 +677,6 @@ export default function UploadPage({
     } else {
       setDocumentFile(null);
       setDocumentName("");
-      setIsMulti(false);
     }
   };
 
@@ -902,7 +898,7 @@ export default function UploadPage({
   );
 
   return (
-    <div className="grid gap-4 pb-6 sm:gap-6 lg:grid-cols-3 md:pb-0">
+    <div className="grid gap-4 pb-[calc(6.5rem+env(safe-area-inset-bottom))] sm:gap-6 lg:grid-cols-3 md:pb-0">
       <Card className="lg:col-span-2 p-3 sm:p-5">
         <h2 className="text-xl sm:text-2xl font-bold min-w-0">Upload Document</h2>
         <div className="mt-2 flex flex-wrap items-center gap-2 text-slate-600 text-sm sm:text-base">
@@ -1049,7 +1045,7 @@ export default function UploadPage({
                   {selectedFileIndexes.length === displayFiles.length ? "Deselect All" : "Select All"}
                 </button>
               </div>
-              <div className="grid gap-2 max-h-64 overflow-y-auto pr-2">
+              <div className="grid max-h-[42dvh] gap-2 overflow-y-auto pr-1 sm:max-h-64 sm:pr-2">
                 {displayFiles.map((file, index) => {
                   const isSelected = selectedFileIndexes.includes(index);
                   const conf = multiFileConfigs[index] || {};
@@ -1062,7 +1058,7 @@ export default function UploadPage({
                       onMouseDown={() => handleTouchStart(index)}
                       onMouseUp={handleTouchEnd}
                       onMouseLeave={handleTouchEnd}
-                      className={`flex cursor-pointer items-center justify-between gap-3 rounded-xl border p-3 transition ${
+                    className={`flex cursor-pointer flex-col items-stretch justify-between gap-3 rounded-xl border p-3 transition min-[380px]:flex-row min-[380px]:items-center ${
                         isSelected ? "border-slate-400 bg-slate-100" : "border-transparent bg-slate-50 hover:bg-slate-100"
                       }`}
                     >
@@ -1070,7 +1066,7 @@ export default function UploadPage({
                         {isSelected ? <CheckSquare className="text-slate-900 shrink-0" size={18} /> : <Square className="text-slate-400 shrink-0" size={18} />}
                         <span className="min-w-0 truncate font-medium">{file.name}</span>
                       </div>
-                      <div className="shrink-0 flex items-center gap-2 text-slate-500 text-xs">
+                      <div className="flex shrink-0 flex-wrap items-center gap-2 text-xs text-slate-500 min-[380px]:justify-end">
                         {filePreparationState[index]?.status && (
                           <span className={`px-2 py-0.5 rounded ${
                             filePreparationState[index].status === PREPARATION_STATUS.READY
@@ -1135,10 +1131,7 @@ export default function UploadPage({
         </div>
       </Card>
       
-      {/* Spacer to prevent form hiding under sticky footer on mobile */}
-      <div className="h-20 md:hidden" aria-hidden="true"></div>
-
-      <div className="fixed bottom-[68px] left-0 right-0 z-40 border-t bg-white p-3 shadow-[0_-8px_15px_rgba(0,0,0,0.08)] md:static md:bottom-auto md:z-auto md:block md:border-t-0 md:bg-transparent md:p-0 md:shadow-none">
+      <div className="sticky bottom-[calc(4.25rem+env(safe-area-inset-bottom))] z-40 -mx-3 border-t bg-white/95 p-2 shadow-[0_-8px_15px_rgba(0,0,0,0.08)] backdrop-blur sm:-mx-5 sm:p-3 md:static md:bottom-auto md:z-auto md:mx-0 md:block md:border-t-0 md:bg-transparent md:p-0 md:shadow-none md:backdrop-blur-none">
         <Card className="rounded-none border-0 p-0 shadow-none md:rounded-2xl md:border md:p-6 md:shadow-sm">
           
           <div className="mb-2 flex items-center justify-between md:mb-0 md:block">
@@ -1152,7 +1145,7 @@ export default function UploadPage({
             </div>
           </div>
 
-          <div className={`mb-3 rounded-xl border px-3 py-2 text-xs font-semibold md:mt-4 ${
+          <div className={`mb-2 rounded-xl border px-3 py-2 text-xs font-semibold md:mb-3 md:mt-4 ${
             priceReady
               ? "border-emerald-100 bg-emerald-50 text-emerald-800"
               : failedPreparation
@@ -1186,7 +1179,7 @@ export default function UploadPage({
               <span>View Price Details</span>
               <span className="ml-1 transition-transform group-open:rotate-180">▼</span>
             </summary>
-            <div className="mt-2 max-h-[30vh] space-y-2 overflow-y-auto pb-2 text-xs">
+            <div className="mt-2 max-h-[28dvh] space-y-2 overflow-y-auto pb-2 text-xs">
               {isMulti ? (
                 multiEstimatedFiles.map((file) => (
                   <div key={file.name} className="rounded-xl border border-slate-100 bg-slate-50 p-2">
@@ -1270,7 +1263,7 @@ export default function UploadPage({
           </div>
 
           {!currentUser && (
-            <div className={`mb-4 rounded-xl border p-4 text-sm ${
+            <div className={`mb-2 rounded-xl border p-3 text-xs md:mb-4 md:p-4 md:text-sm ${
               estimateGuestLimitExceeded(guestEstimatedSelectedPages, currentUser)
                 ? "border-rose-200 bg-rose-50 text-rose-800"
                 : "border-amber-200 bg-amber-50 text-amber-800"
@@ -1286,7 +1279,7 @@ export default function UploadPage({
                   <p className="mt-1">Login for larger orders and saved print history.</p>
                 </>
               )}
-              <button onClick={() => startLogin("user")} className={`mt-3 rounded-xl px-4 py-2 font-semibold text-white ${
+              <button onClick={() => startLogin("user")} className={`mt-2 rounded-xl px-3 py-2 font-semibold text-white md:mt-3 md:px-4 ${
                 estimateGuestLimitExceeded(guestEstimatedSelectedPages, currentUser)
                   ? "bg-rose-900 hover:bg-rose-800"
                   : "bg-amber-900 hover:bg-amber-800"
@@ -1295,14 +1288,14 @@ export default function UploadPage({
           )}
 
 
-          <div className="flex flex-col sm:flex-row gap-2 md:block">
+          <div className="flex flex-col gap-2 sm:flex-row md:block">
             {!selectedCentre && (
-              <button onClick={() => navigate("centre", { state: { autoStartScanner: true, fromUpload: true } })} className="flex-1 rounded-2xl border bg-white px-2 py-3 text-sm font-semibold hover:bg-slate-50 md:mt-6 md:w-full md:px-4 md:text-base">
+              <button onClick={() => navigate("centre", { state: { autoStartScanner: true, fromUpload: true } })} className="min-h-11 flex-1 rounded-2xl border bg-white px-2 py-2.5 text-sm font-semibold hover:bg-slate-50 md:mt-6 md:w-full md:px-4 md:py-3 md:text-base">
                 Select Centre
               </button>
             )}
 
-            <button onClick={handlePaymentClick} disabled={!canContinueForPayment || paymentLoading} className="flex-1 rounded-2xl bg-slate-900 px-2 py-3 text-sm font-semibold text-white disabled:opacity-40 md:mt-3 md:w-full md:px-4 md:text-base">
+            <button onClick={handlePaymentClick} disabled={!canContinueForPayment || paymentLoading} className="min-h-11 flex-1 rounded-2xl bg-slate-900 px-2 py-2.5 text-sm font-semibold text-white disabled:opacity-40 md:mt-3 md:w-full md:px-4 md:py-3 md:text-base">
               {continueLabel}
             </button>
           </div>
@@ -1369,6 +1362,7 @@ export default function UploadPage({
                 }
           }
           onChangeConfig={(key, val) => {
+            setBackendPrice?.(null);
             if (isMulti) {
               setMultiFileConfigs((prev) => ({
                 ...prev,

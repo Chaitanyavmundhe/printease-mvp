@@ -2,15 +2,15 @@ export default function FileSettingsPanel({ activeConfig, setConfigVal, isCompac
   const isDialog = layoutType === "dialog";
 
   const containerClass = isDialog
-    ? "flex flex-col gap-5 bg-white p-5 h-full overflow-y-auto"
+    ? "flex h-full flex-col gap-4 overflow-y-auto bg-white p-3 sm:gap-5 sm:p-5"
     : isCompact
-      ? "grid gap-2 grid-cols-2 md:grid-cols-4 bg-slate-50 p-3 rounded-2xl border border-slate-100"
+      ? "grid grid-cols-1 gap-2 rounded-2xl border border-slate-100 bg-slate-50 p-3 min-[380px]:grid-cols-2 md:grid-cols-4"
       : "grid gap-2 sm:gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-4";
       
   const labelClass = isDialog
     ? "grid gap-1.5 text-sm font-semibold text-slate-700 w-full"
     : isCompact
-      ? "grid gap-1 text-xs font-semibold text-slate-600 col-span-1"
+      ? "grid gap-1 text-xs font-semibold text-slate-600"
       : "grid gap-1 sm:gap-2 text-sm font-semibold text-slate-600 col-span-1 min-w-0";
       
   const inputClass = isDialog
@@ -94,7 +94,7 @@ export default function FileSettingsPanel({ activeConfig, setConfigVal, isCompac
           <option value="fit_to_page_width">{isCompact ? "Fit width" : "Fit to page width"}</option>
         </select>
       </label>
-      <label className={isDialog ? "grid gap-1.5 text-sm font-semibold text-slate-700 w-full" : isCompact ? "grid gap-1 text-xs font-semibold text-slate-600 col-span-2 md:col-span-2" : "grid gap-1 sm:gap-2 text-sm font-semibold text-slate-600 col-span-1 sm:col-span-2 md:col-span-4 min-w-0"}>
+      <label className={isDialog ? "grid gap-1.5 text-sm font-semibold text-slate-700 w-full" : isCompact ? "grid gap-1 text-xs font-semibold text-slate-600 min-[380px]:col-span-2 md:col-span-2" : "grid gap-1 sm:gap-2 text-sm font-semibold text-slate-600 col-span-1 sm:col-span-2 md:col-span-4 min-w-0"}>
         Margins
         <select value={activeConfig?.marginMode || "default"} onChange={(e) => setConfigVal("marginMode", e.target.value)} className={isDialog ? "w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal text-slate-900 shadow-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition" : isCompact ? "rounded-xl border px-2 py-1.5 font-normal text-slate-900" : "rounded-2xl border px-4 py-3 font-normal text-slate-900"}>
           <option value="default">Default</option>
@@ -105,12 +105,12 @@ export default function FileSettingsPanel({ activeConfig, setConfigVal, isCompac
       
       {isDialog && <hr className="border-slate-200 my-2" />}
 
-      <label className={isDialog ? "flex items-center gap-3 w-full" : isCompact ? "flex items-center gap-2 rounded-xl border px-3 py-1.5 col-span-2 md:col-span-4 bg-white" : "flex items-center gap-3 rounded-2xl border px-4 py-3 col-span-2"}>
+      <label className={isDialog ? "flex items-center gap-3 w-full" : isCompact ? "flex items-center gap-2 rounded-xl border px-3 py-1.5 min-[380px]:col-span-2 md:col-span-4 bg-white" : "flex items-center gap-3 rounded-2xl border px-4 py-3 col-span-2"}>
         <input type="checkbox" checked={activeConfig?.watermark || false} onChange={(e) => setConfigVal("watermark", e.target.checked)} className={isDialog ? "w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" : ""} />
         <span className={isDialog ? "text-sm font-semibold text-slate-700" : isCompact ? "text-xs font-semibold" : ""}>{isCompact ? "Add watermark" : "Add watermark to printable PDF"}</span>
       </label>
       {activeConfig?.watermark && (
-        <div className={isDialog ? "grid gap-3 w-full bg-slate-50 p-4 rounded-lg border" : isCompact ? "grid gap-2 rounded-xl border bg-white p-3 col-span-2 md:col-span-4 md:grid-cols-4" : "grid gap-3 rounded-2xl border bg-slate-50 p-4 col-span-2 md:grid-cols-2"}>
+        <div className={isDialog ? "grid gap-3 w-full bg-slate-50 p-4 rounded-lg border" : isCompact ? "grid gap-2 rounded-xl border bg-white p-3 min-[380px]:col-span-2 md:col-span-4 md:grid-cols-4" : "grid gap-3 rounded-2xl border bg-slate-50 p-4 col-span-2 md:grid-cols-2"}>
           <select value={activeConfig?.watermarkType || "order_code"} onChange={(e) => setConfigVal("watermarkType", e.target.value)} className={isDialog ? selectClass : isCompact ? "rounded-xl border px-2 py-1.5 text-xs col-span-1" : "rounded-2xl border px-4 py-3"}>
             <option value="order_code">Order code</option>
             <option value="pickup_code">Pickup code</option>
