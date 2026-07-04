@@ -1264,7 +1264,10 @@ export default function UploadPage({
           }
           onChangeConfig={(key, val) => {
             if (isMulti) {
-              updateMultiFileConfig(localPreview.fileIndex, key, val);
+              setMultiFileConfigs((prev) => ({
+                ...prev,
+                [localPreview.fileIndex]: { ...prev[localPreview.fileIndex], [key]: val },
+              }));
             } else {
               if (key === "copies") setCopies(val);
               else if (key === "colorType") setColorType(val);
