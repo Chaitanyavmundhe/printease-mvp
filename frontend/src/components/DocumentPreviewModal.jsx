@@ -138,12 +138,12 @@ export default function DocumentPreviewModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby="document-preview-title"
-        className="relative flex h-[95vh] w-[95vw] max-w-[1400px] overflow-hidden rounded-2xl bg-white shadow-2xl flex-col md:flex-row"
+        className="relative flex h-[95vh] w-[95vw] max-w-[1400px] overflow-hidden rounded-2xl bg-white shadow-2xl flex-col-reverse md:flex-row"
       >
         
         {/* Left Sidebar: Print Settings */}
-        <div className="flex w-full flex-col border-r border-slate-200 bg-slate-50 md:w-[340px] shrink-0">
-          <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 bg-white">
+        <div className="flex w-full flex-col border-t md:border-t-0 md:border-r border-slate-200 bg-slate-50 md:w-[340px] h-[50vh] md:h-full shrink-0">
+          <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 bg-white shrink-0">
             <h2 className="text-lg font-bold text-slate-800">Print settings</h2>
             <button
               onClick={onClose}
@@ -153,7 +153,7 @@ export default function DocumentPreviewModal({
             </button>
           </div>
           
-          <div className="flex-1 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto min-h-0">
             {config && onChangeConfig ? (
               <FileSettingsPanel 
                 activeConfig={config} 
@@ -165,7 +165,7 @@ export default function DocumentPreviewModal({
             )}
           </div>
           
-          <div className="border-t border-slate-200 bg-white p-5 flex items-center justify-between">
+          <div className="border-t border-slate-200 bg-white p-5 flex items-center justify-between shrink-0">
             <button
               onClick={onClose}
               className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition"
@@ -182,7 +182,7 @@ export default function DocumentPreviewModal({
         </div>
 
         {/* Right Main Area: Preview */}
-        <div className="flex-1 flex flex-col bg-slate-200/80 overflow-hidden relative">
+        <div className="flex-1 flex flex-col bg-slate-200/80 overflow-hidden relative min-h-0">
           
           {/* Top Bar for filename and actions */}
           <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between bg-gradient-to-b from-slate-900/40 to-transparent px-4 py-3 opacity-0 hover:opacity-100 transition-opacity duration-300">
@@ -204,7 +204,7 @@ export default function DocumentPreviewModal({
             )}
           </div>
 
-          <div className="flex-1 flex items-center justify-center p-4 sm:p-8 overflow-hidden">
+          <div className="flex-1 flex items-center justify-center p-4 sm:p-8 overflow-hidden min-h-0">
             {loading ? (
               <div className="flex flex-col items-center gap-3">
                 <Loader2 className="h-8 w-8 animate-spin text-slate-500" />
