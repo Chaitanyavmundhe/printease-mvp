@@ -1,5 +1,14 @@
 const cache = new Map();
 const inFlightRequests = new Map();
+const MAX_CACHE_ENTRIES = 60;
+
+function trimCache() {
+  while (cache.size > MAX_CACHE_ENTRIES) {
+    const oldestKey = cache.keys().next().value;
+    if (!oldestKey) break;
+    cache.delete(oldestKey);
+  }
+}
 
 /**
  * Fetch a JSON payload with in-flight deduplication and TTL caching.
@@ -27,6 +36,7 @@ export async function getCachedJson(key, fetcher, { ttlMs = 120000, force = fals
     try {
       const data = await fetcher();
       cache.set(key, { data, timestamp: Date.now() });
+      trimCache();
       return data;
     } finally {
       inFlightRequests.delete(key);
@@ -51,4 +61,5 @@ export function invalidateCachePrefix(prefix) {
 
 export function clearRequestCache() {
   cache.clear();
+  inFlightRequests.clear();
 }

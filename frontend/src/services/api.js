@@ -327,6 +327,33 @@ export function createDocumentSignedDownload(documentId, converted = false) {
 }
 
 const documentBlobCache = new Map();
+const MAX_DOCUMENT_BLOB_CACHE_ENTRIES = 6;
+const MAX_DOCUMENT_BLOB_CACHE_BYTES = 120 * 1024 * 1024;
+
+function getDocumentBlobCacheBytes() {
+  let total = 0;
+  for (const blob of documentBlobCache.values()) {
+    total += Number(blob?.size || 0);
+  }
+  return total;
+}
+
+function cacheDocumentBlob(cacheKey, blob) {
+  if (documentBlobCache.has(cacheKey)) {
+    documentBlobCache.delete(cacheKey);
+  }
+
+  documentBlobCache.set(cacheKey, blob);
+
+  while (
+    documentBlobCache.size > MAX_DOCUMENT_BLOB_CACHE_ENTRIES ||
+    getDocumentBlobCacheBytes() > MAX_DOCUMENT_BLOB_CACHE_BYTES
+  ) {
+    const oldestKey = documentBlobCache.keys().next().value;
+    if (!oldestKey || (oldestKey === cacheKey && documentBlobCache.size === 1)) break;
+    documentBlobCache.delete(oldestKey);
+  }
+}
 
 async function fetchSignedDocumentBlob(documentId, converted = false) {
   const cacheKey = String(documentId || "") + (converted ? "_converted" : "");
@@ -353,7 +380,7 @@ async function fetchSignedDocumentBlob(documentId, converted = false) {
   const typedBlob = bestType !== rawType
     ? new Blob([blob], { type: bestType })
     : blob;
-  documentBlobCache.set(cacheKey, typedBlob);
+  cacheDocumentBlob(cacheKey, typedBlob);
   return typedBlob;
 }
 
