@@ -210,7 +210,7 @@ export default function DocumentPreviewModal({
         <div className="flex-1 flex flex-col bg-slate-200/80 overflow-hidden relative min-h-0">
           
           {/* Top Bar for filename and actions */}
-          <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between bg-gradient-to-b from-slate-900/40 to-transparent px-4 py-3 opacity-0 hover:opacity-100 transition-opacity duration-300">
+          <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between bg-gradient-to-b from-slate-900/60 to-transparent px-4 py-3 pb-8">
             <div className="flex items-center gap-2 text-white drop-shadow-md">
               {renderIcon()}
               <div>
@@ -218,15 +218,24 @@ export default function DocumentPreviewModal({
                 <p className="text-xs opacity-80">{fileSize > 0 ? formatSize(fileSize) : ""}</p>
               </div>
             </div>
-            {!loading && !error && (
+            <div className="flex items-center gap-3">
+              {!loading && !error && (
+                <button
+                  onClick={onDownload}
+                  className="flex items-center gap-2 rounded-md bg-white/20 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur-md hover:bg-white/30 transition shadow-sm"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Download</span>
+                </button>
+              )}
               <button
-                onClick={onDownload}
-                className="flex items-center gap-2 rounded-md bg-white/20 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur-md hover:bg-white/30 transition shadow-sm"
+                onClick={onClose}
+                className="flex items-center gap-2 rounded-md bg-rose-600/90 px-3 py-1.5 text-xs font-bold text-white backdrop-blur-md hover:bg-rose-500 transition shadow-sm"
               >
-                <Download className="h-3.5 w-3.5" />
-                Download
+                <X className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Close</span>
               </button>
-            )}
+            </div>
           </div>
 
           <div className="flex-1 flex items-center justify-center p-4 sm:p-8 overflow-hidden min-h-0">

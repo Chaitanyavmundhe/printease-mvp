@@ -8,7 +8,6 @@ pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/b
 
 export default function InlineDocumentFrame({ url, config = {}, title = "Document preview", className = "" }) {
   const [numPages, setNumPages] = useState(null);
-  const [scale, setScale] = useState(1.0);
 
   function onDocumentLoadSuccess({ numPages }) {
     setNumPages(numPages);
@@ -72,7 +71,6 @@ export default function InlineDocumentFrame({ url, config = {}, title = "Documen
       <div className="flex-1 overflow-auto bg-[#525659] p-4 sm:p-8">
         <div 
           className={`flex flex-col items-center gap-6 mx-auto ${isBW ? 'grayscale contrast-125 brightness-105' : ''}`}
-          style={{ transform: `scale(${scale})`, transformOrigin: 'top center', transition: 'transform 0.2s ease' }}
         >
           <Document
             file={url}
@@ -135,22 +133,6 @@ export default function InlineDocumentFrame({ url, config = {}, title = "Documen
         <p className="text-sm font-medium text-slate-700">
           {numPages ? `${numPages} page(s) • ${sheets.length} sheet(s)` : '-- pages'}
         </p>
-        
-        <div className="flex items-center gap-2">
-          <button 
-            onClick={() => setScale(s => Math.max(0.25, s - 0.25))}
-            className="px-2 py-1 text-xs font-semibold text-slate-700 rounded-md hover:bg-slate-200 border border-slate-300 transition-colors shadow-sm bg-white"
-          >
-            Zoom Out
-          </button>
-          <span className="text-xs font-medium text-slate-600 w-12 text-center">{Math.round(scale * 100)}%</span>
-          <button 
-            onClick={() => setScale(s => Math.min(3.0, s + 0.25))}
-            className="px-2 py-1 text-xs font-semibold text-slate-700 rounded-md hover:bg-slate-200 border border-slate-300 transition-colors shadow-sm bg-white"
-          >
-            Zoom In
-          </button>
-        </div>
       </div>
     </div>
   );
