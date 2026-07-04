@@ -21,13 +21,39 @@ export default function InlineDocumentFrame({ url, config = {}, title = "Documen
   const pps = Number(config.pagesPerSheet) || 1;
   const isLandscape = config.orientation === 'landscape';
 
+  // Parse selectedPages (e.g., "1,3,5-7")
+  const getSelectedPagesList = () => {
+    if (!config.selectedPages || config.selectedPages.trim() === '' || String(config.selectedPages).toLowerCase() === 'all') {
+      return Array.from({ length: numPages }, (_, i) => i + 1);
+    }
+    const result = new Set();
+    const parts = String(config.selectedPages).split(',');
+    for (const part of parts) {
+      const trimmed = part.trim();
+      if (!trimmed) continue;
+      if (trimmed.includes('-')) {
+        const [start, end] = trimmed.split('-').map(Number);
+        if (!isNaN(start) && !isNaN(end) && start <= end) {
+          for (let i = start; i <= end; i++) {
+            if (i >= 1 && i <= numPages) result.add(i);
+          }
+        }
+      } else {
+        const num = Number(trimmed);
+        if (!isNaN(num) && num >= 1 && num <= numPages) result.add(num);
+      }
+    }
+    return Array.from(result).sort((a, b) => a - b);
+  };
+
   // Group pages into sheets based on pagesPerSheet
   const sheets = [];
   if (numPages) {
-    for (let i = 1; i <= numPages; i += pps) {
+    const pagesToPrint = getSelectedPagesList();
+    for (let i = 0; i < pagesToPrint.length; i += pps) {
       const sheetPages = [];
-      for (let j = 0; j < pps && i + j <= numPages; j++) {
-        sheetPages.push(i + j);
+      for (let j = 0; j < pps && i + j < pagesToPrint.length; j++) {
+        sheetPages.push(pagesToPrint[i + j]);
       }
       sheets.push(sheetPages);
     }
