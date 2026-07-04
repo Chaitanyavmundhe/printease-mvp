@@ -182,7 +182,7 @@ export default function HomePage({
         <Card>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-2xl font-black tracking-tight text-slate-950">Print Hub Home</h2>
+              <h2 className="text-2xl font-black tracking-tight text-slate-950">Print Centre Home</h2>
               <p className="mt-1 text-sm text-slate-600">
                 Set pricing and manage incoming print orders from one focused screen.
               </p>
@@ -355,7 +355,7 @@ export default function HomePage({
               </button>
               <button onClick={() => startLogin("hub")} className="rounded-2xl bg-slate-900 p-4 text-left text-white">
                 <Store className="mb-3" />
-                <b>Print Hub Login</b>
+                <b>Print Centre Login</b>
                 <p className="text-sm text-slate-300">For orders, pricing, payment.</p>
               </button>
               <button onClick={() => startRegister("user")} className="rounded-2xl border bg-white p-4 text-left hover:bg-slate-50">
@@ -365,7 +365,7 @@ export default function HomePage({
               </button>
               <button onClick={() => startRegister("hub")} className="rounded-2xl border bg-white p-4 text-left hover:bg-slate-50">
                 <Building2 className="mb-3" />
-                <b>Register Print Hub</b>
+                <b>Register Print Centre</b>
                 <p className="text-sm text-slate-500">Create centre code and pricing.</p>
               </button>
             </div>

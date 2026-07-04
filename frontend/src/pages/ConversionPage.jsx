@@ -176,6 +176,20 @@ export default function ConversionPage({ currentUser }) {
             </div>
           )}
 
+          {!converterReady && (
+            <div className="mt-2 rounded-xl bg-amber-50 p-4 border border-amber-200">
+              <p className="text-sm font-semibold text-amber-800 mb-2">LibreOffice is required for document conversions.</p>
+              <a 
+                href="https://www.libreoffice.org/download/download-libreoffice/" 
+                target="_blank" 
+                rel="noreferrer"
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-amber-600 px-4 py-2 text-sm font-bold text-white hover:bg-amber-700"
+              >
+                Download LibreOffice
+              </a>
+            </div>
+          )}
+
           <div className="mt-auto pt-4">
             <button
               type="button"

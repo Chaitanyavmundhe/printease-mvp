@@ -360,11 +360,11 @@ export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus,
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-2xl sm:text-3xl font-bold">Print Hub Dashboard</h2>
+          <h2 className="text-2xl sm:text-3xl font-bold">Print Centre Dashboard</h2>
           <p className="text-slate-600 text-sm sm:text-base">{currentHub.name} · Code {currentHub.code}</p>
         </div>
         <button onClick={() => navigate("hubPricing")} className="rounded-2xl bg-slate-900 px-5 py-3 font-semibold text-white w-full sm:w-auto">
-          Manage Pricing
+          Set Prices
         </button>
       </div>
 

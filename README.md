@@ -6,6 +6,14 @@ Production deployment uses:
 - Backend: Node.js + Express on Render
 - Database: Supabase PostgreSQL
 
+## Recent Updates (July 2026)
+
+- **UX Copy & UI Layout Fixes**: Rebranded "Print Hub" to "Print Centre" across the UI. Reverted `DocumentPreviewModal` on mobile to a vertical stack for improved usability.
+- **Upload Manager Improvements**: Upload buttons on mobile now force the native OS File Manager rather than prompting for Camera/Photo Gallery by using exact file extensions instead of generic `image/*` MIME types.
+- **Map & Search Ranking Algorithm**: Implemented a smart ranking algorithm for centre discovery that sorts by Distance, Usage history, and Availability. Added explicit price attribute filters. Implemented secure frontend-only `navigator.geolocation`.
+- **Payment Page Reliability**: Fixed a renderer crash in `PaymentPage.jsx` when handling pending conversion arrays (added defensive optional chaining).
+- **Desktop Agent LibreOffice Optimization**: Removed bundled LibreOffice from `electron-builder` configuration to reduce installer size. The agent now provides users with a direct download link to install it manually if not found on the system.
+
 ## Production Environment
 
 Vercel frontend:

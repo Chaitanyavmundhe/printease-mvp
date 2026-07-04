@@ -110,9 +110,9 @@ export default function PaymentPage({
   const isMultiFileOrder = Array.isArray(effectivePrice?.files) && effectivePrice.files.length > 1;
   const isCancelled = normalizeStatus(effectiveOrder?.rawStatus || effectiveOrder?.status) === "cancelled";
   const cancellationReason = effectiveOrder?.priceSnapshot?.message || effectiveOrder?.price_snapshot?.message || null;
-  const failedDocument = effectiveOrder?.documents?.find((document) => (
+  const failedDocument = Array.isArray(effectiveOrder?.documents) ? effectiveOrder.documents.find((document) => (
     document?.preparationStatus === "failed" || document?.preparation_status === "failed"
-  ));
+  )) : null;
   const conversionFailed = Boolean(failedDocument);
   const conversionFailedMessage =
     failedDocument?.preparationErrorMessage ||
@@ -230,13 +230,16 @@ export default function PaymentPage({
         {isMultiFileOrder && (
           <div className="mt-4 space-y-2 rounded-2xl border p-4 text-sm">
             <p className="font-semibold">Files</p>
-            {effectivePrice.files.map((file) => (
-              <Row
-                key={file.documentId || file.fileName}
-                label={`${file.fileName || "Document"} — ${file.pricingPending ? "pending" : `${file.selectedPageCount}p × ${file.copies}`}`}
-                value={file.pricingPending ? "Pending" : formatCurrency(file.totalAmount)}
-              />
-            ))}
+            {effectivePrice.files.map((file, index) => {
+              if (!file) return null;
+              return (
+                <Row
+                  key={file.documentId || file.fileName || index}
+                  label={`${file.fileName || "Document"} — ${file.pricingPending ? "pending" : `${file.selectedPageCount}p × ${file.copies}`}`}
+                  value={file.pricingPending ? "Pending" : formatCurrency(file.totalAmount)}
+                />
+              );
+            })}
           </div>
         )}
 

@@ -98,14 +98,14 @@ export default function Navbar({
                 {!currentUser ? (
                   <>
                     <MenuItem icon={<User size={16} />} onClick={() => startLogin("user")}>Login as User</MenuItem>
-                    <MenuItem icon={<Store size={16} />} onClick={() => startLogin("hub")}>Login as Print Hub</MenuItem>
+                    <MenuItem icon={<Store size={16} />} onClick={() => startLogin("hub")}>Login as Print Centre</MenuItem>
                     <MenuItem icon={<Plus size={16} />} onClick={() => startRegister("user")}>Register as User</MenuItem>
-                    <MenuItem icon={<Building2 size={16} />} onClick={() => startRegister("hub")}>Register Print Hub</MenuItem>
+                    <MenuItem icon={<Building2 size={16} />} onClick={() => startRegister("hub")}>Register Print Centre</MenuItem>
                   </>
                 ) : (
                   <>
                     <div className="px-3 py-2 text-xs text-slate-500">
-                      Logged in as <b>{currentUser.role === "hub" ? "Print Hub" : "User"}</b>
+                      Logged in as <b>{currentUser.role === "hub" ? "Print Centre" : "User"}</b>
                     </div>
                     {currentUser.role === "user" && <MenuItem icon={<User size={16} />} onClick={() => navigate("userDashboard")}>User Dashboard</MenuItem>}
                     {currentUser.role === "hub" && (

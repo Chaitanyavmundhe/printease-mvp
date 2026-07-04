@@ -492,7 +492,7 @@ export default function UploadPage({
       const firstFile = finalFiles[0] || null;
       const hasOfficeFile = finalFiles.some((file) => detectUploadFileKind(file) === "office");
       setUploadNotice(hasOfficeFile
-        ? "DOCX, PPTX and XLSX files will be converted to PDF by the print hub's desktop agent after you continue. This usually takes 10–30 seconds. You'll see the exact page count and price once conversion completes."
+        ? "DOCX, PPTX and XLSX files will be converted to PDF by the print centre's desktop agent after you continue. This usually takes 10–30 seconds. You'll see the exact page count and price once conversion completes."
         : "");
       setDocumentFiles(finalFiles);
       setDocumentFile(firstFile);
@@ -545,7 +545,7 @@ export default function UploadPage({
           }
   
           setUploadNotice(hasOfficeFile
-            ? "DOCX, PPTX and XLSX files will be converted to PDF by the print hub's desktop agent after you continue. This usually takes 10–30 seconds. You'll see the exact page count and price once conversion completes."
+            ? "DOCX, PPTX and XLSX files will be converted to PDF by the print centre's desktop agent after you continue. This usually takes 10–30 seconds. You'll see the exact page count and price once conversion completes."
             : "");
           setBackendPrice?.(null);
           if (setReprintSourceDocuments) setReprintSourceDocuments([]);

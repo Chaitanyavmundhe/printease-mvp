@@ -84,7 +84,7 @@ export default function AuthPage({
                   User
                 </button>
                 <button type="button" onClick={() => setAuthRole("hub")} className={`rounded-2xl border px-4 py-3 text-sm font-semibold ${authRole === "hub" ? "border-slate-900 bg-slate-900 text-white" : "bg-white"}`}>
-                  Print Hub
+                  Print Centre
                 </button>
               </div>
             </div>
@@ -188,7 +188,7 @@ export default function AuthPage({
                   User
                 </button>
                 <button type="button" onClick={() => setAuthRole("hub")} className={`rounded-2xl border px-4 py-3 text-sm font-semibold ${authRole === "hub" ? "border-slate-900 bg-slate-900 text-white" : "bg-white"}`}>
-                  Print Hub
+                  Print Centre
                 </button>
               </div>
             </div>
@@ -250,7 +250,7 @@ export default function AuthPage({
               setAuthRole("hub");
               setAuthMode("register");
             }} className="rounded-2xl border bg-white px-4 py-3 text-sm font-semibold hover:bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-400">
-              Register as Print Hub
+              Register as Print Centre
             </button>
           </div>
         )}

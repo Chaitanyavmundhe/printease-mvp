@@ -105,8 +105,10 @@ export default function CentreCodePage({
                 onChange={(e) => setCentreSort(e.target.value)}
                 className="w-full rounded-2xl border bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-slate-300"
               >
-                <option value="smart">Smart Sort</option>
-                <option value="price">Lowest Price</option>
+                <option value="smart">Smart Sort (Distance & Usage)</option>
+                <option value="price">Lowest Overall Price</option>
+                <option value="price_bw">Lowest B/W Price</option>
+                <option value="price_color">Lowest Color Price</option>
               </select>
             </div>
             <div className="flex flex-col sm:flex-row gap-3">
