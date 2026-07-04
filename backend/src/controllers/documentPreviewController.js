@@ -31,12 +31,23 @@ export const previewDocument = asyncHandler(async (req, res) => {
       guestToken
     });
 
+    const preferConverted = req.query.converted === 'true';
+    const isConverted = preferConverted && context.document.printReadyStoragePath;
+    const targetStoragePath = isConverted 
+      ? context.document.printReadyStoragePath 
+      : context.document.storagePath;
+
     const buffer = await fetchDocumentBuffer({
-      storagePath: context.document.storagePath
+      storagePath: targetStoragePath
     });
 
-    const safeMime = getSafeContentType(context.document.fileType, context.document.fileName);
-    const disposition = getPreviewDisposition({ mode: "preview", fileName: context.document.fileName });
+    const fileType = isConverted ? "application/pdf" : context.document.fileType;
+    const fileName = isConverted 
+      ? (context.document.fileName || "document").replace(/\.[^.]+$/, ".pdf") 
+      : context.document.fileName;
+
+    const safeMime = getSafeContentType(fileType, fileName);
+    const disposition = getPreviewDisposition({ mode: "preview", fileName });
 
     await createDocumentAccessLog({
       id: generateId(),
@@ -78,12 +89,23 @@ export const downloadDocument = asyncHandler(async (req, res) => {
       guestToken
     });
 
+    const preferConverted = req.query.converted === 'true';
+    const isConverted = preferConverted && context.document.printReadyStoragePath;
+    const targetStoragePath = isConverted 
+      ? context.document.printReadyStoragePath 
+      : context.document.storagePath;
+
     const buffer = await fetchDocumentBuffer({
-      storagePath: context.document.storagePath
+      storagePath: targetStoragePath
     });
 
-    const safeMime = getSafeContentType(context.document.fileType, context.document.fileName);
-    const disposition = getPreviewDisposition({ mode: "download", fileName: context.document.fileName });
+    const fileType = isConverted ? "application/pdf" : context.document.fileType;
+    const fileName = isConverted 
+      ? (context.document.fileName || "document").replace(/\.[^.]+$/, ".pdf") 
+      : context.document.fileName;
+
+    const safeMime = getSafeContentType(fileType, fileName);
+    const disposition = getPreviewDisposition({ mode: "download", fileName });
 
     await createDocumentAccessLog({
       id: generateId(),

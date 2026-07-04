@@ -142,9 +142,12 @@ export default function HomePage({
 
   const isAndroid = typeof navigator !== "undefined" ? /android/i.test(navigator.userAgent || navigator.vendor || window.opera) : false;
   const [centreSort, setCentreSort] = useState("smart");
+  const [centrePriceFilter, setCentrePriceFilter] = useState("");
+  
+  const combinedQuery = (centreSearch + (centrePriceFilter ? ` under ${centrePriceFilter}` : "")).trim();
   const filteredCentres = useMemo(
-    () => rankCentres(centres, { orders, userLocation, query: centreSearch, sortBy: centreSort }),
-    [centreSearch, centres, orders, userLocation, centreSort]
+    () => rankCentres(centres, { orders, userLocation, query: combinedQuery, sortBy: centreSort }),
+    [combinedQuery, centres, orders, userLocation, centreSort]
   );
 
   const mappableCentres = useMemo(
@@ -158,9 +161,15 @@ export default function HomePage({
       ? "Location active"
       : userLocationStatus === "denied"
         ? "Location denied"
-        : userLocationStatus === "unsupported"
-          ? "Location not supported"
-          : "Use my location";
+        : userLocationStatus === "unavailable"
+          ? "Location unavailable"
+          : userLocationStatus === "timeout"
+            ? "Location timed out"
+            : userLocationStatus === "error"
+              ? "Location error"
+              : userLocationStatus === "unsupported"
+                ? "Location not supported"
+                : "Use my location";
 
   function openMapForCentre(centreToFocus = null) {
     setMapCentreToFocus(centreToFocus?.id ? centreToFocus : null);
@@ -392,11 +401,22 @@ export default function HomePage({
             </label>
             <div className="flex gap-2">
               <select
+                value={centrePriceFilter}
+                onChange={(e) => setCentrePriceFilter(e.target.value)}
+                className="rounded-2xl border bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-slate-300"
+              >
+                <option value="">Any Price</option>
+                <option value="2">Under ₹2</option>
+                <option value="3">Under ₹3</option>
+                <option value="5">Under ₹5</option>
+              </select>
+              <select
                 value={centreSort}
                 onChange={(e) => setCentreSort(e.target.value)}
                 className="rounded-2xl border bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-slate-300"
               >
                 <option value="smart">Smart Sort</option>
+                <option value="distance">Nearest</option>
                 <option value="price">Lowest Price</option>
               </select>
             </div>

@@ -319,21 +319,22 @@ export function invalidateOrderDetail(orderId) {
   invalidateCache(`order-detail:${orderId}`);
 }
 
-export function createDocumentSignedDownload(documentId) {
-  return apiRequest(`/api/documents/${encodeURIComponent(documentId)}/signed-download`, {
+export function createDocumentSignedDownload(documentId, converted = false) {
+  const query = converted ? "?converted=true" : "";
+  return apiRequest(`/api/documents/${encodeURIComponent(documentId)}/signed-download${query}`, {
     method: "POST",
   });
 }
 
 const documentBlobCache = new Map();
 
-async function fetchSignedDocumentBlob(documentId) {
-  const cacheKey = String(documentId || "");
+async function fetchSignedDocumentBlob(documentId, converted = false) {
+  const cacheKey = String(documentId || "") + (converted ? "_converted" : "");
   if (documentBlobCache.has(cacheKey)) {
     return documentBlobCache.get(cacheKey);
   }
 
-  const data = await createDocumentSignedDownload(documentId);
+  const data = await createDocumentSignedDownload(documentId, converted);
   if (!data?.signedUrl) {
     throw new Error("Could not create secure document link.");
   }
@@ -356,8 +357,8 @@ async function fetchSignedDocumentBlob(documentId) {
   return typedBlob;
 }
 
-export async function downloadDocumentBlob(documentId) {
-  return fetchSignedDocumentBlob(documentId);
+export async function downloadDocumentBlob(documentId, converted = false) {
+  return fetchSignedDocumentBlob(documentId, converted);
 }
 
 export async function getDesktopCachedDocumentUrl(documentId) {
@@ -371,12 +372,12 @@ export async function getDesktopCachedDocumentUrl(documentId) {
   }
 }
 
-export async function getDocumentPreviewBlob(documentId) {
-  return fetchSignedDocumentBlob(documentId);
+export async function getDocumentPreviewBlob(documentId, converted = false) {
+  return fetchSignedDocumentBlob(documentId, converted);
 }
 
-export async function getDocumentDownloadBlob(documentId) {
-  return downloadDocumentBlob(documentId);
+export async function getDocumentDownloadBlob(documentId, converted = false) {
+  return downloadDocumentBlob(documentId, converted);
 }
 
 export function updateAfterOrderSettings(afterOrderSettings) {

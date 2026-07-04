@@ -375,8 +375,16 @@ export default function App() {
         });
         setUserLocationStatus("ready");
       },
-      () => {
-        setUserLocationStatus("denied");
+      (error) => {
+        if (error.code === 1) {
+          setUserLocationStatus("denied");
+        } else if (error.code === 2) {
+          setUserLocationStatus("unavailable");
+        } else if (error.code === 3) {
+          setUserLocationStatus("timeout");
+        } else {
+          setUserLocationStatus("error");
+        }
       },
       { enableHighAccuracy: false, timeout: 15000, maximumAge: 120000 }
     );

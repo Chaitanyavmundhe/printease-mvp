@@ -24,14 +24,20 @@ export const createSignedDownload = asyncHandler(async (req, res) => {
     return res.status(403).json({ success: false, message: 'You are not allowed to download this document' });
   }
 
-  if (!context.document.storagePath) {
+  const preferConverted = req.query.converted === 'true';
+  const isConverted = preferConverted && context.document.printReadyStoragePath;
+  const targetStoragePath = isConverted 
+    ? context.document.printReadyStoragePath 
+    : context.document.storagePath;
+
+  if (!targetStoragePath) {
     return res.status(404).json({ success: false, message: 'Document is not available in private storage' });
   }
 
   const supabase = getSupabaseAdminClient();
   const { data, error } = await supabase.storage
     .from(getSupabaseBucketName())
-    .createSignedUrl(context.document.storagePath, SIGNED_URL_TTL_SECONDS);
+    .createSignedUrl(targetStoragePath, SIGNED_URL_TTL_SECONDS);
 
   if (error || !data?.signedUrl) {
     return res.status(502).json({

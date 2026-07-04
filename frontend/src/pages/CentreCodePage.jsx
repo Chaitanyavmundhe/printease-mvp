@@ -58,9 +58,15 @@ export default function CentreCodePage({
       ? "Location active"
       : userLocationStatus === "denied"
         ? "Location denied"
-        : userLocationStatus === "unsupported"
-          ? "Location not supported"
-          : "Use my location";
+        : userLocationStatus === "unavailable"
+          ? "Location unavailable"
+          : userLocationStatus === "timeout"
+            ? "Location timed out"
+            : userLocationStatus === "error"
+              ? "Location error"
+              : userLocationStatus === "unsupported"
+                ? "Location not supported"
+                : "Use my location";
 
   return (
     <div className="space-y-8">

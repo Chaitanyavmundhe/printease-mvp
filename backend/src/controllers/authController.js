@@ -203,9 +203,9 @@ export const registerCentre = asyncHandler(async (req, res) => {
       upiId: upiId || null,
       pricing: {
         bwSingle: 1,
-        bwDouble: 1.5,
+        bwDouble: 2,
         colorSingle: 2,
-        colorDouble: 3,
+        colorDouble: 4,
         watermarkCharge: 2
       },
       createdAt: new Date().toISOString()
@@ -411,9 +411,9 @@ export const completeSupabaseProfile = asyncHandler(async (req, res) => {
       upiId,
       pricing: {
         bwSingle: 1,
-        bwDouble: 1.5,
+        bwDouble: 2,
         colorSingle: 2,
-        colorDouble: 3,
+        colorDouble: 4,
         watermarkCharge: 2
       },
       createdAt: new Date().toISOString()

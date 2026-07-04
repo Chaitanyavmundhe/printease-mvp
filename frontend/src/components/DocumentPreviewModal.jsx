@@ -1,6 +1,7 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { X, Download, FileText, Image, FileCode, AlertCircle, Loader2 } from "lucide-react";
 import InlineDocumentFrame from "./InlineDocumentFrame";
+import { getDocumentPreviewBlob } from "../services/api";
 
 export default function DocumentPreviewModal({
   isOpen,
@@ -11,10 +12,73 @@ export default function DocumentPreviewModal({
   fileType,
   fileSize,
   textContent,
-  loading,
-  error,
+  loading: externalLoading,
+  error: externalError,
   onDownload,
+  documentId,
+  fetchConvertedPdf,
 }) {
+  const [internalBlobUrl, setInternalBlobUrl] = useState("");
+  const [isFetching, setIsFetching] = useState(false);
+  const [fetchError, setFetchError] = useState("");
+  const timerRef = useRef(null);
+
+  useEffect(() => {
+    if (!isOpen || !documentId) {
+      setInternalBlobUrl("");
+      setFetchError("");
+      setIsFetching(false);
+      if (timerRef.current) clearInterval(timerRef.current);
+      return;
+    }
+
+    let isSubscribed = true;
+    
+    const fetchBlob = async () => {
+      try {
+        if (!internalBlobUrl) setIsFetching(true);
+        const blob = await getDocumentPreviewBlob(documentId, fetchConvertedPdf);
+        if (isSubscribed) {
+          const url = URL.createObjectURL(blob);
+          setInternalBlobUrl(url);
+          setIsFetching(false);
+          setFetchError("");
+          if (timerRef.current) {
+            clearInterval(timerRef.current);
+            timerRef.current = null;
+          }
+        }
+      } catch (err) {
+        if (isSubscribed) {
+          if (fetchConvertedPdf) {
+            // If waiting for converted PDF, it might not be ready yet. Keep polling.
+            setFetchError("Waiting for Hub to convert document...");
+            setIsFetching(true);
+          } else {
+            setFetchError("Could not load preview. " + err.message);
+            setIsFetching(false);
+            if (timerRef.current) clearInterval(timerRef.current);
+          }
+        }
+      }
+    };
+
+    fetchBlob();
+    
+    if (fetchConvertedPdf) {
+      timerRef.current = setInterval(fetchBlob, 3000);
+    }
+
+    return () => {
+      isSubscribed = false;
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (internalBlobUrl) URL.revokeObjectURL(internalBlobUrl);
+    };
+  }, [isOpen, documentId, fetchConvertedPdf]);
+
+  const activeBlobUrl = blobUrl || internalBlobUrl;
+  const loading = externalLoading || isFetching;
+  const error = externalError || fetchError;
   // Prevent body scrolling when modal is open
   useEffect(() => {
     if (isOpen) {
@@ -39,7 +103,7 @@ export default function DocumentPreviewModal({
   }, [isOpen, onClose]);
 
   if (!isOpen) return null;
-  const isPdfPreview = previewKind === "pdf" && blobUrl && !loading && !error;
+  const isPdfPreview = previewKind === "pdf" && activeBlobUrl && !loading && !error;
 
   // Format file size
   const formatSize = (bytes) => {
@@ -143,13 +207,13 @@ export default function DocumentPreviewModal({
             </div>
           ) : (
             <div className={`flex min-h-[45vh] items-center justify-center ${isPdfPreview ? "h-full min-h-0 w-full" : ""}`}>
-              {previewKind === "pdf" && blobUrl && (
-                <InlineDocumentFrame url={blobUrl} title="PDF Document Preview" className="h-full min-h-[360px] w-full shadow-inner dark:border-slate-800" />
+              {previewKind === "pdf" && activeBlobUrl && (
+                <InlineDocumentFrame url={activeBlobUrl} title="PDF Document Preview" className="h-full min-h-[360px] w-full shadow-inner dark:border-slate-800" />
               )}
 
-              {previewKind === "image" && blobUrl && (
+              {previewKind === "image" && activeBlobUrl && (
                 <img
-                  src={blobUrl}
+                  src={activeBlobUrl}
                   alt={fileName}
                   className="max-h-[55vh] max-w-full rounded-xl object-contain shadow-md"
                 />

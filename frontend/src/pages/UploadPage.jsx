@@ -174,6 +174,26 @@ export default function UploadPage({
       return;
     }
 
+    const isPendingDesktop = prepared?.status === PREPARATION_STATUS.PENDING_DESKTOP;
+    const uploadedDocument = autoPreparation?.uploadedDocuments?.[index];
+
+    if (isPendingDesktop && uploadedDocument?.documentId) {
+      setLocalPreview({
+        url: "",
+        documentId: uploadedDocument.documentId,
+        fetchConvertedPdf: true,
+        kind: "pdf",
+        name: displayFiles[index]?.name || "Converted Document",
+        type: "application/pdf",
+        size: uploadedDocument.fileSizeBytes || documentFiles[index]?.size || 0,
+        textContent: "",
+        loading: false,
+        error: "",
+        skipRevoke: true,
+      });
+      return;
+    }
+
     const fileObj = documentFiles[index] || (index === 0 && documentFile);
     if (!fileObj) return;
 
@@ -1206,6 +1226,8 @@ export default function UploadPage({
           isOpen={true}
           onClose={closeLocalPreview}
           blobUrl={localPreview.url}
+          documentId={localPreview.documentId}
+          fetchConvertedPdf={localPreview.fetchConvertedPdf}
           previewKind={localPreview.kind}
           fileName={localPreview.name}
           fileType={localPreview.type}
@@ -1214,12 +1236,14 @@ export default function UploadPage({
           loading={Boolean(localPreview.loading)}
           error={localPreview.error || ""}
           onDownload={() => {
-            const a = window.document.createElement("a");
-            a.href = localPreview.url;
-            a.download = localPreview.name;
-            window.document.body.appendChild(a);
-            a.click();
-            window.document.body.removeChild(a);
+            if (localPreview.url) {
+              const a = window.document.createElement("a");
+              a.href = localPreview.url;
+              a.download = localPreview.name;
+              window.document.body.appendChild(a);
+              a.click();
+              window.document.body.removeChild(a);
+            }
           }}
         />
       )}
