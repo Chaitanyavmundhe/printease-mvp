@@ -6,87 +6,123 @@ import 'react-pdf/dist/Page/TextLayer.css';
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
-export default function InlineDocumentFrame({ url, title = "Document preview", className = "" }) {
+export default function InlineDocumentFrame({ url, config = {}, title = "Document preview", className = "" }) {
   const [numPages, setNumPages] = useState(null);
-  const [pageNumber, setPageNumber] = useState(1);
   const [scale, setScale] = useState(1.0);
 
   function onDocumentLoadSuccess({ numPages }) {
     setNumPages(numPages);
-    setPageNumber(1);
-  }
-
-  function changePage(offset) {
-    setPageNumber(prevPageNumber => prevPageNumber + offset);
   }
 
   if (!url) return null;
 
+  // Extract config
+  const isBW = config.colorType === 'bw';
+  const pps = Number(config.pagesPerSheet) || 1;
+  const isLandscape = config.orientation === 'landscape';
+
+  // Group pages into sheets based on pagesPerSheet
+  const sheets = [];
+  if (numPages) {
+    for (let i = 1; i <= numPages; i += pps) {
+      const sheetPages = [];
+      for (let j = 0; j < pps && i + j <= numPages; j++) {
+        sheetPages.push(i + j);
+      }
+      sheets.push(sheetPages);
+    }
+  }
+
+  const gridCols = pps === 1 ? 1 : pps === 2 ? 1 : pps === 4 ? 2 : pps === 6 ? 2 : pps === 9 ? 3 : pps === 16 ? 4 : 1;
+  const gridRows = pps === 1 ? 1 : pps === 2 ? 2 : pps === 4 ? 2 : pps === 6 ? 3 : pps === 9 ? 3 : pps === 16 ? 4 : 1;
+
+  // Physical sheet aspect ratio (approx A4)
+  const sheetAspectRatio = isLandscape ? "aspect-[1.414/1]" : "aspect-[1/1.414]";
+
   return (
-    <div className={`flex min-h-[360px] flex-col overflow-hidden rounded-xl border bg-slate-50 ${className}`}>
-      <div className="flex-1 overflow-auto bg-slate-200/50 flex items-center justify-center p-4">
-        <Document
-          file={url}
-          onLoadSuccess={onDocumentLoadSuccess}
-          loading={
-            <div className="flex flex-col items-center gap-2 text-slate-500 py-12">
-              <Loader2 className="animate-spin h-8 w-8 text-indigo-600" />
-              <p className="text-sm">Loading PDF...</p>
-            </div>
-          }
-          error={
-            <div className="flex flex-col items-center gap-2 text-rose-500 py-12">
-              <AlertCircle className="h-8 w-8" />
-              <p className="text-sm">Failed to load PDF preview.</p>
-            </div>
-          }
-          className="flex flex-col items-center"
+    <div className={`flex flex-col h-full w-full overflow-hidden ${className}`}>
+      
+      {/* Scrollable Document Area */}
+      <div className="flex-1 overflow-auto bg-[#525659] p-4 sm:p-8">
+        <div 
+          className={`flex flex-col items-center gap-6 mx-auto ${isBW ? 'grayscale contrast-125 brightness-105' : ''}`}
+          style={{ transform: `scale(${scale})`, transformOrigin: 'top center', transition: 'transform 0.2s ease' }}
         >
-          <Page 
-            pageNumber={pageNumber} 
-            scale={scale}
-            renderTextLayer={false}
-            renderAnnotationLayer={false}
-            className="shadow-xl" 
-          />
-        </Document>
+          <Document
+            file={url}
+            onLoadSuccess={onDocumentLoadSuccess}
+            loading={
+              <div className="flex flex-col items-center gap-2 text-white py-12">
+                <Loader2 className="animate-spin h-8 w-8 text-white" />
+                <p className="text-sm">Loading PDF...</p>
+              </div>
+            }
+            error={
+              <div className="flex flex-col items-center gap-2 text-rose-300 py-12">
+                <AlertCircle className="h-8 w-8" />
+                <p className="text-sm">Failed to load PDF preview.</p>
+              </div>
+            }
+            className="flex flex-col items-center gap-8 w-full max-w-3xl"
+          >
+            {sheets.map((sheetPages, sheetIndex) => (
+              <div 
+                key={`sheet-${sheetIndex}`}
+                className={`bg-white shadow-2xl w-full ${sheetAspectRatio} p-4 sm:p-8`}
+              >
+                <div 
+                  className="w-full h-full grid gap-4"
+                  style={{
+                    gridTemplateColumns: `repeat(${gridCols}, minmax(0, 1fr))`,
+                    gridTemplateRows: `repeat(${gridRows}, minmax(0, 1fr))`,
+                  }}
+                >
+                  {sheetPages.map((pageNum) => (
+                    <div key={`page-${pageNum}`} className="w-full h-full flex items-center justify-center overflow-hidden border border-slate-100 relative">
+                      <Page 
+                        pageNumber={pageNum} 
+                        renderTextLayer={false}
+                        renderAnnotationLayer={false}
+                        width={pps > 1 ? undefined : 600}
+                        className="react-pdf-page-wrapper flex items-center justify-center w-full h-full" 
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </Document>
+          <style dangerouslySetInnerHTML={{__html: `
+            .react-pdf-page-wrapper .react-pdf__Page__canvas {
+              max-width: 100% !important;
+              max-height: 100% !important;
+              width: auto !important;
+              height: auto !important;
+              object-fit: contain;
+            }
+          `}} />
+        </div>
       </div>
 
-      <div className="shrink-0 flex items-center justify-between border-t bg-white px-4 py-2">
-        <div className="flex items-center gap-2">
-          <button 
-            type="button"
-            disabled={pageNumber <= 1}
-            onClick={() => changePage(-1)}
-            className="p-1.5 rounded-lg text-slate-600 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            <ChevronLeft size={20} />
-          </button>
-          <p className="text-sm font-medium text-slate-700 min-w-[80px] text-center">
-            Page {pageNumber} of {numPages || '--'}
-          </p>
-          <button 
-            type="button"
-            disabled={pageNumber >= numPages}
-            onClick={() => changePage(1)}
-            className="p-1.5 rounded-lg text-slate-600 hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            <ChevronRight size={20} />
-          </button>
-        </div>
+      {/* Footer Controls */}
+      <div className="shrink-0 flex items-center justify-between bg-slate-100 border-t border-slate-300 px-4 py-2 z-10 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+        <p className="text-sm font-medium text-slate-700">
+          {numPages ? `${numPages} page(s) • ${sheets.length} sheet(s)` : '-- pages'}
+        </p>
         
         <div className="flex items-center gap-2">
           <button 
-            onClick={() => setScale(s => Math.max(0.5, s - 0.25))}
-            className="px-2 py-1 text-xs font-semibold text-slate-600 rounded-md hover:bg-slate-100 border"
+            onClick={() => setScale(s => Math.max(0.25, s - 0.25))}
+            className="px-2 py-1 text-xs font-semibold text-slate-700 rounded-md hover:bg-slate-200 border border-slate-300 transition-colors shadow-sm bg-white"
           >
-            A-
+            Zoom Out
           </button>
+          <span className="text-xs font-medium text-slate-600 w-12 text-center">{Math.round(scale * 100)}%</span>
           <button 
             onClick={() => setScale(s => Math.min(3.0, s + 0.25))}
-            className="px-2 py-1 text-xs font-semibold text-slate-600 rounded-md hover:bg-slate-100 border"
+            className="px-2 py-1 text-xs font-semibold text-slate-700 rounded-md hover:bg-slate-200 border border-slate-300 transition-colors shadow-sm bg-white"
           >
-            A+
+            Zoom In
           </button>
         </div>
       </div>

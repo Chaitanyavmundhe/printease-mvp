@@ -1,19 +1,29 @@
-export default function FileSettingsPanel({ activeConfig, setConfigVal, isCompact = false }) {
-  const containerClass = isCompact
-    ? "grid gap-2 grid-cols-2 md:grid-cols-4 bg-slate-50 p-3 rounded-2xl border border-slate-100"
-    : "grid gap-2 sm:gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-4";
-    
-  const labelClass = isCompact
-    ? "grid gap-1 text-xs font-semibold text-slate-600 col-span-1"
-    : "grid gap-1 sm:gap-2 text-sm font-semibold text-slate-600 col-span-1 min-w-0";
-    
-  const inputClass = isCompact
-    ? "rounded-xl border px-2 py-1.5 font-normal text-slate-900 outline-none focus:ring-2 focus:ring-slate-300"
-    : "w-full min-w-0 rounded-2xl border px-2 sm:px-3 py-2 text-sm sm:text-base font-normal text-slate-900 outline-none focus:ring-2 focus:ring-slate-300";
+export default function FileSettingsPanel({ activeConfig, setConfigVal, isCompact = false, layoutType = "default" }) {
+  const isDialog = layoutType === "dialog";
 
-  const selectClass = isCompact
-    ? "rounded-xl border px-2 py-1.5 font-normal text-slate-900"
-    : "w-full min-w-0 rounded-2xl border px-2 sm:px-3 py-2 text-sm sm:text-base font-normal text-slate-900";
+  const containerClass = isDialog
+    ? "flex flex-col gap-5 bg-white p-5 h-full overflow-y-auto"
+    : isCompact
+      ? "grid gap-2 grid-cols-2 md:grid-cols-4 bg-slate-50 p-3 rounded-2xl border border-slate-100"
+      : "grid gap-2 sm:gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-4";
+      
+  const labelClass = isDialog
+    ? "grid gap-1.5 text-sm font-semibold text-slate-700 w-full"
+    : isCompact
+      ? "grid gap-1 text-xs font-semibold text-slate-600 col-span-1"
+      : "grid gap-1 sm:gap-2 text-sm font-semibold text-slate-600 col-span-1 min-w-0";
+      
+  const inputClass = isDialog
+    ? "w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal text-slate-900 shadow-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
+    : isCompact
+      ? "rounded-xl border px-2 py-1.5 font-normal text-slate-900 outline-none focus:ring-2 focus:ring-slate-300"
+      : "w-full min-w-0 rounded-2xl border px-2 sm:px-3 py-2 text-sm sm:text-base font-normal text-slate-900 outline-none focus:ring-2 focus:ring-slate-300";
+
+  const selectClass = isDialog
+    ? "w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal text-slate-900 shadow-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition"
+    : isCompact
+      ? "rounded-xl border px-2 py-1.5 font-normal text-slate-900"
+      : "w-full min-w-0 rounded-2xl border px-2 sm:px-3 py-2 text-sm sm:text-base font-normal text-slate-900";
 
   return (
     <div className={containerClass}>
@@ -84,27 +94,30 @@ export default function FileSettingsPanel({ activeConfig, setConfigVal, isCompac
           <option value="fit_to_page_width">{isCompact ? "Fit width" : "Fit to page width"}</option>
         </select>
       </label>
-      <label className={isCompact ? "grid gap-1 text-xs font-semibold text-slate-600 col-span-2 md:col-span-2" : "grid gap-1 sm:gap-2 text-sm font-semibold text-slate-600 col-span-1 sm:col-span-2 md:col-span-4 min-w-0"}>
+      <label className={isDialog ? "grid gap-1.5 text-sm font-semibold text-slate-700 w-full" : isCompact ? "grid gap-1 text-xs font-semibold text-slate-600 col-span-2 md:col-span-2" : "grid gap-1 sm:gap-2 text-sm font-semibold text-slate-600 col-span-1 sm:col-span-2 md:col-span-4 min-w-0"}>
         Margins
-        <select value={activeConfig?.marginMode || "default"} onChange={(e) => setConfigVal("marginMode", e.target.value)} className={isCompact ? "rounded-xl border px-2 py-1.5 font-normal text-slate-900" : "rounded-2xl border px-4 py-3 font-normal text-slate-900"}>
+        <select value={activeConfig?.marginMode || "default"} onChange={(e) => setConfigVal("marginMode", e.target.value)} className={isDialog ? "w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal text-slate-900 shadow-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition" : isCompact ? "rounded-xl border px-2 py-1.5 font-normal text-slate-900" : "rounded-2xl border px-4 py-3 font-normal text-slate-900"}>
           <option value="default">Default</option>
           <option value="minimum">Minimum</option>
           <option value="none">None</option>
         </select>
       </label>
-      <label className={isCompact ? "flex items-center gap-2 rounded-xl border px-3 py-1.5 col-span-2 md:col-span-4 bg-white" : "flex items-center gap-3 rounded-2xl border px-4 py-3 col-span-2"}>
-        <input type="checkbox" checked={activeConfig?.watermark || false} onChange={(e) => setConfigVal("watermark", e.target.checked)} />
-        <span className={isCompact ? "text-xs font-semibold" : ""}>{isCompact ? "Add watermark" : "Add watermark to printable PDF"}</span>
+      
+      {isDialog && <hr className="border-slate-200 my-2" />}
+
+      <label className={isDialog ? "flex items-center gap-3 w-full" : isCompact ? "flex items-center gap-2 rounded-xl border px-3 py-1.5 col-span-2 md:col-span-4 bg-white" : "flex items-center gap-3 rounded-2xl border px-4 py-3 col-span-2"}>
+        <input type="checkbox" checked={activeConfig?.watermark || false} onChange={(e) => setConfigVal("watermark", e.target.checked)} className={isDialog ? "w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" : ""} />
+        <span className={isDialog ? "text-sm font-semibold text-slate-700" : isCompact ? "text-xs font-semibold" : ""}>{isCompact ? "Add watermark" : "Add watermark to printable PDF"}</span>
       </label>
       {activeConfig?.watermark && (
-        <div className={isCompact ? "grid gap-2 rounded-xl border bg-white p-3 col-span-2 md:col-span-4 md:grid-cols-4" : "grid gap-3 rounded-2xl border bg-slate-50 p-4 col-span-2 md:grid-cols-2"}>
-          <select value={activeConfig?.watermarkType || "order_code"} onChange={(e) => setConfigVal("watermarkType", e.target.value)} className={isCompact ? "rounded-xl border px-2 py-1.5 text-xs col-span-1" : "rounded-2xl border px-4 py-3"}>
+        <div className={isDialog ? "grid gap-3 w-full bg-slate-50 p-4 rounded-lg border" : isCompact ? "grid gap-2 rounded-xl border bg-white p-3 col-span-2 md:col-span-4 md:grid-cols-4" : "grid gap-3 rounded-2xl border bg-slate-50 p-4 col-span-2 md:grid-cols-2"}>
+          <select value={activeConfig?.watermarkType || "order_code"} onChange={(e) => setConfigVal("watermarkType", e.target.value)} className={isDialog ? selectClass : isCompact ? "rounded-xl border px-2 py-1.5 text-xs col-span-1" : "rounded-2xl border px-4 py-3"}>
             <option value="order_code">Order code</option>
             <option value="pickup_code">Pickup code</option>
             <option value="date_time">Date/time</option>
             <option value="custom_text">Custom text</option>
           </select>
-          <select value={activeConfig?.watermarkPosition || "bottom_right"} onChange={(e) => setConfigVal("watermarkPosition", e.target.value)} className={isCompact ? "rounded-xl border px-2 py-1.5 text-xs col-span-1" : "rounded-2xl border px-4 py-3"}>
+          <select value={activeConfig?.watermarkPosition || "bottom_right"} onChange={(e) => setConfigVal("watermarkPosition", e.target.value)} className={isDialog ? selectClass : isCompact ? "rounded-xl border px-2 py-1.5 text-xs col-span-1" : "rounded-2xl border px-4 py-3"}>
             <option value="bottom_right">Bottom right</option>
             <option value="bottom_center">Bottom center</option>
             <option value="bottom_left">Bottom left</option>
@@ -114,17 +127,17 @@ export default function FileSettingsPanel({ activeConfig, setConfigVal, isCompac
             <option value="top_right">Top right</option>
           </select>
           {activeConfig?.watermarkType === "custom_text" && (
-            <input value={activeConfig?.watermarkText || ""} onChange={(e) => setConfigVal("watermarkText", e.target.value)} placeholder="Text" className={isCompact ? "rounded-xl border px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-slate-300 col-span-2 md:col-span-2" : "rounded-2xl border px-4 py-3 outline-none focus:ring-2 focus:ring-slate-300 md:col-span-2"} />
+            <input value={activeConfig?.watermarkText || ""} onChange={(e) => setConfigVal("watermarkText", e.target.value)} placeholder="Text" className={isDialog ? inputClass : isCompact ? "rounded-xl border px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-slate-300 col-span-2 md:col-span-2" : "rounded-2xl border px-4 py-3 outline-none focus:ring-2 focus:ring-slate-300 md:col-span-2"} />
           )}
-          <label className={isCompact ? "grid gap-1 text-xs font-semibold text-slate-600 col-span-1" : "grid gap-2 text-sm font-semibold text-slate-600"}>
+          <label className={isDialog ? labelClass : isCompact ? "grid gap-1 text-xs font-semibold text-slate-600 col-span-1" : "grid gap-2 text-sm font-semibold text-slate-600"}>
             Opacity
-            <input type="range" min="0.05" max="0.6" step="0.01" value={activeConfig?.watermarkOpacity || 0.18} onChange={(e) => setConfigVal("watermarkOpacity", Number(e.target.value))} />
+            <input type="range" min="0.05" max="0.6" step="0.01" value={activeConfig?.watermarkOpacity || 0.18} onChange={(e) => setConfigVal("watermarkOpacity", Number(e.target.value))} className={isDialog ? "w-full" : ""} />
           </label>
-          <label className={isCompact ? "grid gap-1 text-xs font-semibold text-slate-600 col-span-1" : "grid gap-2 text-sm font-semibold text-slate-600"}>
+          <label className={isDialog ? labelClass : isCompact ? "grid gap-1 text-xs font-semibold text-slate-600 col-span-1" : "grid gap-2 text-sm font-semibold text-slate-600"}>
             Rotation
-            <input type="range" min="-90" max="90" step="5" value={activeConfig?.watermarkRotation || 0} onChange={(e) => setConfigVal("watermarkRotation", Number(e.target.value))} />
+            <input type="range" min="-90" max="90" step="5" value={activeConfig?.watermarkRotation || 0} onChange={(e) => setConfigVal("watermarkRotation", Number(e.target.value))} className={isDialog ? "w-full" : ""} />
           </label>
-          <input type="number" min="8" max="72" value={activeConfig?.watermarkFontSize ?? 18} onChange={(e) => setConfigVal("watermarkFontSize", e.target.value === "" ? "" : Number(e.target.value))} placeholder={isCompact ? "Size" : "Font size"} className={isCompact ? "rounded-xl border px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-slate-300 col-span-2 md:col-span-2" : "rounded-2xl border px-4 py-3 outline-none focus:ring-2 focus:ring-slate-300 col-span-2"} />
+          <input type="number" min="8" max="72" value={activeConfig?.watermarkFontSize ?? 18} onChange={(e) => setConfigVal("watermarkFontSize", e.target.value === "" ? "" : Number(e.target.value))} placeholder={isCompact ? "Size" : "Font size"} className={isDialog ? inputClass : isCompact ? "rounded-xl border px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-slate-300 col-span-2 md:col-span-2" : "rounded-2xl border px-4 py-3 outline-none focus:ring-2 focus:ring-slate-300 col-span-2"} />
         </div>
       )}
     </div>

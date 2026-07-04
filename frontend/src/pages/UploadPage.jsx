@@ -190,6 +190,7 @@ export default function UploadPage({
         loading: false,
         error: "",
         skipRevoke: true,
+        fileIndex: index,
       });
       return;
     }
@@ -219,6 +220,7 @@ export default function UploadPage({
           type: fileObj.type || (fileObj.name.toLowerCase().endsWith(".txt") ? "text/plain" : ""),
           size: fileObj.size,
           textContent: e.target.result,
+          fileIndex: index,
         });
       };
       reader.readAsText(fileObj);
@@ -230,6 +232,7 @@ export default function UploadPage({
         type: fileObj.type || (fileObj.name.toLowerCase().endsWith(".pdf") ? "application/pdf" : ""),
         size: fileObj.size,
         textContent: "",
+        fileIndex: index,
       });
     }
   }
@@ -1235,6 +1238,53 @@ export default function UploadPage({
           textContent={localPreview.textContent}
           loading={Boolean(localPreview.loading)}
           error={localPreview.error || ""}
+          config={
+            isMulti
+              ? multiFileConfigs[localPreview.fileIndex] || {}
+              : {
+                  pages,
+                  selectedPages,
+                  copies,
+                  colorType,
+                  sideType,
+                  paperSize,
+                  pagesPerSheet,
+                  orientation,
+                  printDpi,
+                  scaleMode,
+                  marginMode,
+                  watermark,
+                  watermarkType,
+                  watermarkText,
+                  watermarkOpacity,
+                  watermarkRotation,
+                  watermarkPosition,
+                  watermarkFontSize,
+                }
+          }
+          onChangeConfig={(key, val) => {
+            if (isMulti) {
+              updateMultiFileConfig(localPreview.fileIndex, key, val);
+            } else {
+              if (key === "copies") setCopies(val);
+              else if (key === "colorType") setColorType(val);
+              else if (key === "sideType") setSideType(val);
+              else if (key === "selectedPages") setSelectedPages(val);
+              else if (key === "paperSize") setPaperSize(val);
+              else if (key === "orientation") setOrientation(val);
+              else if (key === "pagesPerSheet") setPagesPerSheet(val);
+              else if (key === "scaleMode") setScaleMode(val);
+              else if (key === "printDpi") setPrintDpi(val);
+              else if (key === "marginMode") setMarginMode(val);
+              else if (key === "watermark") setWatermark(val);
+              else if (key === "watermarkType") setWatermarkType(val);
+              else if (key === "watermarkText") setWatermarkText(val);
+              else if (key === "watermarkOpacity") setWatermarkOpacity(val);
+              else if (key === "watermarkRotation") setWatermarkRotation(val);
+              else if (key === "watermarkPosition") setWatermarkPosition(val);
+              else if (key === "watermarkFontSize") setWatermarkFontSize(val);
+            }
+          }}
           onDownload={() => {
             if (localPreview.url) {
               const a = window.document.createElement("a");
