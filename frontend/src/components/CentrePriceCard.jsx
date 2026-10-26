@@ -5,12 +5,12 @@ export default function CentrePriceCard({ centre, onUpload, onOpenMap }) {
   const hasLocation = centre.locationEnabled && centre.latitude != null && centre.longitude != null;
 
   return (
-    <div className="rounded-3xl border bg-slate-50 p-5">
+    <div className="pe-centre-card border">
       <div className="flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
-          <h4 className="text-lg font-bold">{centre.name}</h4>
+          <h4 className="break-words text-lg font-bold">{centre.name}</h4>
           <p className="text-sm text-slate-600">Centre Code: {centre.code}</p>
-          <p className="text-xs text-slate-500">UPI: {centre.upiId}</p>
+          <p className="break-all text-sm text-slate-500">UPI: {centre.upiId}</p>
           {centre.upiQrImageUrl && <p className="text-xs text-slate-500">UPI QR available</p>}
           {hasLocation && (
             <p className="mt-1 text-xs text-slate-500 flex items-center gap-1">
@@ -35,7 +35,7 @@ export default function CentrePriceCard({ centre, onUpload, onOpenMap }) {
             <button
               onClick={() => onOpenMap(centre)}
               title="View on map"
-              className="flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 transition"
+              className="pe-secondary-button flex items-center gap-1 border border-teal-200 bg-teal-50 px-3 py-2 text-sm font-semibold hover:bg-teal-100 transition"
             >
               <MapPin size={12} /> Map
             </button>
@@ -43,7 +43,7 @@ export default function CentrePriceCard({ centre, onUpload, onOpenMap }) {
             <button
               disabled
               title="This centre has not shared location."
-              className="flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-400 cursor-not-allowed"
+              className="flex min-h-11 items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-400 cursor-not-allowed"
             >
               <MapPin size={12} /> Map
             </button>
@@ -51,7 +51,7 @@ export default function CentrePriceCard({ centre, onUpload, onOpenMap }) {
         </div>
       </div>
 
-      <div className="mt-4 space-y-2 rounded-2xl bg-white p-4 text-sm">
+      <div className="pe-centre-rates mt-4 space-y-2 text-sm">
         <Row label="A4 B/W Single Side" value={`₹${centre.bwSingle}/page`} />
         <Row label="A4 B/W Double Side" value={`₹${centre.bwDouble}/page`} />
         <Row label="A4 Color Single Side" value={`₹${centre.colorSingle}/page`} />
@@ -60,7 +60,7 @@ export default function CentrePriceCard({ centre, onUpload, onOpenMap }) {
 
       <button
         onClick={onUpload}
-        className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl bg-slate-900 px-4 py-3 font-semibold text-white hover:bg-slate-800"
+        className="pe-primary-button mt-4 flex w-full items-center justify-center gap-2 px-4 py-3"
       >
         <Upload size={18} /> Upload to this Centre
       </button>

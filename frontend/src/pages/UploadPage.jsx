@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, useRef } from "react";
+import { useBottomBarInset } from "../hooks/useBottomBarInset";
 import { FileText, Upload, IndianRupee, CheckSquare, Square, X, Settings2, Eye, AlertCircle } from "lucide-react";
 import Card from "../components/Card";
 import DocumentPreviewModal from "../components/DocumentPreviewModal";
@@ -62,6 +63,7 @@ export default function UploadPage({
   const [selectedFileIndexes, setSelectedFileIndexes] = useState([]);
   const [modalFileIndex, setModalFileIndex] = useState(null);
   const fileInputRef = useRef(null);
+  const { contentRef, barRef } = useBottomBarInset();
   const longPressTimerRef = useRef(null);
   const preparationRunRef = useRef(0);
   const filePreparationStateRef = useRef({});
@@ -913,15 +915,15 @@ export default function UploadPage({
   );
 
   return (
-    <div className="grid gap-4 pb-[calc(8rem+env(safe-area-inset-bottom))] sm:gap-6 lg:grid-cols-3 md:pb-0">
-      <Card className="lg:col-span-2 p-3 sm:p-5">
+    <div ref={contentRef} className="pe-customer-flow pe-upload grid gap-4 sm:gap-6">
+      <Card className="pe-upload-form p-4 sm:p-5">
         <h2 className="text-xl sm:text-2xl font-bold min-w-0">Upload Document</h2>
         <div className="mt-2 flex flex-wrap items-center gap-2 text-slate-600 text-sm sm:text-base">
           <span>Selected Centre: <b>{selectedCentre?.name || "Not selected yet"}</b></span>
           <button
             type="button"
             onClick={() => navigate("centre", { state: { fromUpload: true } })}
-            className="rounded-xl bg-slate-100 border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-200 hover:text-slate-900 transition shadow-sm"
+            className="pe-secondary-button bg-white border border-slate-200 px-3 py-2 text-sm font-semibold hover:bg-slate-100 transition"
           >
             Change Centre
           </button>
@@ -978,7 +980,7 @@ export default function UploadPage({
           <button
             type="button"
             onClick={openFileManagerPicker}
-            className="mb-4 flex w-full cursor-pointer flex-col rounded-2xl border border-dashed bg-slate-50 p-4 text-center hover:bg-slate-100 sm:p-6"
+            className="pe-file-picker mb-4 flex w-full cursor-pointer flex-col rounded-lg border border-dashed p-4 text-center sm:p-6"
           >
             {displayFiles.length > 0 ? <FileText className="mx-auto mb-3 text-slate-400" size={32} /> : <Upload className="mx-auto mb-3 text-slate-400" size={32} />}
             <p className="font-semibold text-sm sm:text-base px-2 leading-tight break-words">{selectedFileLabel || "Choose one or more documents"}</p>
@@ -1028,7 +1030,7 @@ export default function UploadPage({
           )}
 
           {!isMulti && displayFiles.length === 1 && (
-            <div className="mb-4 flex items-center justify-between rounded-2xl border border-slate-200 bg-slate-50/50 p-4 shadow-sm">
+            <div className="pe-file-preview mb-4 flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50/50 p-3">
               <div className="flex items-center gap-3 min-w-0">
                 <FileText className="text-slate-600 shrink-0" size={20} />
                 <div className="min-w-0">
@@ -1045,7 +1047,7 @@ export default function UploadPage({
               <button
                 type="button"
                 onClick={() => handleLocalPreview(0)}
-                className="flex min-h-[44px] items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 shadow-sm transition"
+                className="pe-secondary-button flex items-center gap-1.5 border border-slate-200 bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-100 transition"
               >
                 <Eye size={14} /> Preview
               </button>
@@ -1054,13 +1056,13 @@ export default function UploadPage({
 
           {isMulti && (
             <div className="mb-6 rounded-2xl border bg-white p-4 text-sm">
-              <div className="mb-3 flex items-center justify-between">
+              <div className="pe-file-list-heading mb-3 flex items-center justify-between">
                 <p className="font-bold text-lg">Select Files to Configure</p>
                 <button onClick={toggleSelectAll} className="text-sm font-semibold text-slate-600 hover:text-slate-900">
                   {selectedFileIndexes.length === displayFiles.length ? "Deselect All" : "Select All"}
                 </button>
               </div>
-              <div className="grid max-h-[42dvh] gap-2 overflow-y-auto pr-1 sm:max-h-64 sm:pr-2">
+              <div className="pe-file-list grid max-h-[42dvh] gap-2 overflow-y-auto pr-1 sm:max-h-64 sm:pr-2">
                 {displayFiles.map((file, index) => {
                   const isSelected = selectedFileIndexes.includes(index);
                   const conf = multiFileConfigs[index] || {};
@@ -1073,7 +1075,7 @@ export default function UploadPage({
                       onMouseDown={() => handleTouchStart(index)}
                       onMouseUp={handleTouchEnd}
                       onMouseLeave={handleTouchEnd}
-                    className={`flex cursor-pointer flex-col items-stretch justify-between gap-3 rounded-xl border p-3 transition min-[380px]:flex-row min-[380px]:items-center ${
+                    className={`pe-file-item flex cursor-pointer flex-col items-stretch justify-between gap-3 rounded-lg border p-3 transition sm:flex-row sm:items-center ${
                         isSelected ? "border-slate-400 bg-slate-100" : "border-transparent bg-slate-50 hover:bg-slate-100"
                       }`}
                     >
@@ -1081,7 +1083,7 @@ export default function UploadPage({
                         {isSelected ? <CheckSquare className="text-slate-900 shrink-0" size={18} /> : <Square className="text-slate-400 shrink-0" size={18} />}
                         <span className="min-w-0 truncate font-medium">{file.name}</span>
                       </div>
-                      <div className="flex shrink-0 flex-wrap items-center gap-2 text-xs text-slate-500 min-[380px]:justify-end">
+                      <div className="pe-file-status flex shrink-0 flex-wrap items-center gap-2 text-xs text-slate-500 sm:justify-end">
                         {filePreparationState[index]?.status && (
                           <span className={`px-2 py-0.5 rounded ${
                             filePreparationState[index].status === PREPARATION_STATUS.READY
@@ -1100,7 +1102,7 @@ export default function UploadPage({
                           </span>
                         )}
                         <span className="bg-slate-200 px-2 py-0.5 rounded text-slate-700">{conf.colorType === 'bw' ? 'B/W' : 'Color'}</span>
-                        <span className="bg-slate-200 px-2 py-0.5 rounded text-slate-700">{conf.copies} copy</span>
+                        <span aria-label={`${conf.copies} copies`} title={`${conf.copies} copies`} className="bg-slate-200 px-2 py-0.5 rounded text-slate-700">{conf.copies}x</span>
                         <button
                           type="button"
                           aria-label={`Preview ${file.name}`}
@@ -1121,7 +1123,7 @@ export default function UploadPage({
           )}
 
           {isMulti ? (
-            <details className="group rounded-2xl border bg-white [&_summary::-webkit-details-marker]:hidden" open>
+            <details className="pe-settings-section group bg-white [&_summary::-webkit-details-marker]:hidden" open>
               <summary className="flex cursor-pointer items-center justify-between p-4 outline-none">
                 <span className="font-bold text-lg">
                   {selectedFileIndexes.length === 0 
@@ -1146,7 +1148,7 @@ export default function UploadPage({
         </div>
       </Card>
       
-      <div className="fixed inset-x-0 bottom-[calc(3.75rem+env(safe-area-inset-bottom))] z-40 border-t bg-white/95 p-2 shadow-[0_-8px_15px_rgba(0,0,0,0.08)] backdrop-blur md:static md:bottom-auto md:z-auto md:block md:border-t-0 md:bg-transparent md:p-0 md:shadow-none md:backdrop-blur-none">
+      <div ref={barRef} className="pe-upload-dock fixed inset-x-0 z-40 border-t bg-white shadow-sm md:static md:z-auto md:block md:border-t-0 md:bg-transparent md:shadow-none">
         <Card className="rounded-none border-0 p-0 shadow-none md:rounded-2xl md:border md:p-6 md:shadow-sm">
           
           <div className="mb-2 flex items-center justify-between md:mb-0 md:block">
@@ -1160,7 +1162,7 @@ export default function UploadPage({
             </div>
           </div>
 
-          <div className={`mb-2 rounded-xl border px-3 py-1.5 text-xs font-semibold md:mb-3 md:mt-4 md:py-2 ${
+          <div className={`pe-summary-status mb-2 rounded-lg border px-3 py-1.5 text-xs font-semibold md:mb-3 md:mt-4 md:py-2 ${
             priceReady
               ? "border-emerald-100 bg-emerald-50 text-emerald-800"
               : failedPreparation
@@ -1314,14 +1316,14 @@ export default function UploadPage({
           )}
 
 
-          <div className="flex gap-2 md:block">
+          <div className="pe-upload-actions flex gap-2 md:block">
             {!selectedCentre && (
-              <button onClick={() => navigate("centre", { state: { autoStartScanner: true, fromUpload: true } })} className="min-h-10 flex-1 rounded-2xl border bg-white px-2 py-2 text-xs font-semibold hover:bg-slate-50 md:mt-6 md:w-full md:px-4 md:py-3 md:text-base">
+              <button onClick={() => navigate("centre", { state: { autoStartScanner: true, fromUpload: true } })} className="pe-secondary-button flex-1 border bg-white px-3 py-2 text-sm font-semibold hover:bg-slate-50 md:mt-6 md:w-full md:px-4 md:py-3">
                 Select Centre
               </button>
             )}
 
-            <button onClick={handlePaymentClick} disabled={!canContinueForPayment || paymentLoading} className="min-h-10 flex-1 rounded-2xl bg-slate-900 px-2 py-2 text-xs font-semibold text-white disabled:opacity-40 md:mt-3 md:w-full md:px-4 md:py-3 md:text-base">
+            <button onClick={handlePaymentClick} disabled={!canContinueForPayment || paymentLoading} className="pe-primary-button flex-1 px-3 py-2 md:mt-3 md:w-full md:px-4 md:py-3">
               {continueLabel}
             </button>
           </div>
@@ -1330,18 +1332,18 @@ export default function UploadPage({
     
       {modalFileIndex !== null && (
         <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center bg-black/50 p-0 md:p-4 transition-opacity" onClick={() => setModalFileIndex(null)}>
-          <div className="w-full max-w-2xl md:rounded-2xl rounded-t-2xl bg-white p-4 shadow-xl animate-in slide-in-from-bottom-full md:slide-in-from-bottom-10" onClick={(e) => e.stopPropagation()}>
+          <div role="dialog" aria-modal="true" aria-labelledby="file-config-title" className="pe-config-modal w-full max-w-2xl md:rounded-lg rounded-t-lg bg-white p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
             <div className="mb-4 flex items-center justify-between border-b pb-2">
-              <h3 className="font-bold text-lg truncate pr-4 text-slate-900">Configure {displayFiles[modalFileIndex]?.name}</h3>
-              <button onClick={() => setModalFileIndex(null)} className="text-slate-500 hover:text-slate-900 rounded-full p-1 hover:bg-slate-100 transition-colors">
+              <h3 id="file-config-title" className="font-bold text-lg truncate pr-4 text-slate-900">Configure {displayFiles[modalFileIndex]?.name}</h3>
+              <button aria-label="Close file configuration" onClick={() => setModalFileIndex(null)} className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center text-slate-500 hover:text-slate-900 rounded-md hover:bg-slate-100 transition-colors">
                 <X size={20} />
               </button>
             </div>
-            <div className="max-h-[70vh] overflow-y-auto overscroll-contain pr-2 pb-4" style={{ WebkitOverflowScrolling: "touch" }}>
+            <div className="pe-config-scroll overflow-y-auto overscroll-contain pr-2 pb-4" style={{ WebkitOverflowScrolling: "touch" }}>
               {compactConfigurationForm}
             </div>
             <div className="pt-2">
-              <button onClick={() => setModalFileIndex(null)} className="w-full rounded-xl bg-slate-900 py-3.5 font-semibold text-white shadow-md hover:bg-slate-800 transition-colors">
+              <button onClick={() => setModalFileIndex(null)} className="pe-primary-button w-full py-3 font-semibold transition-colors">
                 Done
               </button>
             </div>

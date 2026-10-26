@@ -4,8 +4,8 @@ export default function FileSettingsPanel({ activeConfig, setConfigVal, isCompac
   const containerClass = isDialog
     ? "flex h-full flex-col gap-4 overflow-y-auto bg-white p-3 sm:gap-5 sm:p-5"
     : isCompact
-      ? "grid grid-cols-1 gap-2 rounded-2xl border border-slate-100 bg-slate-50 p-3 min-[380px]:grid-cols-2 md:grid-cols-4"
-      : "grid gap-2 sm:gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-4";
+      ? "pe-settings-grid border-t border-slate-100 pt-3"
+      : "pe-settings-grid";
       
   const labelClass = isDialog
     ? "grid gap-1.5 text-sm font-semibold text-slate-700 w-full"
@@ -26,28 +26,24 @@ export default function FileSettingsPanel({ activeConfig, setConfigVal, isCompac
       : "w-full min-w-0 rounded-2xl border px-2 sm:px-3 py-2 text-sm sm:text-base font-normal text-slate-900";
 
   return (
-    <div className={containerClass}>
+    <div className={`pe-settings ${containerClass}`}>
 
       <label className={labelClass}>
         {isCompact ? "Range" : "Page range"}
         <input value={activeConfig?.selectedPages || ""} onChange={(e) => setConfigVal("selectedPages", e.target.value)} placeholder={isCompact ? "1,3-4" : "All, or 1,3-4"} className={inputClass} />
       </label>
       <label className={labelClass}>
-        Copies
-        <input type="number" min="1" value={activeConfig?.copies ?? 1} onChange={(e) => setConfigVal("copies", e.target.value === "" ? "" : Number(e.target.value))} className={inputClass} />
-      </label>
-      <label className={labelClass}>
         {isCompact ? "Color" : "Color mode"}
         <select value={activeConfig?.colorType || "bw"} onChange={(e) => setConfigVal("colorType", e.target.value)} className={selectClass}>
-          <option value="bw">{isCompact ? "B & W" : "Black & White"}</option>
+          <option value="bw">{isDialog ? "Black & White" : "B/W"}</option>
           <option value="color">Color</option>
         </select>
       </label>
       <label className={labelClass}>
         Sides
         <select value={activeConfig?.sideType || "single"} onChange={(e) => setConfigVal("sideType", e.target.value)} className={selectClass}>
-          <option value="single">Single side</option>
-          <option value="double">Double side</option>
+          <option value="single">Single</option>
+          <option value="double">Double</option>
         </select>
       </label>
       <label className={labelClass}>
@@ -68,33 +64,14 @@ export default function FileSettingsPanel({ activeConfig, setConfigVal, isCompac
         </select>
       </label>
       <label className={labelClass}>
-        Pages per sheet
-        <select value={activeConfig?.pagesPerSheet || 1} onChange={(e) => setConfigVal("pagesPerSheet", Number(e.target.value))} className={selectClass}>
-          <option value={1}>{isCompact ? "1" : "1 page per sheet"}</option>
-          <option value={2}>{isCompact ? "2" : "2 pages per sheet"}</option>
-          <option value={4}>{isCompact ? "4" : "4 pages per sheet"}</option>
-          <option value={6}>{isCompact ? "6" : "6 pages per sheet"}</option>
-          <option value={9}>{isCompact ? "9" : "9 pages per sheet"}</option>
-          <option value={16}>{isCompact ? "16" : "16 pages per sheet"}</option>
-        </select>
-      </label>
-      <label className={labelClass}>
-        {isCompact ? "DPI" : "Print quality"}
-        <select value={activeConfig?.printDpi || 300} onChange={(e) => setConfigVal("printDpi", Number(e.target.value))} className={selectClass}>
-          <option value={203}>{isCompact ? "203" : "Draft - 203 DPI"}</option>
-          <option value={300}>{isCompact ? "300" : "Standard - 300 DPI"}</option>
-          <option value={600}>{isCompact ? "600" : "High - 600 DPI"}</option>
-        </select>
-      </label>
-      <label className={labelClass}>
         Scale
         <select value={activeConfig?.scaleMode || "original"} onChange={(e) => setConfigVal("scaleMode", e.target.value)} className={selectClass}>
-          <option value="original">{isCompact ? "Original" : "Original size"}</option>
-          <option value="fit_to_page">{isCompact ? "Fit page" : "Fit to page"}</option>
-          <option value="fit_to_page_width">{isCompact ? "Fit width" : "Fit to page width"}</option>
+          <option value="original">{isDialog ? "Original size" : "Original"}</option>
+          <option value="fit_to_page">{isDialog ? "Fit to page" : "Fit page"}</option>
+          <option value="fit_to_page_width">{isDialog ? "Fit to page width" : "Fit width"}</option>
         </select>
       </label>
-      <label className={isDialog ? "grid gap-1.5 text-sm font-semibold text-slate-700 w-full" : isCompact ? "grid gap-1 text-xs font-semibold text-slate-600 min-[380px]:col-span-2 md:col-span-2" : "grid gap-1 sm:gap-2 text-sm font-semibold text-slate-600 col-span-1 sm:col-span-2 md:col-span-4 min-w-0"}>
+      <label className={`pe-margins-field ${labelClass}`}>
         Margins
         <select value={activeConfig?.marginMode || "default"} onChange={(e) => setConfigVal("marginMode", e.target.value)} className={isDialog ? "w-full rounded-md border border-slate-300 px-3 py-2 text-sm font-normal text-slate-900 shadow-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition" : isCompact ? "rounded-xl border px-2 py-1.5 font-normal text-slate-900" : "rounded-2xl border px-4 py-3 font-normal text-slate-900"}>
           <option value="default">Default</option>
@@ -102,22 +79,50 @@ export default function FileSettingsPanel({ activeConfig, setConfigVal, isCompac
           <option value="none">None</option>
         </select>
       </label>
+
+      {/* Keep short numeric controls together so three columns stay readable;
+          wider named choices use two columns, including on small phones. */}
+      <div className="pe-settings-numeric">
+        <label className={labelClass}>
+          Copies
+          <input type="number" min="1" value={activeConfig?.copies ?? 1} onChange={(e) => setConfigVal("copies", e.target.value === "" ? "" : Number(e.target.value))} className={inputClass} />
+        </label>
+        <label className={labelClass}>
+          Pages per sheet
+          <select value={activeConfig?.pagesPerSheet || 1} onChange={(e) => setConfigVal("pagesPerSheet", Number(e.target.value))} className={selectClass}>
+            <option value={1}>1</option>
+            <option value={2}>2</option>
+            <option value={4}>4</option>
+            <option value={6}>6</option>
+            <option value={9}>9</option>
+            <option value={16}>16</option>
+          </select>
+        </label>
+        <label className={labelClass}>
+          Quality (DPI)
+          <select value={activeConfig?.printDpi || 300} onChange={(e) => setConfigVal("printDpi", Number(e.target.value))} className={selectClass}>
+            <option value={203}>203</option>
+            <option value={300}>300</option>
+            <option value={600}>600</option>
+          </select>
+        </label>
+      </div>
       
       {isDialog && <hr className="border-slate-200 my-2" />}
 
-      <label className={isDialog ? "flex items-center gap-3 w-full" : isCompact ? "flex items-center gap-2 rounded-xl border px-3 py-1.5 min-[380px]:col-span-2 md:col-span-4 bg-white" : "flex items-center gap-3 rounded-2xl border px-4 py-3 col-span-2"}>
+      <label className={`pe-watermark-toggle ${isDialog ? "flex items-center gap-3 w-full" : isCompact ? "flex items-center gap-2 border px-3 py-2 bg-white" : "flex items-center gap-3 border px-4 py-3"}`}>
         <input type="checkbox" checked={activeConfig?.watermark || false} onChange={(e) => setConfigVal("watermark", e.target.checked)} className={isDialog ? "w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" : ""} />
         <span className={isDialog ? "text-sm font-semibold text-slate-700" : isCompact ? "text-xs font-semibold" : ""}>{isCompact ? "Add watermark" : "Add watermark to printable PDF"}</span>
       </label>
       {activeConfig?.watermark && (
-        <div className={isDialog ? "grid gap-3 w-full bg-slate-50 p-4 rounded-lg border" : isCompact ? "grid gap-2 rounded-xl border bg-white p-3 min-[380px]:col-span-2 md:col-span-4 md:grid-cols-4" : "grid gap-3 rounded-2xl border bg-slate-50 p-4 col-span-2 md:grid-cols-2"}>
-          <select value={activeConfig?.watermarkType || "order_code"} onChange={(e) => setConfigVal("watermarkType", e.target.value)} className={isDialog ? selectClass : isCompact ? "rounded-xl border px-2 py-1.5 text-xs col-span-1" : "rounded-2xl border px-4 py-3"}>
+        <div className={`pe-watermark-options ${isDialog ? "grid gap-3 w-full bg-slate-50 p-4 border" : isCompact ? "grid gap-3 border bg-white p-3 min-[380px]:grid-cols-2 md:grid-cols-4" : "grid gap-3 border bg-slate-50 p-4 sm:grid-cols-2"}`}>
+          <select aria-label="Watermark content" value={activeConfig?.watermarkType || "order_code"} onChange={(e) => setConfigVal("watermarkType", e.target.value)} className={isDialog ? selectClass : isCompact ? "rounded-xl border px-2 py-1.5 text-xs col-span-1" : "rounded-2xl border px-4 py-3"}>
             <option value="order_code">Order code</option>
             <option value="pickup_code">Pickup code</option>
             <option value="date_time">Date/time</option>
             <option value="custom_text">Custom text</option>
           </select>
-          <select value={activeConfig?.watermarkPosition || "bottom_right"} onChange={(e) => setConfigVal("watermarkPosition", e.target.value)} className={isDialog ? selectClass : isCompact ? "rounded-xl border px-2 py-1.5 text-xs col-span-1" : "rounded-2xl border px-4 py-3"}>
+          <select aria-label="Watermark position" value={activeConfig?.watermarkPosition || "bottom_right"} onChange={(e) => setConfigVal("watermarkPosition", e.target.value)} className={isDialog ? selectClass : isCompact ? "rounded-xl border px-2 py-1.5 text-xs col-span-1" : "rounded-2xl border px-4 py-3"}>
             <option value="bottom_right">Bottom right</option>
             <option value="bottom_center">Bottom center</option>
             <option value="bottom_left">Bottom left</option>
@@ -127,7 +132,7 @@ export default function FileSettingsPanel({ activeConfig, setConfigVal, isCompac
             <option value="top_right">Top right</option>
           </select>
           {activeConfig?.watermarkType === "custom_text" && (
-            <input value={activeConfig?.watermarkText || ""} onChange={(e) => setConfigVal("watermarkText", e.target.value)} placeholder="Text" className={isDialog ? inputClass : isCompact ? "rounded-xl border px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-slate-300 col-span-2 md:col-span-2" : "rounded-2xl border px-4 py-3 outline-none focus:ring-2 focus:ring-slate-300 md:col-span-2"} />
+            <input aria-label="Watermark text" value={activeConfig?.watermarkText || ""} onChange={(e) => setConfigVal("watermarkText", e.target.value)} placeholder="Text" className={`pe-watermark-span ${inputClass}`} />
           )}
           <label className={isDialog ? labelClass : isCompact ? "grid gap-1 text-xs font-semibold text-slate-600 col-span-1" : "grid gap-2 text-sm font-semibold text-slate-600"}>
             Opacity
@@ -137,7 +142,7 @@ export default function FileSettingsPanel({ activeConfig, setConfigVal, isCompac
             Rotation
             <input type="range" min="-90" max="90" step="5" value={activeConfig?.watermarkRotation || 0} onChange={(e) => setConfigVal("watermarkRotation", Number(e.target.value))} className={isDialog ? "w-full" : ""} />
           </label>
-          <input type="number" min="8" max="72" value={activeConfig?.watermarkFontSize ?? 18} onChange={(e) => setConfigVal("watermarkFontSize", e.target.value === "" ? "" : Number(e.target.value))} placeholder={isCompact ? "Size" : "Font size"} className={isDialog ? inputClass : isCompact ? "rounded-xl border px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-slate-300 col-span-2 md:col-span-2" : "rounded-2xl border px-4 py-3 outline-none focus:ring-2 focus:ring-slate-300 col-span-2"} />
+          <input aria-label="Watermark font size" type="number" min="8" max="72" value={activeConfig?.watermarkFontSize ?? 18} onChange={(e) => setConfigVal("watermarkFontSize", e.target.value === "" ? "" : Number(e.target.value))} placeholder={isCompact ? "Size" : "Font size"} className={`pe-watermark-span ${inputClass}`} />
         </div>
       )}
     </div>

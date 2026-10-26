@@ -52,7 +52,8 @@ export default function AppRouter(props) {
   } = props;
 
 return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
+    <div className="pe-app min-h-screen bg-slate-50 text-slate-900">
+      <a className="pe-skip-link" href="#main-content">Skip to content</a>
       <Navbar
         page={page}
         navigate={navigate}
@@ -66,7 +67,7 @@ return (
         openProfile={openProfile}
       />
 
-      <main className="mx-auto max-w-6xl px-4 pb-28 pt-8 md:pb-8">
+      <main id="main-content" tabIndex={-1} className="pe-content">
         <BackendStatus />
 
         <RouteErrorBoundary>

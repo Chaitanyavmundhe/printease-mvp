@@ -211,20 +211,21 @@ export default function HomePage({
   }
 
   return (
-    <div className="space-y-8">
+    <div className="pe-customer-flow space-y-8">
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(340px,420px)] lg:items-stretch">
         <motion.section
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
-          className={`relative isolate flex flex-col justify-between gap-5 overflow-hidden rounded-3xl border p-5 shadow-sm transition sm:p-6 ${
+          className={`pe-home-scan relative isolate flex flex-col justify-between overflow-hidden rounded-lg border p-4 transition sm:p-6 ${
             heroScannerActive ? "border-white/20 bg-transparent text-white" : "bg-white"
           }`}
         >
           <CameraScanLayer active={heroScannerActive} onScan={handleScan} onError={handleHeroScannerError} />
           <div className="pointer-events-none absolute inset-0 z-20 bg-transparent" />
-          <div className="absolute right-4 top-4 z-40 flex rounded-full border border-slate-200 bg-white/85 p-1 text-xs font-bold text-slate-700 shadow-sm backdrop-blur">
+          <div role="group" aria-label="Scanner mode" className="pe-scanner-modes relative z-40 flex border border-slate-200 bg-white p-1 text-xs font-semibold text-slate-700">
             <button
               type="button"
+              aria-pressed={scannerMode === "ready"}
               onClick={() => {
                 setScannerMode("ready");
                 setHeroScannerActive(false);
@@ -235,6 +236,7 @@ export default function HomePage({
             </button>
             <button
               type="button"
+              aria-pressed={scannerMode === "transparent"}
               onClick={() => setScannerMode("transparent")}
               className={`rounded-full px-3 py-1.5 ${scannerMode === "transparent" ? "bg-slate-900 text-white" : "hover:bg-slate-100"}`}
             >
@@ -242,6 +244,7 @@ export default function HomePage({
             </button>
             <button
               type="button"
+              aria-pressed={scannerMode === "classic"}
               onClick={() => {
                 setScannerMode("classic");
                 setHeroScannerActive(false);
@@ -256,7 +259,7 @@ export default function HomePage({
               QR based web printing platform
             </div>
             <div>
-              <h2 className={`text-3xl font-extrabold tracking-tight sm:text-4xl ${heroScannerActive ? "text-white drop-shadow-[0_2px_6px_rgba(0,0,0,0.6)]" : "text-slate-950"}`}>
+              <h2 className={`font-bold ${heroScannerActive ? "text-white drop-shadow-[0_2px_6px_rgba(0,0,0,0.6)]" : "text-slate-950"}`}>
                 Print documents securely.
               </h2>
               <p className={`mt-2 max-w-xl text-sm leading-6 sm:text-base ${heroScannerActive ? "text-white/85" : "text-slate-600"}`}>
@@ -272,15 +275,15 @@ export default function HomePage({
           <div className="relative z-30 grid gap-3">
             <button
               onClick={startDirectUpload}
-              className={`flex min-h-20 items-center justify-center gap-3 rounded-2xl px-6 py-5 text-lg font-bold shadow-lg transition ${
-                heroScannerActive ? "bg-white/90 text-slate-950 hover:bg-white" : "bg-slate-900 text-white hover:bg-slate-800"
+              className={`pe-home-upload flex items-center justify-center gap-3 px-5 py-4 text-lg font-bold transition ${
+                heroScannerActive ? "rounded-lg bg-white/90 text-slate-950 hover:bg-white" : "pe-primary-button"
               }`}
             >
-              <Upload size={30} />
+              <Upload size={24} className="shrink-0" />
               Upload Documents
             </button>
 
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3">
               <CentreScannerTile
                 onScan={handleScan}
                 active={(scannerMode === "transparent" || scannerMode === "ready") ? heroScannerActive : false}
@@ -288,6 +291,8 @@ export default function HomePage({
                 onStop={stopHeroScanner}
                 onError={handleHeroScannerError}
                 externalCamera
+                className="rounded-lg"
+                minHeightClass="min-h-[140px]"
                 idleLabel={scannerMode === "classic" ? "Classic QR Scanner" : scannerMode === "ready" ? "Ready to Scan" : "Scan / Select Centre"}
                 idleHint={heroScannerError || (scannerMode === "classic" ? "Tap to open full scanner." : scannerMode === "ready" ? "Tap to start transparent scanner." : "Tap to show transparent scanner.")}
               />
@@ -297,12 +302,12 @@ export default function HomePage({
 
         {currentUser ? (
           <Card>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h3 className="text-xl font-bold">Welcome back, {currentUser.name || "PrintEase user"}</h3>
                 <p className="mt-1 text-sm text-slate-600">Your recent activity</p>
               </div>
-              <button onClick={() => navigate("history")} className="text-sm font-bold text-slate-900 hover:underline">
+              <button onClick={() => navigate("history")} className="pe-info-link min-h-11 text-sm font-bold hover:underline">
                 View All
               </button>
             </div>
@@ -348,22 +353,22 @@ export default function HomePage({
             <h3 className="text-xl font-bold">Login / Register</h3>
             <p className="mt-2 text-sm text-slate-600">Choose your role before login.</p>
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              <button onClick={() => startLogin("user")} className="rounded-2xl bg-slate-900 p-4 text-left text-white">
+              <button onClick={() => startLogin("user")} className="pe-login-option pe-primary-button p-4 text-left">
                 <User className="mb-3" />
                 <b>User Login</b>
                 <p className="text-sm text-slate-300">For print history and profile.</p>
               </button>
-              <button onClick={() => startLogin("hub")} className="rounded-2xl bg-slate-900 p-4 text-left text-white">
+              <button onClick={() => startLogin("hub")} className="pe-login-option pe-primary-button p-4 text-left">
                 <Store className="mb-3" />
                 <b>Print Centre Login</b>
                 <p className="text-sm text-slate-300">For orders, pricing, payment.</p>
               </button>
-              <button onClick={() => startRegister("user")} className="rounded-2xl border bg-white p-4 text-left hover:bg-slate-50">
+              <button onClick={() => startRegister("user")} className="pe-login-option border bg-white p-4 text-left hover:bg-slate-50">
                 <Plus className="mb-3" />
                 <b>Register User</b>
                 <p className="text-sm text-slate-500">Username/password account.</p>
               </button>
-              <button onClick={() => startRegister("hub")} className="rounded-2xl border bg-white p-4 text-left hover:bg-slate-50">
+              <button onClick={() => startRegister("hub")} className="pe-login-option border bg-white p-4 text-left hover:bg-slate-50">
                 <Building2 className="mb-3" />
                 <b>Register Print Centre</b>
                 <p className="text-sm text-slate-500">Create centre code and pricing.</p>
@@ -373,17 +378,18 @@ export default function HomePage({
         )}
       </div>
 
-      <Card>
+      <Card className="pe-section">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h3 className="text-2xl font-bold">Available Printing Centres</h3>
             <p className="text-sm text-slate-600">Select a centre directly and upload your document.</p>
           </div>
-          <div className="flex flex-col sm:flex-row gap-3 lg:w-[600px]">
+          <div className="pe-centre-filters lg:flex-1 lg:max-w-2xl">
             <label className="relative block flex-1 min-w-0">
               <Search className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
               <input
                 value={centreSearch}
+                aria-label="Search printing centres"
                 onChange={(event) => setCentreSearch(event.target.value)}
                 placeholder="Search name, code, area..."
                 className="w-full rounded-2xl border bg-white py-3 pl-11 pr-4 text-sm outline-none focus:ring-2 focus:ring-slate-300"
@@ -391,6 +397,7 @@ export default function HomePage({
             </label>
             <select
               value={centrePriceFilter}
+              aria-label="Filter centres by price"
               onChange={(e) => setCentrePriceFilter(e.target.value)}
               className="shrink-0 rounded-2xl border bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-slate-300"
             >
@@ -401,6 +408,7 @@ export default function HomePage({
             </select>
             <select
               value={centreSort}
+              aria-label="Sort printing centres"
               onChange={(e) => setCentreSort(e.target.value)}
               className="shrink-0 rounded-2xl border bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-slate-300"
             >

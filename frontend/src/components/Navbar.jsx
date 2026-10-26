@@ -6,7 +6,8 @@ function NavButton({ children, icon, active, onClick }) {
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-medium transition focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 ${active ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-100"
+      aria-current={active ? "page" : undefined}
+      className={`pe-nav-button flex items-center gap-2 text-sm font-semibold transition ${active ? "bg-teal-50 text-teal-800" : "text-slate-600 hover:bg-slate-100"
         }`}
     >
       {icon}
@@ -31,7 +32,8 @@ function MobileNavButton({ label, icon, active, onClick }) {
   return (
     <button
       onClick={onClick}
-      className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-xl sm:rounded-2xl px-1 sm:px-2 py-1.5 sm:py-2 text-[10px] sm:text-[11px] font-semibold focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 ${active ? "bg-slate-900 text-white" : "text-slate-600"
+      aria-current={active ? "page" : undefined}
+      className={`flex min-w-0 flex-1 flex-col items-center justify-center gap-1 px-1 font-semibold ${active ? "bg-teal-50 text-teal-800" : "text-slate-600"
         }`}
     >
       {icon}
@@ -55,12 +57,12 @@ export default function Navbar({
   return (
     <>
       <header className="sticky top-0 z-50 border-b bg-white/90 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-2">
-          <button onClick={() => navigate("home")} aria-label="Go to PrintEase home" className="flex items-center ml-[-8px] mr-8 focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2">
+        <div className="pe-header-inner flex items-center justify-between">
+          <button onClick={() => navigate("home")} aria-label="Go to PrintEase home" className="pe-logo flex items-center">
             <img src={logo} alt="PrintEase" className="h-[51px] w-auto object-contain" />
           </button>
 
-          <nav className="hidden items-center gap-2 md:flex">
+          <nav aria-label="Main navigation" className="pe-desktop-nav hidden items-center md:flex">
             <NavButton active={page === "home"} icon={<Home size={16} />} onClick={() => navigate("home")}>Home</NavButton>
             <NavButton active={page === "centre"} icon={<QrCode size={16} />} onClick={() => navigate("centre")}>Centre Code</NavButton>
             {currentUser?.role === "user" && (
@@ -87,7 +89,7 @@ export default function Navbar({
               aria-label={profileOpen ? "Close profile menu" : "Open profile menu"}
               aria-expanded={profileOpen}
               onClick={() => setProfileOpen(!profileOpen)}
-              className="flex items-center gap-2 rounded-full border bg-white px-3 py-2 shadow-sm hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2"
+              className="pe-profile-trigger flex items-center gap-2 border bg-white px-3 py-2 hover:bg-slate-50"
             >
               <User size={18} />
               <span className="hidden text-sm font-medium sm:inline">{currentUser ? currentUser.name : "Profile"}</span>
@@ -95,7 +97,7 @@ export default function Navbar({
             </button>
 
             {profileOpen && (
-              <div className="absolute right-0 z-[70] mt-3 w-64 rounded-2xl border bg-white p-2 shadow-xl">
+              <div className="pe-profile-menu absolute right-0 z-[70] mt-3 border bg-white p-2 shadow-xl">
                 {!currentUser ? (
                   <>
                     <MenuItem icon={<User size={16} />} onClick={() => startLogin("user")}>Login as User</MenuItem>
@@ -134,8 +136,8 @@ export default function Navbar({
         </div>
       </header>
 
-      <nav className="fixed inset-x-0 bottom-0 z-50 border-t bg-white/95 px-1 py-1 sm:px-2 sm:py-2 pb-[calc(0.25rem+env(safe-area-inset-bottom))] shadow-2xl backdrop-blur md:hidden overflow-x-auto">
-        <div className="mx-auto flex w-full max-w-md gap-0.5 sm:gap-1">
+      <nav aria-label="Mobile navigation" className="pe-bottom-nav fixed inset-x-0 bottom-0 z-50 border-t bg-white/95 px-1 shadow-sm md:hidden">
+        <div className="pe-bottom-nav-inner mx-auto flex w-full max-w-md gap-1">
           <MobileNavButton label="Home" active={page === "home"} icon={<Home size={18} />} onClick={() => navigate("home")} />
           <MobileNavButton label="Scan" active={page === "centre"} icon={<QrCode size={18} />} onClick={() => navigate("centre")} />
           <MobileNavButton label="Upload" active={page === "upload"} icon={<Upload size={18} />} onClick={() => navigate("upload")} />

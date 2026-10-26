@@ -60,7 +60,7 @@ function hasPendingPricing(price, order) {
 
 function OrderSummaryRow({ label, value, highlight = false }) {
   return (
-    <div className={`flex items-center justify-between gap-4 ${highlight ? "text-base font-bold" : ""}`}>
+    <div className={`pe-summary-row ${highlight ? "text-base font-bold" : ""}`}>
       <span className={highlight ? "text-slate-900" : "text-slate-500"}>{label}</span>
       <span className={`text-right font-semibold capitalize ${highlight ? "text-emerald-700" : ""}`}>{value}</span>
     </div>
@@ -198,15 +198,15 @@ export default function PaymentPage({
   }
 
   return (
-    <div className="mx-auto max-w-2xl pb-[calc(6rem+env(safe-area-inset-bottom))] sm:pb-8">
-      <Card className="p-3 sm:p-5">
+    <div className="pe-customer-flow pe-payment mx-auto pb-[calc(6rem+env(safe-area-inset-bottom))] sm:pb-8">
+      <Card className="p-4 sm:p-6">
         <h2 className="text-xl sm:text-2xl font-bold min-w-0">Payment</h2>
         <p className="mt-2 text-slate-600">
           Choose manual collection for shop-owner confirmation, or use Razorpay when online payments are enabled.
         </p>
 
         {/* Order summary */}
-        <div className="mt-6 space-y-3 rounded-2xl bg-slate-50 p-4">
+        <div className="pe-payment-summary mt-6 space-y-3 p-4">
           <Row label="Centre" value={selectedCentre?.name || "N/A"} />
           <Row label="Document" value={documentName || "Uploaded Document"} />
           <Row label="Original Pages" value={displayValue(effectivePrice?.originalPageCount || pages)} />
@@ -244,7 +244,7 @@ export default function PaymentPage({
         )}
 
         {/* Payment method selector */}
-        <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-3 sm:gap-3">
+        <div role="group" aria-label="Payment method" className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
           {paymentOptions.map((option) => {
             const Icon = option.icon;
             const active = paymentMethod === option.id;
@@ -253,6 +253,7 @@ export default function PaymentPage({
               <button
                 key={option.id}
                 type="button"
+                aria-pressed={active}
                 onClick={() => {
                   if (!currentUser && option.id !== "manual") {
                     startLogin("user");
@@ -260,8 +261,8 @@ export default function PaymentPage({
                     setPaymentMethod?.(option.id);
                   }
                 }}
-                className={`rounded-2xl border p-3 text-left transition sm:p-4 ${
-                  active ? "border-slate-900 bg-slate-900 text-white shadow-lg" : "bg-white hover:border-slate-400 hover:shadow-sm"
+                className={`pe-payment-method border p-4 text-left transition ${
+                  active ? "border-teal-700 bg-teal-50 text-teal-900" : "bg-white hover:border-slate-400"
                 }`}
               >
                 <Icon size={20} />
@@ -332,11 +333,11 @@ export default function PaymentPage({
       </Card>
 
       {/* Floating Action Bar */}
-      <div className="sticky bottom-[calc(4.25rem+env(safe-area-inset-bottom))] z-40 mt-4 rounded-2xl border bg-white/95 p-2 shadow-2xl backdrop-blur md:static md:bottom-auto md:z-auto md:mt-6 md:block md:border-0 md:bg-transparent md:p-0 md:shadow-none md:backdrop-blur-none">
+      <div className="pe-payment-actions sticky z-40 mt-4 border bg-white p-2 md:static md:z-auto md:mt-6 md:block md:border-0 md:bg-transparent md:p-0">
         <button
           disabled={isDisabled || conversionFailed}
           onClick={handlePaymentClick}
-          className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-3 py-2.5 text-sm font-semibold leading-tight text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400 disabled:opacity-70 sm:px-4 sm:py-3 sm:text-base md:rounded-2xl"
+          className="pe-primary-button flex w-full items-center justify-center gap-2 px-3 py-3 transition disabled:cursor-not-allowed sm:px-4"
         >
           <ButtonIcon size={18} className="shrink-0" /> <span className="break-words">{paymentLoading ? loadingLabel : buttonLabel}</span>
         </button>
