@@ -22,9 +22,12 @@ it("keeps every compact-card detail and both actions while sharing the price uni
   const onUpload = vi.fn();
   const onOpenMap = vi.fn();
   render(<CentrePriceCard centre={centre} compact onUpload={onUpload} onOpenMap={onOpenMap} />);
-  for (const text of [centre.name, "Code: 2045", "A4 rates / page", "B/W single", "B/W double", "Color single", "Color double", "₹2", "₹3", "₹6", "₹7.5", "500 m away", "Available", "Used 3 times from this account"]) {
+  for (const text of [centre.name, "A4 rates / page", "B/W single", "B/W double", "Color single", "Color double", "₹2", "₹3", "₹6", "₹7.5", "500 m away", "Available", "Used 3 times from this account"]) {
     expect(screen.getByText(text)).toBeTruthy();
   }
+  const heading = screen.getByRole("heading", { name: `Centre code 2045 ${centre.name}` });
+  expect(heading.querySelector(".pe-centre-code-inline").textContent).toBe("Centre code 2045");
+  expect(screen.queryByText("Code: 2045")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "View on map" }));
   expect(onOpenMap).toHaveBeenCalledWith(centre);
   fireEvent.click(screen.getByRole("button", { name: "Upload", exact: true }));

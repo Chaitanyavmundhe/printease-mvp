@@ -102,16 +102,16 @@ async function noIntersection(first, second, label) {
       assert(modeBoxes.every(box => box.height >= 44 && Math.abs(box.y - modeBoxes[0].y) < 1), "Scanner modes must share one accessible row");
       assert.equal(await page.getByText("Scan QR or enter code to select a centre", { exact: false }).count(), 0);
       await page.getByRole("heading", { name: centre.name, exact: true }).waitFor();
-      await page.waitForFunction(first => document.querySelector(".pe-centre-card h4")?.textContent === first, cheap.name);
+      await page.waitForFunction(first => document.querySelector(".pe-centre-card .pe-centre-name")?.textContent === first, cheap.name);
       await page.getByLabel("Search printing centres", { exact: true }).fill("Aplha");
-      await page.waitForFunction(first => document.querySelector(".pe-centre-card h4")?.textContent === first, expensive.name);
+      await page.waitForFunction(first => document.querySelector(".pe-centre-card .pe-centre-name")?.textContent === first, expensive.name);
       await page.getByRole("button", { name: "Clear centre search" }).click();
       await checkWidth(page, `${label} home`);
       await page.screenshot({ path: path.join(evidence, `${label}-home.png`), fullPage: true });
       assert.equal(await page.getByRole("button", { name: "Download Windows App", exact: true }).count(), 0);
       for (const [mode, first] of [["price_bw", cheap.name], ["price_color", expensive.name], ["name", expensive.name]]) {
         await page.getByLabel("Sort printing centres", { exact: true }).selectOption(mode);
-        await page.waitForFunction(first => document.querySelector(".pe-centre-card h4")?.textContent === first, first);
+        await page.waitForFunction(first => document.querySelector(".pe-centre-card .pe-centre-name")?.textContent === first, first);
       }
       await page.getByRole("navigation", { name: width < 768 ? "Mobile navigation" : "Main navigation" }).getByRole("button", { name: width < 768 ? "Scan" : "Centre Code", exact: true }).click();
       await page.getByRole("heading", { name: "Find a Printing Centre", exact: true }).waitFor();
@@ -121,6 +121,7 @@ async function noIntersection(first, second, label) {
       assert(Math.abs(actionBoxes[0].y - actionBoxes[1].y) < 1, "Location and map actions must be side by side");
       assert.equal(await page.locator(".pe-scan-centre-grid").evaluate(element => getComputedStyle(element).gridTemplateColumns.split(" ").length), 2, "Scan page must display two centre cards per row");
       const firstCard = page.locator(".pe-scan-centre-grid > .pe-centre-card").first();
+      assert.equal(await firstCard.locator("h4 .pe-centre-code-inline").textContent(), "Centre code 1001", "Centre code must precede the name inside its heading");
       const compact = await firstCard.boundingBox();
       if (width < 768) assert(compact.height <= 350, `${label} short-name centre card is too tall: ${compact.height}`);
       const rateRows = firstCard.locator(".pe-summary-row");
@@ -137,10 +138,10 @@ async function noIntersection(first, second, label) {
       await page.screenshot({ path: path.join(evidence, `${label}-centre-grid.png`), fullPage: true });
       assert.equal(await page.getByLabel("Sort printing centres", { exact: true }).inputValue(), "name", "Sorting preference was lost between pages");
       await page.getByLabel("Sort printing centres", { exact: true }).selectOption("price_bw");
-      await page.waitForFunction(first => document.querySelector(".pe-centre-card h4")?.textContent === first, cheap.name);
+      await page.waitForFunction(first => document.querySelector(".pe-centre-card .pe-centre-name")?.textContent === first, cheap.name);
       const search = page.getByLabel("Search centres by name, code or area");
       await search.fill("Aplha");
-      await page.waitForFunction(first => document.querySelector(".pe-centre-card h4")?.textContent === first, expensive.name);
+      await page.waitForFunction(first => document.querySelector(".pe-centre-card .pe-centre-name")?.textContent === first, expensive.name);
       const routeBeforeEnter = page.url();
       await search.press("Enter");
       assert.equal(page.url(), routeBeforeEnter, "Enter must not select a centre or redirect");
