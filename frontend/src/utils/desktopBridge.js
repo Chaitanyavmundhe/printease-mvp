@@ -268,6 +268,14 @@ export function conversionNow() {
   return callDesktop("conversionNow", "Could not run conversion now.");
 }
 
+export function setupLibreOffice() {
+  return callDesktop("setupLibreOffice", "Could not set up LibreOffice.");
+}
+
+export function cancelLibreOfficeSetup() {
+  return callDesktop("cancelLibreOfficeSetup", "Could not cancel LibreOffice download.");
+}
+
 export async function diagnoseLibreOffice() {
   const bridge = getBridge();
   const diagnose = bridge?.conversion?.diagnoseLibreOffice || bridge?.diagnoseLibreOffice;

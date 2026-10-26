@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Loader2, FileCog, ShieldAlert, CheckCircle2, RotateCw } from "lucide-react";
 import Card from "../components/Card";
-import { getAgentStatus, diagnoseLibreOffice, conversionNow, isDesktop, onAgentUpdated } from "../utils/desktopBridge";
+import { getAgentStatus, diagnoseLibreOffice, conversionNow, isDesktop, onAgentUpdated, setupLibreOffice, cancelLibreOfficeSetup } from "../utils/desktopBridge";
+import ConverterSetupStatus from "../components/ConverterSetupStatus";
 
 function normalizeAgentPayload(payload) {
   if (!payload) return null;
@@ -110,6 +111,19 @@ export default function ConversionPage({ currentUser }) {
     }
   }
 
+  async function runSetup() {
+    setError("");
+    setMessage("");
+    const result = await setupLibreOffice();
+    if (!result?.success) setError(result?.error || result?.message || "LibreOffice setup did not finish.");
+    await refreshAgentSession().catch(() => {});
+  }
+
+  async function cancelSetup() {
+    const result = await cancelLibreOfficeSetup();
+    if (!result?.success) setError(result?.error || result?.message || "Could not cancel setup.");
+  }
+
   if (!desktopAvailable) {
     return (
       <Card>
@@ -125,7 +139,8 @@ export default function ConversionPage({ currentUser }) {
   }
 
   const paired = Boolean(agentSession?.paired || agentSession?.hubId);
-  const converterReady = agentSession?.converterStatus === "ready" || Boolean(agentSession?.converterPath);
+  // A stale executable path is not proof of a working converter.
+  const converterReady = agentSession?.converterStatus === "ready";
   const moduleReady = Boolean(paired && agentSession?.conversionLoopRunning && converterReady);
 
   return (
@@ -166,7 +181,7 @@ export default function ConversionPage({ currentUser }) {
           <div>
             <h3 className="text-lg font-bold">LibreOffice Engine</h3>
             <p className="text-sm text-slate-600 mt-1">
-              Check if the bundled or local LibreOffice executable is working properly for Office-to-PDF conversions.
+              Local Office-to-PDF converter status.
             </p>
           </div>
           
@@ -176,7 +191,9 @@ export default function ConversionPage({ currentUser }) {
             </div>
           )}
 
-          {!converterReady && (
+          <ConverterSetupStatus session={agentSession} onSetup={runSetup} onCancel={cancelSetup} />
+
+          {!converterReady && !agentSession?.converterSetupSupported && (
             <div className="mt-2 rounded-xl bg-amber-50 p-4 border border-amber-200">
               <p className="text-sm font-semibold text-amber-800 mb-2">LibreOffice is required for document conversions.</p>
               <a 
@@ -194,7 +211,7 @@ export default function ConversionPage({ currentUser }) {
             <button
               type="button"
               onClick={runLibreOfficeCheck}
-              disabled={diagnosticsRunning}
+              disabled={diagnosticsRunning || agentSession?.converterSetupBusy}
               className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
             >
               {diagnosticsRunning ? <Loader2 size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
