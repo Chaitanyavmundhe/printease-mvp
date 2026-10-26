@@ -55,7 +55,7 @@ export default function FileSettingsPanel({ activeConfig, setConfigVal, isCompac
           <option value="Legal">Legal</option>
         </select>
       </label>
-      <label className={labelClass}>
+      <label className={`pe-orientation-field ${labelClass}`}>
         {isCompact ? "Layout" : "Orientation"}
         <select value={activeConfig?.orientation || "auto"} onChange={(e) => setConfigVal("orientation", e.target.value)} className={selectClass}>
           <option value="auto">Auto</option>
@@ -80,8 +80,8 @@ export default function FileSettingsPanel({ activeConfig, setConfigVal, isCompac
         </select>
       </label>
 
-      {/* Keep short numeric controls together so three columns stay readable;
-          wider named choices use two columns, including on small phones. */}
+      {/* Match the three-column print options without changing their values or
+          setters. Watermark details keep their own wider, full-row section. */}
       <div className="pe-settings-numeric">
         <label className={labelClass}>
           Copies

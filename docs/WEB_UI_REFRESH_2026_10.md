@@ -137,3 +137,56 @@ batches to the web repository's main branch; inspect Vercel's deployment status.
 Do not tag/build a desktop release for these web UI changes. Do not copy backend
 code or environment files. Both desktop source and its running agent remain alone
 until the user approves a separate desktop UI update.
+
+## Live search and compact discovery follow-up
+
+- `HomePage.jsx` places Ready / Transparent / Classic together directly below
+  their scanner, with equal-width 44px controls rather than a floating corner
+  strip. The requested paragraph below Print documents securely and the extra
+  timeout badge are removed. Camera mode values, persistence, permission handling,
+  the 30-second stop timer and QR-to-upload selection are unchanged.
+- `CentreSearchField.jsx` is reused by Home and Centre Code. Results update from
+  the loaded public centre list on every edit; Enter dismisses the keyboard and
+  leaves results on the same page. Clear restores the list. Search Online and
+  its obsolete enter-to-redirect callback were removed; QR/deep-link code lookup
+  still uses the existing server lookup. This avoids a request for every keystroke.
+- `utils/centreSearch.js` uses pinned Fuse.js 7.5.0 for name/area spelling mistakes
+  (including swapped letters). Public names/areas alone are fuzzy-indexed; numeric
+  codes, price ceilings and availability filters remain literal/strict. Unrelated
+  searches still show no matches, not invented centres. No query service, analytics
+  or coordinate upload is introduced. See the [Fuse fuzzy-search reference](https://www.fusejs.io/fuzzy-search.html).
+- `centreDiscovery.js` now prioritises relevance, then actual distance in
+  Recommended when the user has granted location. Availability, usage, recency and
+  known rates break ties; centres with no shared coordinates sort after known
+  distances. This supersedes the earlier availability-first/distance-bucket rule.
+  Explicit saved price/name/availability sorts remain respected. Existing App
+  permission detection fetches the position only when already granted or tapped;
+  coordinates stay in memory and are not sent in discovery API requests.
+- `CentreLocationActions.jsx` keeps Use my location / View centres on map side
+  by side on both discovery screens. Map is disabled when no result has shared
+  its coordinates. Denied/unsupported location does not block search or upload.
+- `CentreCodePage.jsx` displays two centre cards per row, including at 320px.
+  Its compact card variant keeps name, code, distance/area, availability, map,
+  four A4 rates and Upload. Long UPI details stay in the existing full Home card
+  and payment view rather than overflowing narrow search cards. Pending rates
+  remain Pending. The upload callback and selected centre are unchanged.
+- `interface.css` changes the main print settings to three equal columns with
+  three short numeric controls. At 320px, Orientation spans two tracks so its
+  Landscape value stays readable; Margins fills the matching two-track space.
+  Margins otherwise uses a full row and watermark details keep full rows.
+  Values, setters, print payloads, payment, conversion, printing and early
+  download logic are not changed. All controls retain at least 44px height.
+
+Tests cover fuzzy/exact/code/price/availability/non-Latin search, nearest-first
+ranking, explicit sort overrides and no navigation on Enter. The browser fixture
+grants location without transmitting it and checks the actual reordered list,
+two-card grid, side-by-side map/location actions, clear/type/Enter search, scanner
+control placement and three-column settings across six viewports. It also checks
+selected option text fits, modal/footers, payment and history regressions. All
+external requests are mocked; no real orders, payments or prints are submitted.
+
+Completed validation: 72 frontend tests, the production web build, six responsive
+browser viewports, the new-visitor location-permission check, and three-size
+local/verified-converted PDF preview checks all passed. No renderer errors were
+observed. Physical older Android devices and the system keyboard still need
+manual checks. This remains web-only; desktop source and release tags are unchanged.

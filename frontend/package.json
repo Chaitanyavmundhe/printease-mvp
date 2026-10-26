@@ -12,6 +12,7 @@
   "dependencies": {
     "@vitejs/plugin-react": "6.0.2",
     "framer-motion": "12.38.0",
+    "fuse.js": "7.5.0",
     "html2pdf.js": "^0.14.0",
     "jsqr": "^1.4.0",
     "leaflet": "^1.9.4",

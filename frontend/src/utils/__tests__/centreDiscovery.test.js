@@ -55,3 +55,45 @@ describe("explicit centre sorts", () => {
     expect(centreMatchesSearch({ bwSingle: 1 }, "color under 2")).toBe(false);
   });
 });
+
+describe("live relevant centre search", () => {
+  it("tolerates spelling mistakes and prefers exact names in Recommended", () => {
+    expect(ids(centres, { query: "Aplha" })).toEqual(["expensive"]);
+    expect(ids([{ ...centres[0], name: "Alpha" }, { ...centres[1], name: "Alpah" }], { query: "Alpha" })[0]).toBe("expensive");
+    expect(ids(centres, { query: "completelyunrelated" })).toEqual([]);
+  });
+  it("matches words across name and area without relaxing a price constraint", () => {
+    const local = { ...centres[0], area: "University Road" };
+    expect(centreMatchesSearch(local, "aplHa universty")).toBe(true);
+    expect(centreMatchesSearch(local, "aplHa bw single under 2")).toBe(false);
+    expect(centreMatchesSearch(local, "aplHa color under 5")).toBe(true);
+  });
+  it("never fuzzy-matches codes, numeric tokens or one-letter queries", () => {
+    expect(ids(centres, { query: "2046" })).toEqual([]);
+    expect(ids(centres, { query: "z" })).toEqual([]);
+    expect(ids(centres, { query: "2045" })).toEqual(["cheap"]);
+  });
+  it("shows live partial matches and all centres again when cleared", () => {
+    expect(ids(centres, { query: "bet" })).toEqual(["cheap"]);
+    expect(ids(centres, { query: "" })).toHaveLength(3);
+  });
+  it("keeps explicit availability filters strict even with misspelled names", () => {
+    expect(ids(centres, { query: "betta online" })).toEqual([]);
+    expect(ids(centres, { query: "betta offline" })).toEqual(["cheap"]);
+  });
+  it("keeps non-Latin names searchable instead of treating them as empty queries", () => {
+    expect(ids([{ id: "local", name: "साई प्रिंट" }, { id: "other", name: "दुसरे दुकान" }], { query: "साई" })).toEqual(["local"]);
+  });
+});
+
+describe("location-aware Recommended", () => {
+  it("puts the nearest centre first, retaining its actual offline status", () => {
+    const near = { id: "near", printerOnline: false, locationEnabled: true, latitude: 18.5, longitude: 73.8 };
+    const far = { ...centres[0], locationEnabled: true, latitude: 19, longitude: 74 };
+    expect(ids([far, { id: "unknown", printerOnline: true }, near], { userLocation: { latitude: 18.5, longitude: 73.8 } })).toEqual(["near", "expensive", "unknown"]);
+    expect(rankCentres([near])[0].printerOnline).toBe(false);
+  });
+  it("respects a user's explicit sort rather than overriding it with location", () => {
+    expect(ids(centres, { sortBy: "price_bw", userLocation: { latitude: 18.5, longitude: 73.8 } })[0]).toBe("cheap");
+  });
+});

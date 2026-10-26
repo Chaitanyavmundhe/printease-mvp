@@ -1,4 +1,5 @@
 import { normalizeCentreSort } from "./centreSort";
+import { scoreCentreSearch } from "./centreSearch";
 const EARTH_RADIUS_KM = 6371;
 
 function toNumber(value) {
@@ -128,7 +129,8 @@ function tokenizeSearch(query) {
   return String(query || "")
     .toLowerCase()
     .replace(/(?:under|below|less than|upto|up to|<=|<)\s*(?:₹|rs\.?)?\s*\d+(?:\.\d+)?/g, " ")
-    .replace(/₹|rs\.?|[^\w\s.-]/g, " ")
+    .replace(/₹|\brs\.?\b/g, " ")
+    .replace(/[.,!?/\\_():;|+\-]/g, " ")
     .split(/\s+/)
     .filter(Boolean)
     .filter((token) => ![
@@ -176,7 +178,7 @@ function centreSearchText(centre) {
     .toLowerCase();
 }
 
-export function centreMatchesSearch(centre, query) {
+function matchesSearchFilters(centre, query) {
   const normalized = String(query || "").trim().toLowerCase();
   if (!normalized) return true;
 
@@ -189,28 +191,43 @@ export function centreMatchesSearch(centre, query) {
     const available = isCentreAvailable(centre);
     if (!available) return false;
   }
+  if (/\b(?:unavailable|offline)\b/.test(normalized) && isCentreAvailable(centre)) return false;
 
   if (/\b(?:near|nearby|nearest)\b/.test(normalized) && !hasCentreLocation(centre)) {
     return false;
   }
 
-  const haystack = centreSearchText(centre);
-  return tokenizeSearch(normalized).every((token) => haystack.includes(token));
+  return true;
+}
+
+function getSearchScores(centres, query) {
+  const candidates = centres.filter(centre => matchesSearchFilters(centre, query));
+  return scoreCentreSearch(candidates.map(centre => ({
+    centre,
+    text: centreSearchText(centre),
+    fuzzyText: [centre.name, centre.owner, centre.area, centre.city, centre.addressText].filter(Boolean).join(" ").toLowerCase(),
+  })), tokenizeSearch(query));
+}
+
+export function centreMatchesSearch(centre, query) {
+  return getSearchScores([centre], query).has(centre);
 }
 
 export function rankCentres(centres = [], { orders = [], userLocation = null, query = "", sortBy = "smart" } = {}) {
   const mode = normalizeCentreSort(sortBy);
   const usageProfile = buildCentreUsageProfile(orders);
   const now = Date.now();
+  const searchScores = getSearchScores(centres || [], query);
 
   return [...(centres || [])]
-    .filter((centre) => centreMatchesSearch(centre, query))
+    .filter((centre) => searchScores.has(centre))
     .map((centre) => {
       const distanceKm = getCentreDistanceKm(centre, userLocation);
       const usage = getUsageForCentre(centre, usageProfile);
       const daysSinceUse = usage.lastUsedAt ? Math.max(0, (now - usage.lastUsedAt) / 86400000) : null;
       return {
         ...centre,
+        searchScore: searchScores.get(centre),
         distanceKm,
         distanceLabel: formatDistanceKm(distanceKm),
         usageCount: usage.count,
@@ -229,13 +246,17 @@ export function rankCentres(centres = [], { orders = [], userLocation = null, qu
       if (mode === "recent") primary = (right.lastUsedAt || 0) - (left.lastUsedAt || 0);
       if (mode === "name") primary = String(left.name || "").localeCompare(String(right.name || ""));
       if (primary) return primary;
+      // Recommended prioritises relevant words, then actual proximity once the
+      // user grants location. Explicit price/name sorts still honour that choice.
+      if (mode === "smart") {
+        const relevance = left.searchScore - right.searchScore;
+        if (relevance) return relevance;
+        const distance = userLocation ? compareKnown(left.distanceKm, right.distanceKm) : 0;
+        if (distance) return distance;
+      }
       const available = Number(isCentreAvailable(right)) - Number(isCentreAvailable(left));
       if (available) return available;
       if (mode === "smart") {
-        // Fixed distance buckets keep comparison transitive; a pairwise distance
-        // threshold mixed with usage can otherwise produce inconsistent ordering.
-        const distance = userLocation ? compareKnown(distanceBucket(left.distanceKm), distanceBucket(right.distanceKm)) : 0;
-        if (distance) return distance;
         if (right.usageCount !== left.usageCount) return right.usageCount - left.usageCount;
         if (right.lastUsedAt !== left.lastUsedAt) return (right.lastUsedAt || 0) - (left.lastUsedAt || 0);
         const price = compareKnown(left.lowestPrice, right.lowestPrice);
@@ -256,8 +277,6 @@ function compareKnown(left, right) {
   if (right === null) return -1;
   return left - right;
 }
-
-function distanceBucket(value) { return value === null ? null : Math.floor(value / 0.35); }
 
 function priceForSort(centre, mode) {
   if (mode === "price") return centre.lowestPrice;

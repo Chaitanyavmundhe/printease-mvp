@@ -1008,10 +1008,6 @@ export default function App() {
     }
   }
 
-  async function handleCentreCode() {
-    await selectCentreByCode(centreCode);
-  }
-
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const code = params.get("centre") || params.get("code") || params.get("centreCode");
@@ -2057,7 +2053,7 @@ export default function App() {
       password, setPassword, name, updateName, mobile, setMobile,
       showPassword, setShowPassword, username, updateUsername, usernameEdited, usernameStatus,
       hubName, setHubName, hubCode, setHubCode, startLogin, startRegister,
-      centreCode, setCentreCode, handleCentreCode, centreLookupError, centreLookupLoading,
+      centreCode, setCentreCode, centreLookupError, centreLookupLoading,
       selectedCentre, documentFiles, setDocumentFiles, multiFileConfigs, setMultiFileConfigs,
       documentName, setDocumentName, pages, setPages, selectedPages, setSelectedPages,
       copies, setCopies, colorType, setColorType, sideType, setSideType, paperSize, setPaperSize,

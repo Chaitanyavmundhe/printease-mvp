@@ -1,7 +1,7 @@
 import { lazy, Suspense, useCallback, useMemo, useState, useEffect } from "react";
 import { motion } from "framer-motion";
 
-import { User, Upload, Store, Plus, Building2, Search, Download, QrCode, Map, Navigation, IndianRupee } from "lucide-react";
+import { User, Upload, Store, Plus, Building2, IndianRupee } from "lucide-react";
 import Card from "../components/Card";
 import CentrePriceCard from "../components/CentrePriceCard";
 import CameraScanLayer from "../components/CameraScanLayer";
@@ -9,6 +9,9 @@ import CentreScannerTile from "../components/CentreScannerTile";
 import HubActiveOrdersManager from "../components/HubActiveOrdersManager";
 import HubDesktopDownload from "../components/HubDesktopDownload";
 import CentreSortControl from "../components/CentreSortControl";
+import CentreSearchField from "../components/CentreSearchField";
+import CentreLocationActions from "../components/CentreLocationActions";
+import { centreSortLabel } from "../utils/centreSort";
 import { useCentreSort } from "../hooks/useCentreSort";
 import { hasCentreLocation, rankCentres } from "../utils/centreDiscovery";
 
@@ -159,22 +162,6 @@ export default function HomePage({
     [filteredCentres]
   );
 
-  const locationLabel = userLocationStatus === "locating"
-    ? "Finding..."
-    : userLocation
-      ? "Location active"
-      : userLocationStatus === "denied"
-        ? "Location denied"
-        : userLocationStatus === "unavailable"
-          ? "Location unavailable"
-          : userLocationStatus === "timeout"
-            ? "Location timed out"
-            : userLocationStatus === "error"
-              ? "Location error"
-              : userLocationStatus === "unsupported"
-                ? "Location not supported"
-                : "Use my location";
-
   function openMapForCentre(centreToFocus = null) {
     setMapCentreToFocus(centreToFocus?.id ? centreToFocus : null);
     setMapOpen(true);
@@ -229,7 +216,34 @@ export default function HomePage({
         >
           <CameraScanLayer active={heroScannerActive} onScan={handleScan} onError={handleHeroScannerError} />
           <div className="pointer-events-none absolute inset-0 z-20 bg-transparent" />
-          <div role="group" aria-label="Scanner mode" className="pe-scanner-modes relative z-40 flex border border-slate-200 bg-white p-1 text-xs font-semibold text-slate-700">
+          <div className="relative z-30 space-y-3">
+            <h2 className={`font-bold ${heroScannerActive ? "text-white drop-shadow-[0_2px_6px_rgba(0,0,0,0.6)]" : "text-slate-950"}`}>
+              Print documents securely.
+            </h2>
+          </div>
+          <div className="relative z-30 grid gap-3">
+            <button
+              onClick={startDirectUpload}
+              className={`pe-home-upload flex items-center justify-center gap-3 px-5 py-4 text-lg font-bold transition ${
+                heroScannerActive ? "rounded-lg bg-white/90 text-slate-950 hover:bg-white" : "pe-primary-button"
+              }`}
+            >
+              <Upload size={24} className="shrink-0" />
+              Upload Documents
+            </button>
+            <CentreScannerTile
+              onScan={handleScan}
+              active={(scannerMode === "transparent" || scannerMode === "ready") ? heroScannerActive : false}
+              onStart={startSelectedScanner}
+              onStop={stopHeroScanner}
+              onError={handleHeroScannerError}
+              externalCamera
+              className="rounded-lg"
+              minHeightClass="min-h-[140px]"
+              idleLabel={scannerMode === "classic" ? "Classic QR Scanner" : scannerMode === "ready" ? "Ready to Scan" : "Scan / Select Centre"}
+              idleHint={heroScannerError || (scannerMode === "classic" ? "Tap to open full scanner." : scannerMode === "ready" ? "Tap to start transparent scanner." : "Tap to show transparent scanner.")}
+            />
+          <div role="group" aria-label="Scanner mode" className="pe-scanner-modes relative z-40 border border-slate-200 bg-white text-xs font-semibold text-slate-700">
             <button
               type="button"
               aria-pressed={scannerMode === "ready"}
@@ -261,46 +275,6 @@ export default function HomePage({
               Classic
             </button>
           </div>
-          <div className="relative z-30 space-y-3">
-            <div>
-              <h2 className={`font-bold ${heroScannerActive ? "text-white drop-shadow-[0_2px_6px_rgba(0,0,0,0.6)]" : "text-slate-950"}`}>
-                Print documents securely.
-              </h2>
-              <p className={`mt-2 max-w-xl text-sm leading-6 sm:text-base ${heroScannerActive ? "text-white/85" : "text-slate-600"}`}>
-                Scan QR or enter code to select a centre, upload your document, pay, and collect your print.
-              </p>
-              {heroScannerActive && (
-                <p className="mt-2 inline-flex rounded-full bg-white/15 px-3 py-1 text-xs font-semibold text-white/90 backdrop-blur">
-                  Scanner preview closes automatically in 30 seconds.
-                </p>
-              )}
-            </div>
-          </div>
-          <div className="relative z-30 grid gap-3">
-            <button
-              onClick={startDirectUpload}
-              className={`pe-home-upload flex items-center justify-center gap-3 px-5 py-4 text-lg font-bold transition ${
-                heroScannerActive ? "rounded-lg bg-white/90 text-slate-950 hover:bg-white" : "pe-primary-button"
-              }`}
-            >
-              <Upload size={24} className="shrink-0" />
-              Upload Documents
-            </button>
-
-            <div className="grid gap-3">
-              <CentreScannerTile
-                onScan={handleScan}
-                active={(scannerMode === "transparent" || scannerMode === "ready") ? heroScannerActive : false}
-                onStart={startSelectedScanner}
-                onStop={stopHeroScanner}
-                onError={handleHeroScannerError}
-                externalCamera
-                className="rounded-lg"
-                minHeightClass="min-h-[140px]"
-                idleLabel={scannerMode === "classic" ? "Classic QR Scanner" : scannerMode === "ready" ? "Ready to Scan" : "Scan / Select Centre"}
-                idleHint={heroScannerError || (scannerMode === "classic" ? "Tap to open full scanner." : scannerMode === "ready" ? "Tap to start transparent scanner." : "Tap to show transparent scanner.")}
-              />
-            </div>
           </div>
         </motion.section>
 
@@ -389,16 +363,7 @@ export default function HomePage({
             <p className="text-sm text-slate-600">Select a centre directly and upload your document.</p>
           </div>
           <div className="pe-centre-filters lg:flex-1 lg:max-w-2xl">
-            <label className="relative block flex-1 min-w-0">
-              <Search className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-              <input
-                value={centreSearch}
-                aria-label="Search printing centres"
-                onChange={(event) => setCentreSearch(event.target.value)}
-                placeholder="Search name, code, area..."
-                className="w-full rounded-2xl border bg-white py-3 pl-11 pr-4 text-sm outline-none focus:ring-2 focus:ring-slate-300"
-              />
-            </label>
+            <CentreSearchField value={centreSearch} onChange={setCentreSearch} label="Search printing centres" placeholder="Search name, code, area..." resultsId="home-centre-results" />
             <select
               value={centrePriceFilter}
               aria-label="Filter centres by price"
@@ -414,7 +379,11 @@ export default function HomePage({
           </div>
         </div>
 
-        <div className="mt-6 grid gap-4 md:grid-cols-2">
+        <div className="mt-4 sm:max-w-lg">
+          <CentreLocationActions userLocation={userLocation} status={userLocationStatus} onLocate={requestUserLocation} onOpenMap={() => openMapForCentre()} hasMap={mappableCentres.length > 0} />
+        </div>
+        <p role="status" className="mt-3 text-sm text-slate-600">{filteredCentres.length} centres · {centreSortLabel(centreSort)}{filteredCentres.some(centre => centre.searchScore > 0) ? " · Similar names included" : ""}</p>
+        <div id="home-centre-results" className="mt-4 grid gap-4 md:grid-cols-2">
           {filteredCentres.map((centre) => (
             <CentrePriceCard
               key={centre.id}
