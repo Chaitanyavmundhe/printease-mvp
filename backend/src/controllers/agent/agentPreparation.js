@@ -37,6 +37,8 @@ import { PRINT_JOB_STATUSES, PAIRING_STATUSES } from '../../constants/statuses.j
 import { getPrintReadyFile } from '../../utils/printReadyPdf.js';
 import { confirmOrderBillInTransaction, recalculateOrderPricingByDocumentInTransaction } from '../../services/orderConfigurationService.js';
 import { verifyAndStoreHubConvertedDocument } from '../../services/documentVerificationService.js';
+import crypto from 'node:crypto';
+import { assertPreparationReportCanReplace } from '../../services/documentPreparationPolicy.js';
 
 const JOB_STATUS_TO_ORDER_STATUS = {
   [PRINT_JOB_STATUSES.ACCEPTED]: 'queued_for_print',
@@ -91,7 +93,11 @@ async function validateAgentDocumentPreparationInput({ documentId, hubId, prepar
     return { error: { status: 403, message: 'Document does not belong to this hub' } };
   }
 
-  if (normalizedStatus === 'prepared' && document.requiresDesktopPreparation && !hasPrintReadyFile) {
+  if (document.preparationStatus === 'prepared' && normalizedStatus !== 'prepared') {
+    return { error: { status: 409, message: 'A prepared document cannot be reverted by a delayed agent report.' } };
+  }
+
+  if (normalizedStatus === 'prepared' && document.preparationStatus !== 'prepared' && document.requiresDesktopPreparation && !hasPrintReadyFile) {
     return { error: { status: 400, message: 'Converted print-ready PDF is required for desktop-prepared documents' } };
   }
 
@@ -495,11 +501,22 @@ export const reportPreparationResult = asyncHandler(async (req, res) => {
   }
 
   const preparationStatus = validation.preparationStatus;
+  const existingDocument = validation.document;
+  // Conversion retries may confirm existing bytes, not replace a document that
+  // a paid order already references. The repository repeats this under a lock.
+  const canReplace = assertPreparationReportCanReplace(existingDocument, {
+    preparationStatus,
+    printReadySha256: req.file?.buffer ? crypto.createHash('sha256').update(req.file.buffer).digest('hex') : null,
+  });
   let preparedPageCount = normalizePreparedPageCount(req.body.preparedPageCount);
   let printReadyStoragePath = null;
   let printReadySha256 = null;
 
-  if (req.file && req.file.buffer && preparationStatus === 'prepared') {
+  if (!req.file?.buffer && !existingDocument.requiresDesktopPreparation) {
+    preparedPageCount = existingDocument.pageCount;
+  }
+
+  if (canReplace && req.file?.buffer && preparationStatus === 'prepared') {
     try {
       const verification = await verifyAndStoreHubConvertedDocument({
         documentId,
@@ -616,11 +633,25 @@ export const reportVerificationResult = asyncHandler(async (req, res) => {
   }
 
   const preparationStatus = validation.preparationStatus;
+  const canReplace = assertPreparationReportCanReplace(validation.document, {
+    preparationStatus,
+    printReadySha256: req.file?.buffer ? crypto.createHash('sha256').update(req.file.buffer).digest('hex') : null,
+  });
+  // Hub membership alone is insufficient: verification must target this order's
+  // document, not another upload owned by the same hub.
+  const files = await listOrderFiles(jobId);
+  if (!files.some(file => file.documentId === documentId)) {
+    return res.status(404).json({ success: false, message: 'Document is not part of this order.' });
+  }
   let preparedPageCount = normalizePreparedPageCount(req.body.preparedPageCount);
-  let { printReadySha256 } = req.body;
+  // Hashes/counts supplied without bytes are not independent verification.
+  let printReadySha256 = null;
   let printReadyStoragePath = null;
+  if (!req.file?.buffer && !validation.document.requiresDesktopPreparation) {
+    preparedPageCount = validation.document.pageCount;
+  }
 
-  if (req.file && req.file.buffer && preparationStatus === 'prepared') {
+  if (canReplace && req.file?.buffer && preparationStatus === 'prepared') {
     try {
       const verification = await verifyAndStoreHubConvertedDocument({
         documentId,
@@ -687,7 +718,9 @@ export const reportVerificationResult = asyncHandler(async (req, res) => {
         `update print_orders 
          set status = 'cancelled', 
              price_snapshot = jsonb_set(coalesce(price_snapshot, '{}'::jsonb), '{message}', $1::jsonb)
-         where id = $2 and hub_id = $3`,
+         where id = $2 and hub_id = $3
+           and payment_status not in ('verified', 'collected')
+           and status not in ('printing', 'completed', 'cancelled')`,
         [JSON.stringify(failMessage), jobId, req.agent.hubId]
       );
     } catch (err) {

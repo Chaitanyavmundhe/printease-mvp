@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { requestManualPayment } from '../../services/manualPaymentRequestService.js';
 import {
   createPayment as savePayment,
   findOrderByIdOrCode,
@@ -118,47 +119,9 @@ export const createManualPaymentRequest = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: 'Order ID is required' });
   }
 
-  const order = await findOrderByIdOrCode(orderId);
-
-  if (!order) {
-    return res.status(404).json({ success: false, message: 'Order not found' });
-  }
-
-  if (!canAccessOrder(req.user, order, req)) {
-    return res.status(403).json({ success: false, message: 'You are not authorized to create a payment request for this order' });
-  }
-
-  if (!order.userId && selectedPageCountForOrder(order) > 5) {
-    return res.status(403).json({
-      success: false,
-      code: 'LOGIN_REQUIRED_FOR_MORE_THAN_5_PAGES',
-      message: 'Login is required to print more than 5 selected pages.'
-    });
-  }
-
-  assertOrderCanStartPayment(order);
-
-  const paymentStatus = normalizePaymentStatus(order);
-  if (['verified', 'collected', 'paid'].includes(paymentStatus)) {
-    return res.status(409).json({ success: false, message: 'Payment is already completed for this order' });
-  }
-
-  const result = await withTransaction(async (client) => {
-    const payment = await savePayment({
-      id: generateId(),
-      orderId: order.id,
-      amount: order.amount,
-      method: 'MANUAL_PAYMENT_REQUEST',
-      transactionId: `manual_request_${Date.now()}`,
-      status: 'pending',
-      createdAt: new Date().toISOString(),
-      verifiedAt: null
-    }, client);
-
-    const requestedOrder = await updateOrderPayment(order.id, 'requested', 'payment_requested', client);
-
-    return { payment, order: requestedOrder };
-  });
+  // This records intent only, not cash collection. The service checks ownership,
+  // verified pricing and duplicate requests while holding the order lock.
+  const result = await requestManualPayment(req);
 
   res.status(201).json({
     success: true,

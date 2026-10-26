@@ -1,4 +1,6 @@
 import crypto from 'node:crypto';
+import { applyProviderPayment } from '../../services/razorpaySettlementService.js';
+import { requireTrustedOrderBill, paymentBillSnapshot } from '../../services/paymentReadinessService.js';
 import {
   createPayment as savePayment,
   findOrderByIdOrCode,
@@ -195,6 +197,7 @@ export const createRazorpayOrder = asyncHandler(async (req, res) => {
   }
 
   assertOrderCanStartPayment(order);
+  await requireTrustedOrderBill(order, null, { online: true });
 
   const paymentStatus = normalizePaymentStatus(order);
   if (['verified', 'collected', 'paid'].includes(paymentStatus)) {
@@ -215,7 +218,16 @@ export const createRazorpayOrder = asyncHandler(async (req, res) => {
     }
   });
 
+  // Provider creation happens outside the DB lock; recheck the bill afterward
+  // so configuration changes cannot attach an attempt for an obsolete amount.
   const { payment, requestedOrder } = await withTransaction(async (client) => {
+    const lockedOrder = await findOrderByIdOrCode(order.id, client, { forUpdate: true });
+    await requireTrustedOrderBill(lockedOrder, client, { online: true });
+    if (isPaymentComplete(lockedOrder) || lockedOrder.configVersion !== order.configVersion || lockedOrder.totalAmountPaise !== order.totalAmountPaise) {
+      const error = new Error('Order bill changed. Refresh before paying.');
+      error.statusCode = 409;
+      throw error;
+    }
     const payment = await savePayment({
       id: generateId(),
       orderId: order.id,
@@ -224,7 +236,7 @@ export const createRazorpayOrder = asyncHandler(async (req, res) => {
       provider: 'RAZORPAY',
       providerOrderId: razorpayOrder.id,
       providerStatus: razorpayOrder.status,
-      providerPayload: razorpayOrder,
+      providerPayload: { ...razorpayOrder, printeaseBill: paymentBillSnapshot(order) },
       transactionId: razorpayOrder.id,
       status: 'created',
       createdAt: new Date().toISOString(),
@@ -307,64 +319,22 @@ export const verifyRazorpayPayment = asyncHandler(async (req, res) => {
   }
 
   if (!validSignature) {
-    const failed = await updatePayment(payment.id, {
-      status: 'failed',
-      providerPaymentId: razorpay_payment_id,
-      providerSignature: razorpay_signature,
-      providerStatus: 'signature_failed',
-      providerPayload: { reason: 'signature_failed' }
-    });
-
     return res.status(400).json({
       success: false,
-      message: 'Invalid Razorpay signature',
-      payment: failed
+      message: 'Invalid Razorpay signature'
     });
   }
 
-  const result = await withTransaction(async (client) => {
-    const latestOrder = await findOrderByIdOrCode(order.id, client);
-    const latestPaymentStatus = normalizePaymentStatus(latestOrder);
-
-    if (['verified', 'collected', 'paid'].includes(latestPaymentStatus)) {
-      return {
-        payment,
-        order: latestOrder,
-        autoQueue: { queued: false, message: 'Payment already processed.' },
-        printJob: null
-      };
-    }
-
-    if (isCancelledOrder(latestOrder)) {
-      const cancelledPayment = await updatePayment(payment.id, {
-        status: 'cancelled',
-        providerPaymentId: razorpay_payment_id,
-        providerSignature: razorpay_signature,
-        providerStatus: 'order_cancelled_before_payment',
-        providerPayload: { ...req.body, reason: 'order_cancelled_before_payment' }
-      }, client);
-
-      const error = new Error('Order was cancelled before payment. Payment cannot be verified.');
-      error.statusCode = 409;
-      error.payment = cancelledPayment;
-      error.order = latestOrder;
-      throw error;
-    }
-
-    return markOrderPaidAndQueue({
-      orderId: order.id,
-      paymentId: payment.id,
-      providerPaymentId: razorpay_payment_id,
-      providerSignature: razorpay_signature,
-      providerStatus: 'verified_by_signature',
-      providerPayload: req.body,
-      client
-    });
+  // A valid checkout signature proves identifiers, not captured money. Fetch
+  // provider state server-side before the shared settlement/print activation gate.
+  const entity = await getRazorpayClient().payments.fetch(razorpay_payment_id);
+  const result = await applyProviderPayment({
+    paymentId: payment.id, entity, signature: razorpay_signature, payload: entity
   });
 
-  res.json({
+  res.status(result.paymentPending ? 202 : 200).json({
     success: true,
-    message: result.autoQueue?.message || 'Payment verified',
+    message: result.message || result.autoQueue?.message || (result.reconciliationRequired ? 'Payment received; centre reconciliation required.' : 'Payment verified'),
     ...result
   });
 });
@@ -397,6 +367,7 @@ export const createRazorpayUpiQr = asyncHandler(async (req, res) => {
   }
 
   assertOrderCanStartPayment(order);
+  await requireTrustedOrderBill(order, null, { online: true });
 
   const paymentStatus = normalizePaymentStatus(order);
   if (['verified', 'collected', 'paid'].includes(paymentStatus)) {
@@ -426,7 +397,15 @@ export const createRazorpayUpiQr = asyncHandler(async (req, res) => {
     throw error;
   }
 
+  // QR creation needs the same locked bill recheck as checkout initialization.
   const { payment, requestedOrder } = await withTransaction(async (client) => {
+    const lockedOrder = await findOrderByIdOrCode(order.id, client, { forUpdate: true });
+    await requireTrustedOrderBill(lockedOrder, client, { online: true });
+    if (isPaymentComplete(lockedOrder) || lockedOrder.configVersion !== order.configVersion || lockedOrder.totalAmountPaise !== order.totalAmountPaise) {
+      const error = new Error('Order bill changed. Refresh before paying.');
+      error.statusCode = 409;
+      throw error;
+    }
     const payment = await savePayment({
       id: generateId(),
       orderId: order.id,
@@ -435,7 +414,7 @@ export const createRazorpayUpiQr = asyncHandler(async (req, res) => {
       provider: 'RAZORPAY',
       providerOrderId: qr.id,
       providerStatus: qr.status,
-      providerPayload: qr,
+      providerPayload: { ...qr, printeaseBill: paymentBillSnapshot(order) },
       transactionId: qr.id,
       qrCodeId: qr.id,
       qrImageUrl: qr.image_url || null,
@@ -482,68 +461,18 @@ export const razorpayWebhook = asyncHandler(async (req, res) => {
     return res.json({ success: true, ignored: true, message: 'No payment entity in webhook' });
   }
 
-  if (!['payment.captured', 'payment.authorized', 'payment.failed'].includes(eventName)) {
+  if (!['payment.captured', 'payment.authorized', 'payment.failed', 'qr_code.credited'].includes(eventName)) {
     return res.json({ success: true, ignored: true, event: eventName });
   }
 
-  const result = await withTransaction(async (client) => {
-    const payment = orderId
-      ? await findPaymentByProviderOrderId(orderId, client)
-      : null;
-
-    if (!payment) {
-      return { ignored: true, message: 'Payment record not found for webhook' };
-    }
-
-    const order = await findOrderByIdOrCode(payment.orderId, client);
-    if (!order) {
-      return { ignored: true, message: 'Order not found for webhook payment' };
-    }
-
-    if (eventName === 'payment.failed') {
-      const failedPayment = await updatePayment(payment.id, {
-        status: 'failed',
-        providerPaymentId: paymentId,
-        providerStatus: paymentEntity.status || 'failed',
-        providerPayload: event
-      }, client);
-
-      const failedOrder = isCancelledOrder(order)
-        ? order
-        : await updateOrderPayment(order.id, 'failed', 'failed', client);
-      return { payment: failedPayment, order: failedOrder, failed: true };
-    }
-
-    const currentOrderStatus = normalizePaymentStatus(order);
-    if (['verified', 'collected', 'paid'].includes(currentOrderStatus)) {
-      return { payment, order, alreadyProcessed: true };
-    }
-
-    if (isCancelledOrder(order)) {
-      const cancelledPayment = await updatePayment(payment.id, {
-        status: 'cancelled',
-        providerPaymentId: paymentId,
-        providerStatus: 'order_cancelled_before_payment',
-        providerPayload: event
-      }, client);
-
-      return {
-        payment: cancelledPayment,
-        order,
-        cancelledBeforePayment: true,
-        message: 'Order was cancelled before payment; webhook payment was not applied.'
-      };
-    }
-
-    return markOrderPaidAndQueue({
-      orderId: order.id,
-      paymentId: payment.id,
-      providerPaymentId: paymentId,
-      providerSignature: null,
-      providerStatus: paymentEntity.status || eventName,
-      providerPayload: event,
-      client
-    });
+  // Only the HMAC-authenticated QR webhook may establish the QR/payment link.
+  // QR payments have order_id=null; never match them using client-supplied notes.
+  const qrCodeId = eventName === 'qr_code.credited' ? event?.payload?.qr_code?.entity?.id : null;
+  const payment = (qrCodeId || orderId) ? await findPaymentByProviderOrderId(qrCodeId || orderId) : null;
+  if (!payment) return res.json({ success: true, ignored: true, message: 'Payment record not found for webhook' });
+  const result = await applyProviderPayment({
+    paymentId: payment.id, entity: paymentEntity, payload: event,
+    failed: eventName === 'payment.failed', qrCodeId
   });
 
   res.json({

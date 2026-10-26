@@ -4,6 +4,9 @@ dotenv.config();
 
 import { query, executor, timestamp, number, isUuid, centreSelect } from './common.js';
 import { mapPrintJob } from './mappers.js';
+import { findOrderByIdOrCode } from './orderRepository.js';
+import { withTransaction } from '../../config/db.js';
+import { assertPrintJobTransition } from '../../services/printJobStatusPolicy.js';
 
 export async function createPrintJob(job, client) {
   const result = await executor(client).query(
@@ -34,12 +37,14 @@ export async function createPrintJob(job, client) {
 }
 
 export async function findActivePrintJobByOrder(orderId, hubId, client) {
+  // Submission to the spooler is still active work, not permission to enqueue
+  // another copy before the desktop has completed or cancelled that job.
   const result = await executor(client).query(
     `select *
      from print_jobs
      where order_id = $1
        and hub_id = $2
-       and status in ('queued', 'assigned', 'accepted', 'downloading', 'printing')
+       and status in ('queued', 'assigned', 'accepted', 'downloading', 'printing', 'submitted_to_printer')
      order by created_at desc
      limit 1`,
     [orderId, hubId]
@@ -89,6 +94,8 @@ export async function findPrintJobForAgent(jobId, agentId, hubId, client) {
 }
 
 export async function findNextPrintJobForAgent(agentId, hubId, client) {
+  // A deleted/unprepared file blocks the whole multi-file job. Lock only pj:
+  // the outer joins cannot safely participate in an unqualified FOR UPDATE.
   const result = await executor(client).query(
     `select pj.*
      from print_jobs pj
@@ -106,7 +113,10 @@ export async function findNextPrintJobForAgent(agentId, hubId, client) {
          'refund requested',
          'printing failed',
          'ready for pickup',
-         'collected'
+         'collected',
+         'completed',
+         'failed',
+         'submitted_to_printer'
        )
        and exists (
          select 1
@@ -117,9 +127,9 @@ export async function findNextPrintJobForAgent(agentId, hubId, client) {
        and not exists (
          select 1
          from print_order_files pof
-         join documents d on d.id = pof.document_id
+         left join documents d on d.id = pof.document_id
          where pof.order_id = po.id
-           and not (
+           and not coalesce((
              (
                d.print_ready_storage_path is not null
                and d.print_ready_storage_path <> ''
@@ -133,11 +143,11 @@ export async function findNextPrintJobForAgent(agentId, hubId, client) {
                and d.file_sha256 is not null
                and d.file_sha256 <> ''
              )
-           )
+           ) and d.preparation_status = 'prepared' and coalesce(d.prepared_page_count, d.page_count, 0) > 0, false)
        )
      order by pj.created_at asc
      limit 1
-     for update skip locked`,
+     for update of pj skip locked`,
     [agentId, hubId]
   );
 
@@ -184,6 +194,17 @@ export async function insertPrintJobEvent(event, client) {
 }
 
 export async function updatePrintJobStatus(jobId, hubId, updates, client) {
+  if (!client) return withTransaction(transaction => updatePrintJobStatus(jobId, hubId, updates, transaction));
+  const original = await findPrintJobForAgent(jobId, updates.agentId, hubId, client);
+  if (!original) return null;
+  // Queueing, cancellation and agent reports lock the order first so a delayed
+  // report cannot resurrect work after a hub cancellation commits.
+  const order = await findOrderByIdOrCode(original.orderId, client, { forUpdate: true });
+  if (!order) return null;
+  const locked = await client.query('select * from print_jobs where id = $1 for update', [jobId]);
+  const current = mapPrintJob(locked.rows[0]);
+  if (!current || (current.agentId && current.agentId !== updates.agentId)) return null;
+  assertPrintJobTransition(current, updates.status, order);
   const result = await executor(client).query(
     `update print_jobs
      set status = coalesce($3, status),

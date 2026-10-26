@@ -19,13 +19,15 @@ function getHubId(req) {
   return req.user?.centreId || req.user?.hubId;
 }
 
+// Legacy desktop callbacks must persist canonical DB states, not UI labels;
+// otherwise status constraints and terminal-order guards disagree.
 const STATUS_TO_ORDER_STATUS = {
-  accepted: 'Sent to Agent',
-  downloading: 'Sent to Agent',
-  printing: 'Printing',
-  completed: 'Ready for Pickup',
-  failed: 'Printing Failed',
-  cancelled: 'Printing Failed'
+  accepted: 'queued_for_print',
+  downloading: 'queued_for_print',
+  printing: 'printing',
+  completed: 'completed',
+  failed: 'failed',
+  cancelled: 'cancelled'
 };
 
 const ALLOWED_DESKTOP_JOB_STATUSES = new Set([

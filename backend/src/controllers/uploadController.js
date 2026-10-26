@@ -1,12 +1,11 @@
 import crypto from 'crypto';
 import path from 'path';
-import { createDocument } from '../db/repository.js';
+import { assignOwnedDocumentHub, createDocument, findCentreById } from '../db/repository.js';
 import { generateId } from '../utils/generateCode.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
-import { getPptxSlideCount } from '../utils/pptxParser.js';
 import { getSupabaseAdminClient, getSupabaseBucketName } from '../config/supabase.js';
 import { getPdfPageCount } from '../utils/pdfPageCount.js';
-import { createGuestToken, hashGuestToken, getGuestExpiry } from '../services/guestAccessService.js';
+import { createGuestToken, hashGuestToken, getGuestExpiry, getGuestTokenHashFromRequest } from '../services/guestAccessService.js';
 import { formatAllowedUploadTypes, isAllowedUploadMimeType } from '../constants/upload.js';
 
 function safeFileName(name) {
@@ -26,10 +25,10 @@ function looksLikePdf(buffer) {
 
 export const uploadDocument = asyncHandler(async (req, res) => {
   const mainFile = req.files?.document?.[0] || req.file;
-  let printReadyFile = req.files?.printReadyFile?.[0];
+  const printReadyFile = req.files?.printReadyFile?.[0];
   
   if (printReadyFile && (printReadyFile.mimetype !== 'application/pdf' || !looksLikePdf(printReadyFile.buffer))) {
-    printReadyFile = null;
+    return res.status(400).json({ success: false, message: 'Print-ready file must be a valid PDF.' });
   }
 
   if (!mainFile) {
@@ -44,6 +43,12 @@ export const uploadDocument = asyncHandler(async (req, res) => {
   }
 
   const isPdf = mainFile.mimetype === 'application/pdf';
+
+  // Count and print the same PDF: an alternate artifact could otherwise hide
+  // more printable pages behind the original document's verified bill.
+  if (isPdf && printReadyFile) {
+    return res.status(400).json({ success: false, message: 'Upload the final PDF as document without an alternate print-ready file.' });
+  }
 
   if (isPdf && !looksLikePdf(mainFile.buffer)) {
     return res.status(400).json({
@@ -69,19 +74,10 @@ export const uploadDocument = asyncHandler(async (req, res) => {
     try {
       pageCount = await getPdfPageCount(printReadyFile.buffer);
     } catch (error) {
-      if (process.env.NODE_ENV !== 'production') {
-        console.debug('Could not read page count from printReadyFile:', error?.message);
-      }
+      return res.status(400).json({ success: false, message: error.message || 'Could not read print-ready PDF.' });
     }
   } else if (mainFile.mimetype === 'image/jpeg' || mainFile.mimetype === 'image/png' || mainFile.mimetype === 'image/webp') {
     pageCount = 1;
-  } else if (mainFile.mimetype === 'application/vnd.openxmlformats-officedocument.presentationml.presentation') {
-    const slideCount = getPptxSlideCount(mainFile.buffer);
-    if (slideCount) {
-      pageCount = slideCount;
-    } else {
-      pageCount = null;
-    }
   } else if (
     mainFile.mimetype.includes('officedocument') ||
     mainFile.mimetype.includes('msword') ||
@@ -158,10 +154,11 @@ export const uploadDocument = asyncHandler(async (req, res) => {
       });
 
     if (prUploadError) {
+      // Do not retain a bill based on converted bytes that were never stored.
+      // Remove the orphaned original and let the client retry the whole upload.
       console.error('Supabase print-ready upload failed:', prUploadError);
-      // We will proceed without printReadyFile if it fails
-      printReadyStoragePath = null;
-      printReadySha256 = null;
+      await supabase.storage.from(bucket).remove([storagePath]).catch(() => {});
+      return res.status(502).json({ success: false, message: 'Could not store the verified printable PDF. Please retry the upload.' });
     }
   }
 
@@ -210,7 +207,7 @@ export const uploadDocument = asyncHandler(async (req, res) => {
   res.status(201).json({
     success: true,
     message: 'Document uploaded securely',
-    document,
+    document: { ...document, guestTokenHash: undefined },
     guestToken
   });
 });
@@ -223,10 +220,15 @@ export const assignHub = asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: 'hubId is required' });
   }
 
-  // Optionally verify that document exists and user owns it or has guest access
-  // For now, we'll just assign it (similar to how documents are created)
-  const { updateDocumentHub } = await import('../db/repository.js');
-  const document = await updateDocumentHub(documentId, hubId);
+  if (!(await findCentreById(hubId))) {
+    return res.status(404).json({ success: false, message: 'Centre not found' });
+  }
+  // Knowing a document ID is not ownership; the SQL mutation checks the uploader
+  // or expiring anonymous capability and preserves existing order destinations.
+  const document = await assignOwnedDocumentHub(documentId, hubId, {
+    userId: req.user?.id,
+    guestTokenHash: getGuestTokenHashFromRequest(req)
+  });
 
   if (!document) {
     return res.status(404).json({ success: false, message: 'Document not found' });
@@ -235,6 +237,6 @@ export const assignHub = asyncHandler(async (req, res) => {
   res.json({
     success: true,
     message: 'Hub assigned successfully',
-    document
+    document: { ...document, guestTokenHash: undefined }
   });
 });

@@ -1189,6 +1189,13 @@ export default function App() {
             body: formData,
           });
 
+          // Keep one anonymous capability across this multi-file upload and
+          // checkout; otherwise later files become inaccessible to the order.
+          if (!currentUser && uploadData.guestToken) {
+            localStorage.setItem("printease_order_access_token", uploadData.guestToken);
+            setOrderAccessToken(uploadData.guestToken);
+          }
+
           uploadedDocuments.push(uploadData.document);
         }
       } else if (reprintSourceDocuments.length) {
@@ -1459,7 +1466,12 @@ export default function App() {
               setLastOrdersUpdatedAt(new Date().toISOString());
       emitOrderChanged();
               invalidateUserHistory(currentUser?.id || "me");
-              setPendingPayment(null);
+              // Checkout completion is not proof of capture. Preserve pending
+              // state/reconciliation warnings instead of inviting another charge.
+              setPendingPayment(verifiedData.paymentPending ? verifiedData.payment : null);
+              if (verifiedData.paymentPending || verifiedData.reconciliationRequired) {
+                setPaymentError(verifiedData.message || "Payment is awaiting confirmation. Do not pay again yet.");
+              }
               setUpiQr(null);
               navigate("track");
             } catch (error) {

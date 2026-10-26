@@ -4,6 +4,8 @@ dotenv.config();
 
 import { query, executor, timestamp, number, isUuid, centreSelect } from './common.js';
 import { mapDocument, mapOrderFile } from './mappers.js';
+import { hashGuestToken } from '../../services/guestAccessService.js';
+import { assertPreparationReportCanReplace } from '../../services/documentPreparationPolicy.js';
 
 export async function updateDocumentHub(documentId, hubId, client) {
   const result = await executor(client).query(
@@ -12,6 +14,24 @@ export async function updateDocumentHub(documentId, hubId, client) {
      where id = $1
      returning *`,
     [documentId, hubId]
+  );
+  return mapDocument(result.rows[0]);
+}
+
+// Public reassignment must prove ownership in the mutation itself. Existing
+// orders keep their destination; internal order creation uses updateDocumentHub.
+export async function assignOwnedDocumentHub(documentId, hubId, { userId, guestTokenHash }, client) {
+  const result = await executor(client).query(
+    `update documents d set hub_id = $2
+     where d.id = $1
+       and ((d.user_id = $3) or
+         ($3 is null and d.user_id is null and d.guest_token_hash = $4 and d.expires_at > now()))
+       and not exists (
+         select 1 from print_order_files f join print_orders o on o.id = f.order_id
+         where f.document_id = d.id and o.hub_id <> $2
+       )
+     returning d.*`,
+    [documentId, hubId, userId || null, guestTokenHash || null]
   );
   return mapDocument(result.rows[0]);
 }
@@ -82,6 +102,13 @@ export async function createDocument(document) {
 }
 
 export async function updateDocumentPreparation(id, data, client) {
+  // Enforce immutability inside the write transaction too: controller-only
+  // checks can race with another conversion report that prepares the document.
+  if (!client) throw new Error('Document preparation requires a transaction.');
+  const current = await executor(client).query('select * from documents where id = $1 for update', [id]);
+  const existing = mapDocument(current.rows[0]);
+  if (!existing) return null;
+  if (!assertPreparationReportCanReplace(existing, data)) return existing;
   const result = await executor(client).query(
     `update documents
      set prepared_page_count = $2,
@@ -123,6 +150,8 @@ export async function findOrderIdsByDocumentId(documentId, client) {
 }
 
 export async function findDocumentAccessContext(documentId, user, guestToken, client) {
+  // Filter authorized orders before LIMIT: the newest order referencing a shared
+  // document may belong to another hub and must not shadow an accessible order.
   const result = await executor(client).query(
     `select
        pof.*,
@@ -138,22 +167,31 @@ export async function findDocumentAccessContext(documentId, user, guestToken, cl
        d.file_url,
        d.file_sha256,
        d.storage_path,
+       d.print_ready_storage_path,
+       d.print_ready_sha256,
+       d.prepared_page_count,
+       d.preparation_status,
        d.page_count,
        d.created_at as document_created_at
      from print_order_files pof
      join print_orders po on po.id = pof.order_id
      join documents d on d.id = pof.document_id
      where pof.document_id = $1
+       and ($2::boolean or po.user_id::text = $3 or po.hub_id::text = $4 or
+         (po.user_id is null and po.expires_at > now() and
+           (po.guest_token_hash = $5 or po.guest_token = $6)))
      order by pof.created_at desc
      limit 1`,
-    [documentId]
+    [documentId, user?.role === 'admin', user?.id || null,
+      user?.role === 'hub' ? String(user.centreId || user.hubId || '') : null,
+      hashGuestToken(guestToken), typeof guestToken === 'string' ? guestToken : null]
   );
 
   const row = result.rows[0];
   if (!row) return null;
 
   const isAdmin = user?.role === 'admin';
-  const isOwner = user?.role === 'user' && row.order_user_id === user.id;
+  const isOwner = Boolean(user?.id && row.order_user_id === user.id);
   const isHubOwner = user?.role === 'hub' && row.hub_id === (user.centreId || user.hubId);
   
   let isGuestOwner = false;
@@ -182,6 +220,10 @@ export async function findDocumentAccessContext(documentId, user, guestToken, cl
       fileUrl: row.file_url,
       fileSha256: row.file_sha256,
       storagePath: row.storage_path,
+      printReadyStoragePath: row.print_ready_storage_path || null,
+      printReadySha256: row.print_ready_sha256 || null,
+      preparedPageCount: row.prepared_page_count == null ? null : Number(row.prepared_page_count),
+      preparationStatus: row.preparation_status,
       pageCount: row.page_count === null || row.page_count === undefined ? null : Number(row.page_count),
       createdAt: timestamp(row.document_created_at)
     }

@@ -30,6 +30,7 @@ import { createPrintJobFilesForOrder } from '../services/printQueue/printJobFile
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { verifyPrintFilesReadiness } from '../services/printJobReadinessService.js';
 import { getPrintReadyFile } from '../utils/printReadyPdf.js';
+import { queuePrintJobIfPaymentReady } from '../services/printQueueService.js';
 
 function getHubId(req) {
   return req.user?.centreId || req.user?.hubId;
@@ -43,6 +44,8 @@ function isPrintableOrderStatus(status) {
   const normalized = String(status || '').toLowerCase();
   return ![
     'printing',
+    'completed',
+    'failed',
     'ready for pickup',
     'collected',
     'printing failed',
@@ -326,51 +329,17 @@ export const sendOrderToAgent = asyncHandler(async (req, res) => {
     printerHint = selectedPrinter.printerName;
   }
 
-  const printJob = await withTransaction(async (client) => {
-    const job = await createPrintJob({
-      id: generateId(),
-      orderId: order.id,
-      hubId,
-      agentId: selectedAgent.id,
-      printerName: printerHint || null,
-      fileUrl: printReadyFile.fileUrl,
-      fileSha256: printReadyFile.fileSha256 || readiness.fileSha256,
-      fileType: printReadyFile.fileType,
-      copies: order.copies,
-      paperSize: 'A4',
-      colorMode: order.color_type || 'bw',
-      printOptions: firstFile?.printOptions || order.print_options || {},
-      sourceBackendUrl: OFFICIAL_BACKEND_URL
-    }, client);
-
-    await createPrintJobFilesForOrder({
-      printJobId: job.id,
-      orderFiles,
-      client
-    });
-
-    await insertPrintJobEvent({
-      printJobId: job.id,
-      agentId: selectedAgent.id,
-      eventType: 'queued',
-      newStatus: PRINT_JOB_STATUSES.QUEUED,
-      message: 'Hub queued order for PrintEase agent',
-      rawStatus: {
-        orderId: order.id,
-        agentId: selectedAgent.id,
-        printerName: printerHint || null,
-        fileCount: orderFiles.length
-      }
-    }, client);
-
-    await updateOrderStatus(order.id, hubId, 'Queued for Printing', client);
-
-    return job;
-  });
+  // Manual Send and payment activation share the same order lock/idempotency
+  // gate so racing clicks cannot enqueue the same customer's files twice.
+  const result = await withTransaction(client => queuePrintJobIfPaymentReady(order.id, hubId, client, {
+    agent: selectedAgent, printerName: printerHint
+  }));
+  const printJob = result.printJob || result.existingPrintJob;
+  if (!printJob) return res.status(409).json({ success: false, message: result.message || 'Order cannot be queued.' });
 
   res.status(201).json({
     success: true,
-    message: 'Order queued for selected desktop printer',
+    message: result.message || 'Order queued for selected desktop printer',
     printJob
   });
 });

@@ -12,6 +12,7 @@ import {
 import { calculatePrintPricing } from '../utils/calculatePrice.js';
 import { normalizePrintOptions, toLegacyColorType, toLegacySideType } from '../utils/printOptions.js';
 import crypto from 'crypto';
+import { isPaymentComplete } from './orderUtils.js';
 
 /**
  * Checks whether the print hub is allowed to configure/correct settings for a given order.
@@ -24,9 +25,9 @@ export async function canHubConfigureManualOrder({ order, hubId, client }) {
     return { eligible: false, reason: 'Order does not belong to this hub' };
   }
 
-  // Payment must be manual (payment_status is 'draft', 'pending', or 'collected')
+  // Only unpaid manual configuration is editable; collected bills are frozen.
   const paymentStatus = String(order.paymentStatus || '').toLowerCase();
-  if (!['draft', 'pending', 'collected'].includes(paymentStatus)) {
+  if (!['draft', 'pending', 'not_requested', 'requested'].includes(paymentStatus)) {
     return { eligible: false, reason: 'Only manual payment orders can be configured' };
   }
 
@@ -60,7 +61,7 @@ export async function canHubConfigureManualOrder({ order, hubId, client }) {
  */
 export async function applyOrderConfigurationChange({ orderId, hubId, actor, newFilesConfig, note }) {
   return await withTransaction(async (client) => {
-    const order = await findOrderByIdOrCode(orderId, client);
+    const order = await findOrderByIdOrCode(orderId, client, { forUpdate: true });
     if (!order) {
       throw new Error('Order not found');
     }
@@ -153,7 +154,10 @@ export async function applyOrderConfigurationChange({ orderId, hubId, actor, new
       }
 
       // Normalize print options using existing utility
-      const normalizedOptions = normalizePrintOptions(mergedPrintOptions, existingFile.originalPageCount);
+      // Conversion can replace an unknown source count; normalize ranges and
+      // reprice against the verified PDF, not the stale upload estimate.
+      const trustedPageCount = existingFile.document?.preparedPageCount ?? existingFile.document?.pageCount ?? existingFile.originalPageCount;
+      const normalizedOptions = normalizePrintOptions(mergedPrintOptions, trustedPageCount);
       normalizedOptions.copies = copies; // Keep inline with copies field
       
       // Convert normalized modes back to legacy types for the pricing calculator
@@ -165,7 +169,7 @@ export async function applyOrderConfigurationChange({ orderId, hubId, actor, new
 
       const price = calculatePrintPricing({
         centre,
-        originalPageCount: existingFile.originalPageCount,
+        originalPageCount: trustedPageCount,
         selectedPages: pricedSelectedPages,
         copies: copies,
         colorType: fileColorType,
@@ -177,6 +181,7 @@ export async function applyOrderConfigurationChange({ orderId, hubId, actor, new
 
       // Persist the individual file settings
       const updatedFile = await updateOrderFileConfiguration(existingFile.id, {
+        originalPageCount: Number(trustedPageCount),
         copies: price.copies,
         selectedPages: price.selectedPages,
         selectedPageCount: price.selectedPageCount,
@@ -296,6 +301,11 @@ async function markOrderBillConfirmed({ client, orderId, totalAmountPaise, price
 }
 
 async function calculateAndPersistTrustedOrderBill({ client, order, source = 'desktop_agent_preparation' }) {
+  // A later preparation report must never rewrite a settled bill or history.
+  if (isPaymentComplete(order) || order.configLockedAt ||
+      ['printing', 'completed', 'cancelled', 'queued_for_print'].includes(String(order.status).toLowerCase())) {
+    return { order };
+  }
   const existingFiles = await listOrderFiles(order.id, client);
   if (!existingFiles || existingFiles.length === 0) return null;
 
@@ -340,6 +350,7 @@ async function calculateAndPersistTrustedOrderBill({ client, order, source = 'de
     });
 
     const updatedFile = await updateOrderFileConfiguration(existingFile.id, {
+      originalPageCount: Number(trustedPageCount),
       copies: price.copies,
       selectedPages: price.selectedPages,
       selectedPageCount: price.selectedPageCount,
@@ -428,8 +439,8 @@ export async function recalculateOrderPricingByDocumentInTransaction(documentId,
   if (!orderIds || orderIds.length === 0) return null;
 
   const results = [];
-  for (const orderId of orderIds) {
-    const order = await findOrderByIdOrCode(orderId, client);
+  for (const orderId of [...orderIds].sort()) {
+    const order = await findOrderByIdOrCode(orderId, client, { forUpdate: true });
     if (!order) continue;
 
     const result = await calculateAndPersistTrustedOrderBill({
@@ -447,7 +458,7 @@ export async function recalculateOrderPricingByDocument(documentId) {
 }
 
 export async function confirmOrderBillInTransaction({ orderId, hubId, client }) {
-  const order = await findOrderByIdOrCode(orderId, client);
+  const order = await findOrderByIdOrCode(orderId, client, { forUpdate: true });
   if (!order) {
     throw new Error('Order not found');
   }

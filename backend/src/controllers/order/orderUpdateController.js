@@ -7,6 +7,7 @@ import {
   createPayment as savePayment,
   findDocumentById,
   findOrderByIdOrCode,
+  findActivePrintJobByOrder,
   listOrderFiles,
   listOrdersByCentre,
   listOrdersByUser,
@@ -507,26 +508,32 @@ export const updateOrderStatus = asyncHandler(async (req, res) => {
   }
 
   const result = await withTransaction(async (client) => {
-    const existingOrder = await findOrderByIdOrCode(req.params.id, client);
+    const existingOrder = await findOrderByIdOrCode(req.params.id, client, { forUpdate: true });
     if (!existingOrder || existingOrder.centreId !== hubId) {
       return null;
     }
 
+    // Terminal history cannot be reopened in place. Serialize completion and
+    // cancellation with agent reports so a delayed callback cannot restart work.
     const currentStatus = String(existingOrder.status || '').toLowerCase();
     const normalizedStatus = nextStatus.toLowerCase();
 
-    // Do not allow changes if order is cancelled, unless un-cancelling (which we don't support)
-    // Actually, let's keep it simple: can't change from Collected or Cancelled
-    if (['collected', 'cancelled'].includes(currentStatus) && currentStatus !== normalizedStatus) {
+    if (['completed', 'collected', 'cancelled'].includes(currentStatus) && currentStatus !== normalizedStatus) {
       const error = new Error(`Cannot change status from ${existingOrder.status}`);
       error.statusCode = 400;
+      throw error;
+    }
+
+    if (normalizedStatus === 'completed' && await findActivePrintJobByOrder(existingOrder.id, hubId, client)) {
+      const error = new Error('The desktop print job is still active. Wait for it to finish or cancel the order.');
+      error.statusCode = 409;
       throw error;
     }
 
     const order = await saveOrderStatus(existingOrder.id, hubId, nextStatus, client);
     if (!order) return null;
 
-    const shouldStopPrintJobs = ['cancelled', 'paused', 'refund requested', 'printing failed'].includes(normalizedStatus);
+    const shouldStopPrintJobs = ['cancelled', 'failed', 'paused', 'refund requested', 'printing failed'].includes(normalizedStatus);
     const cancelledPrintJobs = shouldStopPrintJobs
       ? await cancelActivePrintJobsForOrder(order.id, hubId, `Order marked ${nextStatus} by hub owner`, client)
       : [];

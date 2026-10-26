@@ -9,7 +9,9 @@ export function assertCanUseDocumentForOrder({ user, document }) {
 
   if (!user && !document.userId) return;
 
-  if (user?.role === 'user' && document.userId === user.id) return;
+  // An authenticated hub may also upload its own documents; ownership is by
+  // authenticated ID, not restricted to the customer's role label.
+  if (user?.id && document.userId === user.id) return;
 
   if (user && !document.userId) {
     const error = new Error('Guest uploaded documents cannot be attached to an order. Please upload again while logged in.');

@@ -140,6 +140,9 @@ export default function UploadPage({
         size: 0,
         textContent: "",
         loading: true,
+        // All preview states retain their source index so settings edits update
+        // the selected document, including the second or later ready PDF.
+        fileIndex: index,
         error: "",
       });
       return;
@@ -155,6 +158,7 @@ export default function UploadPage({
         textContent: "",
         loading: false,
         error: prepared.errorMessage || prepared.message || "Preview is not ready yet.",
+        fileIndex: index,
       });
       return;
     }
@@ -170,6 +174,7 @@ export default function UploadPage({
         loading: false,
         error: "",
         skipRevoke: true,
+        fileIndex: index,
       });
       return;
     }

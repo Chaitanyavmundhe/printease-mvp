@@ -25,6 +25,11 @@ export const createSignedDownload = asyncHandler(async (req, res) => {
   }
 
   const preferConverted = req.query.converted === 'true';
+  // A converted-PDF request must never silently return the Office source with
+  // PDF metadata, which previously left previews blank and poisoned blob caches.
+  if (preferConverted && (!context.document.printReadyStoragePath || !context.document.printReadySha256)) {
+    return res.status(425).json({ success: false, message: 'The verified converted PDF is not ready yet.' });
+  }
   const isConverted = preferConverted && context.document.printReadyStoragePath;
   const targetStoragePath = isConverted 
     ? context.document.printReadyStoragePath 
@@ -60,11 +65,11 @@ export const createSignedDownload = asyncHandler(async (req, res) => {
     success: true,
     document: {
       id: context.document.id,
-      fileName: context.document.fileName,
-      fileType: context.document.fileType,
+      fileName: isConverted ? context.document.fileName.replace(/\.[^.]+$/, '.pdf') : context.document.fileName,
+      fileType: isConverted ? 'application/pdf' : context.document.fileType,
       fileSizeBytes: context.document.fileSizeBytes,
-      fileSha256: context.document.fileSha256,
-      pageCount: context.document.pageCount,
+      fileSha256: isConverted ? context.document.printReadySha256 : context.document.fileSha256,
+      pageCount: isConverted ? context.document.preparedPageCount : context.document.pageCount,
       uploadedAt: context.document.createdAt
     },
     signedUrl: data.signedUrl,

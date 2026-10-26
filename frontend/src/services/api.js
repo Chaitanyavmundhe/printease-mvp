@@ -61,6 +61,13 @@ function createHeaders(options) {
     headers.set("Authorization", `Bearer ${token}`);
   }
 
+  // Anonymous access uses a scoped backend capability, not a fabricated login.
+  // Reuse it for upload, checkout and document reads without overriding a caller.
+  const orderAccessToken = localStorage.getItem("printease_order_access_token");
+  if (orderAccessToken && !headers.has("x-order-access-token")) {
+    headers.set("x-order-access-token", orderAccessToken);
+  }
+
   return headers;
 }
 
@@ -327,6 +334,7 @@ export function createDocumentSignedDownload(documentId, converted = false) {
 }
 
 const documentBlobCache = new Map();
+let documentBlobIdentity = null;
 const MAX_DOCUMENT_BLOB_CACHE_ENTRIES = 6;
 const MAX_DOCUMENT_BLOB_CACHE_BYTES = 120 * 1024 * 1024;
 
@@ -356,6 +364,14 @@ function cacheDocumentBlob(cacheKey, blob) {
 }
 
 async function fetchSignedDocumentBlob(documentId, converted = false) {
+  // Private blobs cannot outlive their login/capability identity in memory.
+  // Clear on identity change and reject an older request that finishes afterward.
+  const identity = localStorage.getItem("printease_token") ||
+    localStorage.getItem("printease_order_access_token") || "anonymous";
+  if (documentBlobIdentity !== identity) {
+    documentBlobCache.clear();
+    documentBlobIdentity = identity;
+  }
   const cacheKey = String(documentId || "") + (converted ? "_converted" : "");
   if (documentBlobCache.has(cacheKey)) {
     return documentBlobCache.get(cacheKey);
@@ -380,6 +396,11 @@ async function fetchSignedDocumentBlob(documentId, converted = false) {
   const typedBlob = bestType !== rawType
     ? new Blob([blob], { type: bestType })
     : blob;
+  // A renamed Office response is not a PDF; reject it before caching/rendering.
+  if (converted && !(await typedBlob.slice(0, 5).text()).startsWith("%PDF-")) {
+    throw new Error("The converted printable PDF is not ready. Please retry after preparation finishes.");
+  }
+  if (documentBlobIdentity !== identity) throw new ApiError("Session changed. Open the document again.", 401);
   cacheDocumentBlob(cacheKey, typedBlob);
   return typedBlob;
 }

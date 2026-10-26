@@ -5,7 +5,7 @@ export function createGuestToken() {
 }
 
 export function hashGuestToken(token) {
-  if (!token) return null;
+  if (typeof token !== 'string' || !token || token.length > 512) return null;
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
@@ -14,24 +14,23 @@ export function getGuestExpiry() {
 }
 
 export function assertGuestCanUseDocument({ guestTokenHash, document }) {
-  // If the document is owned by a logged-in user, the guest token check doesn't apply here directly,
-  // but if it's a guest document, it must have a matching hash.
+  // Repository models are camelCase. Treat absent/expired capabilities as a
+  // denial, never as a public upload merely because userId is absent.
   if (!document) {
     throw new Error('Document not found');
   }
 
   // If document belongs to a user, a guest should not be able to use it
-  if (document.user_id) {
+  if (document.userId) {
     throw new Error('Unauthorized: Document belongs to a registered user');
   }
 
-  // If document has a guest token hash, it must match
-  if (document.guest_token_hash && document.guest_token_hash !== guestTokenHash) {
+  if (!document.guestTokenHash || !guestTokenHash || document.guestTokenHash !== guestTokenHash) {
     throw new Error('Unauthorized: Invalid guest token for this document');
   }
 
-  // Check expiration if present
-  if (document.expires_at && new Date(document.expires_at) < new Date()) {
+  const expiresAt = Date.parse(document.expiresAt);
+  if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
     throw new Error('Unauthorized: Guest document has expired');
   }
 

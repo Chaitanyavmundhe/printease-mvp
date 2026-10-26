@@ -99,6 +99,10 @@ export function mapDocument(row) {
     preparedAt: row.prepared_at,
     pageCount: row.page_count === null || row.page_count === undefined ? null : Number(row.page_count),
     hubId: row.hub_id || null,
+    // Internal ownership checks require these fields after DB-to-model mapping;
+    // public upload responses explicitly omit the capability hash.
+    guestTokenHash: row.guest_token_hash || null,
+    expiresAt: timestamp(row.expires_at),
     createdAt: timestamp(row.created_at)
   };
 }

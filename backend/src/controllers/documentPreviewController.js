@@ -32,6 +32,10 @@ export const previewDocument = asyncHandler(async (req, res) => {
     });
 
     const preferConverted = req.query.converted === 'true';
+    // Keep pending conversion explicit; do not preview the original as a PDF.
+    if (preferConverted && !context.document.printReadyStoragePath) {
+      return res.status(425).json({ success: false, message: 'The verified converted PDF is not ready yet.' });
+    }
     const isConverted = preferConverted && context.document.printReadyStoragePath;
     const targetStoragePath = isConverted 
       ? context.document.printReadyStoragePath 
@@ -74,6 +78,7 @@ export const previewDocument = asyncHandler(async (req, res) => {
 });
 
 export const downloadDocument = asyncHandler(async (req, res) => {
+  // Downloads follow the same converted-artifact readiness rule as previews.
   const { documentId } = req.params;
 
   if (!UUID_REGEX.test(documentId)) {
@@ -90,6 +95,9 @@ export const downloadDocument = asyncHandler(async (req, res) => {
     });
 
     const preferConverted = req.query.converted === 'true';
+    if (preferConverted && !context.document.printReadyStoragePath) {
+      return res.status(425).json({ success: false, message: 'The verified converted PDF is not ready yet.' });
+    }
     const isConverted = preferConverted && context.document.printReadyStoragePath;
     const targetStoragePath = isConverted 
       ? context.document.printReadyStoragePath 

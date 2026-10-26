@@ -18,6 +18,8 @@ import {
   reportPreparationResult
 } from '../controllers/agentController.js';
 import { getNextConversionJob } from '../controllers/agentConversionController.js';
+// Uses the router's agent authentication, separate from the hub user's login.
+import { getAgentJobStatus } from '../controllers/agentJobStatusController.js';
 import { agentAuthMiddleware } from '../middleware/agentAuthMiddleware.js';
 import { agentPairingRateLimit } from '../middleware/rateLimitMiddleware.js';
 import { upload } from '../middleware/uploadMiddleware.js';
@@ -34,6 +36,7 @@ router.get('/jobs/predownload', agentAuthMiddleware, getPredownloadCandidates);
 router.get('/jobs/verify', agentAuthMiddleware, getPendingVerificationJobs);
 router.post('/jobs/:jobId/verify-result', agentAuthMiddleware, upload.single('printReadyFile'), reportVerificationResult);
 router.get('/jobs/next', agentAuthMiddleware, getNextJob);
+router.get('/jobs/:jobId', agentAuthMiddleware, getAgentJobStatus);
 router.post('/jobs/:jobId/accepted', agentAuthMiddleware, acceptJob);
 router.post('/jobs/:jobId/downloading', agentAuthMiddleware, markDownloading);
 router.post('/jobs/:jobId/printing', agentAuthMiddleware, markPrinting);

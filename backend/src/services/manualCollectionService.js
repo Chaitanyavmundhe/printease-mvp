@@ -2,6 +2,7 @@ import { createPayment as savePayment, findOrderByIdOrCode, updateOrderPayment, 
 import { generateId } from '../utils/generateCode.js';
 import { queuePrintJobIfPaymentReady } from './printQueueService.js';
 import { isCancelledOrder, isPaymentComplete } from './orderUtils.js';
+import { requireTrustedOrderBill } from './paymentReadinessService.js';
 
 export async function processManualCollection({
   orderId,
@@ -18,7 +19,7 @@ export async function processManualCollection({
   const transactionNote = typeof transactionNoteInput === 'string' ? transactionNoteInput.trim().slice(0, 200) : '';
 
   return await withTransaction(async (client) => {
-    const order = await findOrderByIdOrCode(orderId, client);
+    const order = await findOrderByIdOrCode(orderId, client, { forUpdate: true });
 
     if (!order || order.centreId !== hubId) {
       return { notFound: true };
@@ -46,6 +47,10 @@ export async function processManualCollection({
         printJob: autoQueue.printJob || autoQueue.existingPrintJob || null
       };
     }
+
+    // Explicit hub collection remains the only cash/UPI settlement action.
+    // Pending conversion or mismatched prices must not become a paid print job.
+    await requireTrustedOrderBill(order, client);
 
     const now = new Date().toISOString();
     const payment = await savePayment({

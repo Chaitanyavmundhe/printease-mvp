@@ -5,9 +5,14 @@ export function normalize(value) {
 }
 
 export function isPrintableOrderStatus(status) {
+  // Preserve canonical and legacy terminal names so neither an old desktop nor
+  // a repeated hub Send can resurrect a finished, failed or cancelled order.
   const normalized = normalize(status);
   return ![
     'printing',
+    'submitted_to_printer',
+    'completed',
+    'failed',
     'ready for pickup',
     'collected',
     'printing failed',

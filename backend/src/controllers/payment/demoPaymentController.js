@@ -12,6 +12,7 @@ import {
 import { queuePrintJobIfPaymentReady } from '../../services/printQueueService.js';
 import { generateId } from '../../utils/generateCode.js';
 import { asyncHandler } from '../../utils/asyncHandler.js';
+import { requireTrustedOrderBill } from '../../services/paymentReadinessService.js';
 import {
   canAccessOrder,
   isCancelledOrder,
@@ -555,10 +556,10 @@ const razorpayWebhook = asyncHandler(async (req, res) => {
 
 /**
  * Temporary compatibility endpoint:
- * Do not allow demo verification in production unless DEMO_PAYMENT_ENABLED=true.
+ * Demo verification is development-only, even if its flag leaks into production.
  */
 export const verifyDemoPayment = asyncHandler(async (req, res) => {
-  if (String(process.env.DEMO_PAYMENT_ENABLED || 'false').toLowerCase() !== 'true') {
+  if (process.env.NODE_ENV === 'production' || String(process.env.DEMO_PAYMENT_ENABLED || 'false').toLowerCase() !== 'true') {
     return res.status(403).json({
       success: false,
       message: 'Demo payment verification is disabled.'
@@ -589,15 +590,19 @@ export const verifyDemoPayment = asyncHandler(async (req, res) => {
 
   if (!demoSuccess) {
     const result = await withTransaction(async (client) => {
+      const current = await findOrderByIdOrCode(order.id, client, { forUpdate: true });
+      if (isPaymentComplete(current)) return { payment, order: current };
       const failedPayment = await updatePayment(payment.id, { status: 'failed' }, client);
-      const failedOrder = await updateOrderPayment(order.id, 'failed', 'failed', client);
-      return { payment: failedPayment, order: failedOrder };
+      return { payment: failedPayment, order: current };
     });
 
     return res.json({ success: true, message: 'Payment marked failed in demo', ...result });
   }
 
   const result = await withTransaction(async (client) => {
+    const current = await findOrderByIdOrCode(order.id, client, { forUpdate: true });
+    if (isPaymentComplete(current)) return { payment, order: current };
+    await requireTrustedOrderBill(current, client);
     const collectedPayment = await updatePayment(payment.id, {
       status: 'collected',
       transactionId: `demo_payment_${Date.now()}`,

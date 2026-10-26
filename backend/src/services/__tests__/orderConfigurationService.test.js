@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { canHubConfigureManualOrder, applyOrderConfigurationChange } from '../orderConfigurationService.js';
+import { canHubConfigureManualOrder, applyOrderConfigurationChange, recalculateOrderPricingByDocumentInTransaction } from '../orderConfigurationService.js';
 import * as repository from '../../db/repository.js';
 
 vi.mock('../../db/repository.js');
@@ -20,6 +20,14 @@ describe('orderConfigurationService', () => {
       };
       return cb(mockClient);
     });
+  });
+
+  it('does not recalculate a paid historical order during another conversion report', async () => {
+    repository.findOrderIdsByDocumentId.mockResolvedValue(['paid-order']);
+    repository.findOrderByIdOrCode.mockResolvedValue({ id: 'paid-order', status: 'completed', paymentStatus: 'collected' });
+    await recalculateOrderPricingByDocumentInTransaction('shared-document', {});
+    expect(repository.updateOrderConfiguration).not.toHaveBeenCalled();
+    expect(repository.updateOrderFileConfiguration).not.toHaveBeenCalled();
   });
 
   describe('canHubConfigureManualOrder', () => {

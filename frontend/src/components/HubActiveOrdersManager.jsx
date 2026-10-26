@@ -144,7 +144,9 @@ function canCancelOrder(order) {
 }
 
 function canConfigureOrder(order, job) {
-  const isManualPayment = ["draft", "not_requested", "pending", "requested", "payment_requested", "collected"].includes(normalizeStatus(order.paymentStatus));
+  // Match backend bill immutability: collected orders need a new reprint, not
+  // edits that change already-paid totals or the document settings in history.
+  const isManualPayment = ["draft", "not_requested", "pending", "requested", "payment_requested"].includes(normalizeStatus(order.paymentStatus));
   const isClosed = ["printed", "completed", "cancelled"].includes(String(order.status || "").toLowerCase());
   const hasActiveJobs = Boolean(job || (order.printJobs && order.printJobs.length > 0));
   return isManualPayment && !isClosed && !hasActiveJobs && !order.configLockedAt;

@@ -24,7 +24,7 @@ function parsePrivateStorageReference(fileUrl) {
 }
 
 function selectedPageNumbers(orderFile) {
-  const totalPages = Number(orderFile.originalPageCount || orderFile.document?.pageCount || 0);
+  const totalPages = Number(orderFile.document?.preparedPageCount || orderFile.originalPageCount || orderFile.document?.pageCount || 0);
   const options = orderFile.printOptions || {};
   const selected = Array.isArray(options.pages?.selected) ? options.pages.selected : null;
 
@@ -32,7 +32,8 @@ function selectedPageNumbers(orderFile) {
     return selected.map((page) => Number(page)).filter((page) => Number.isInteger(page) && page >= 1 && page <= totalPages);
   }
 
-  return parsePageRange(options.pages?.range || orderFile.selectedPages || '', totalPages);
+  const range = String(options.pages?.range || orderFile.selectedPages || '').trim();
+  return parsePageRange(range.toLowerCase() === 'all' ? '' : range, totalPages);
 }
 
 function needsPrintReadyPdf(orderFile) {
@@ -46,18 +47,25 @@ function needsPrintReadyPdf(orderFile) {
     return isPrintableUploadMimeType(fileType);
   }
 
-  const totalPages = Number(orderFile.originalPageCount || orderFile.document?.pageCount || 0);
+  const totalPages = Number(orderFile.document?.preparedPageCount || orderFile.originalPageCount || orderFile.document?.pageCount || 0);
   const selectedCount = Number(orderFile.selectedPageCount || 0);
   const hasPageSubset = selectedCount > 0 && totalPages > 0 && selectedCount < totalPages;
 
   return Boolean(hasPageSubset || options.watermark?.enabled);
 }
 
+function renderTimestamp(order, orderFile) {
+  // Early-download payloads contain a minimal order, while paid payloads contain
+  // the full order. Prefer the shared file submission time in both paths.
+  const timestamp = new Date(orderFile?.createdAt || orderFile?.document?.createdAt || order?.createdAt || 0);
+  return Number.isFinite(timestamp.getTime()) ? timestamp : new Date(0);
+}
+
 function watermarkText(order, orderFile) {
   const watermark = orderFile.printOptions?.watermark || {};
   if (watermark.type === 'custom_text' && watermark.text) return watermark.text;
   if (watermark.type === 'pickup_code' && order?.pickupCode) return `Pickup ${order.pickupCode}`;
-  if (watermark.type === 'date_time') return new Date().toLocaleString('en-IN');
+  if (watermark.type === 'date_time') return renderTimestamp(order, orderFile).toLocaleString('en-IN');
   return order?.orderCode ? `Order ${order.orderCode}` : 'PrintEase';
 }
 
@@ -79,6 +87,10 @@ function watermarkPosition(position, pageWidth, pageHeight, textWidth, fontSize)
 async function buildPrintReadyPdf(sourceBytes, order, orderFile) {
   const sourcePdf = await PDFDocument.load(sourceBytes);
   const targetPdf = await PDFDocument.create();
+  // Stable metadata and order-time stamps keep retry/predownload hashes stable
+  // instead of storing a new render and missing the local cache on every poll.
+  targetPdf.setCreationDate(renderTimestamp(order, orderFile));
+  targetPdf.setModificationDate(renderTimestamp(order, orderFile));
   const totalPages = sourcePdf.getPageCount();
   const selectedPages = selectedPageNumbers({
     ...orderFile,
@@ -173,10 +185,23 @@ export async function getPrintReadyFile(order, orderFile, { allowDesktopPreparat
   }
 
   const sourceBytes = new Uint8Array(await data.arrayBuffer());
-  const outputBytes = await buildPrintablePdf(sourceBytes, order, orderFile);
+  const expectedSourceHash = isPreConverted ? orderFile.document?.printReadySha256 : orderFile.document?.fileSha256;
+  if (expectedSourceHash && crypto.createHash('sha256').update(sourceBytes).digest('hex') !== expectedSourceHash) {
+    const integrityError = new Error('Printable source does not match its verified hash. Nothing was queued.');
+    integrityError.statusCode = 502;
+    throw integrityError;
+  }
+  // The source is already a PDF after desktop conversion. Do not send its bytes
+  // through the original DOCX/PPTX image/text conversion branch a second time.
+  const printableFile = isPreConverted
+    ? { ...orderFile, document: { ...orderFile.document, fileType: 'application/pdf' } }
+    : orderFile;
+  const outputBytes = await buildPrintablePdf(sourceBytes, order, printableFile);
   const outputBuffer = Buffer.from(outputBytes);
   const outputSha256 = crypto.createHash('sha256').update(outputBuffer).digest('hex');
-  const outputPath = `print-ready/${orderFile.orderId}/${orderFile.id}.pdf`;
+  // Concurrent preview/predownload/payload requests must not overwrite bytes
+  // behind an already-issued signed URL with a different expected hash.
+  const outputPath = `print-ready/${orderFile.orderId}/${orderFile.id}-${outputSha256}.pdf`;
 
   const { error: uploadError } = await supabase.storage.from(bucket).upload(outputPath, outputBuffer, {
     contentType: 'application/pdf',

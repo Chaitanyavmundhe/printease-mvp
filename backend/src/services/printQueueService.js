@@ -3,10 +3,12 @@ import {
   findActivePrintJobByOrder,
   findBestAgentForHub,
   findOrderWithDocumentForHub,
+  findOrderByIdOrCode,
   findPreferredPrinterHintForAgent,
   insertPrintJobEvent,
   listOrderFiles,
-  updateOrderStatus
+  updateOrderStatus,
+  withTransaction
 } from '../db/repository.js';
 import { OFFICIAL_BACKEND_URL } from '../config/agent.js';
 import { generateId } from '../utils/generateCode.js';
@@ -23,8 +25,14 @@ import {
 } from './printJobReadinessService.js';
 import { createPrintJobFilesForOrder } from './printQueue/printJobFilesService.js';
 import { PRINT_JOB_STATUSES } from '../constants/statuses.js';
+import { requireTrustedOrderBill } from './paymentReadinessService.js';
 
-export async function queuePrintJobIfPaymentReady(orderId, hubId, client) {
+export async function queuePrintJobIfPaymentReady(orderId, hubId, client, target = {}) {
+  // One activation gate for automatic payment handling and manual Send. Check
+  // for existing work under the order lock; early download never calls this gate.
+  if (!client) return withTransaction(transaction => queuePrintJobIfPaymentReady(orderId, hubId, transaction, target));
+  const lockedOrder = await findOrderByIdOrCode(orderId, client, { forUpdate: true });
+  if (!lockedOrder || lockedOrder.centreId !== hubId) return { queued: false, blocked: 'ORDER_NOT_FOUND' };
   const orderWithDocument = await findOrderWithDocumentForHub(orderId, hubId, client);
 
   if (!orderWithDocument) {
@@ -62,12 +70,14 @@ export async function queuePrintJobIfPaymentReady(orderId, hubId, client) {
     };
   }
 
+  await requireTrustedOrderBill(lockedOrder, client);
+
   const { firstFile, fileSha256 } = readiness;
 
-  const targetAgent = await findBestAgentForHub(hubId, client);
-  const printerHint = targetAgent
+  const targetAgent = target.agent || await findBestAgentForHub(hubId, client);
+  const printerHint = target.printerName || (targetAgent
     ? await findPreferredPrinterHintForAgent(targetAgent.id, client)
-    : null;
+    : null);
   const firstPrintReadyFile = await getPrintReadyFile({
     id: orderId,
     orderCode: orderWithDocument.order_code,
@@ -98,7 +108,8 @@ export async function queuePrintJobIfPaymentReady(orderId, hubId, client) {
     sourceBackendUrl: OFFICIAL_BACKEND_URL
   }, client);
 
-  // Phase 10: Populate new multi-file execution table in the background
+  // Persist every file in this transaction; job creation must not commit only
+  // the first document while the desktop expects a complete multi-file payload.
   await createPrintJobFilesForOrder({
     printJobId: printJob.id,
     orderFiles,

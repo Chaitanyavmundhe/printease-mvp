@@ -72,6 +72,19 @@ export async function findPaymentByProviderPaymentId(providerPaymentId, client) 
   return mapPayment(result.rows[0]);
 }
 
+export async function findSettledPaymentForOrder(orderId, excludePaymentId, client) {
+  // Received funds can exist without an activated order after bill mismatch or
+  // cancellation. Block another charge while that payment needs reconciliation.
+  const result = await executor(client).query(
+    `select * from payments where order_id = $1
+       and status in ('verified', 'collected')
+       and ($2::text is null or id::text <> $2)
+     order by created_at desc limit 1`,
+    [orderId, excludePaymentId || null]
+  );
+  return mapPayment(result.rows[0]);
+}
+
 export async function updatePayment(paymentId, updates, client) {
   const result = await executor(client).query(
     `update payments

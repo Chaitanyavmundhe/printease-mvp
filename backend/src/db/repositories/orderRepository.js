@@ -204,17 +204,21 @@ export async function listPendingPaymentOrderFilesForAgentPredownload(hubId, { l
   }));
 }
 
-export async function findOrderByIdOrCode(id, client) {
+export async function findOrderByIdOrCode(id, client, { forUpdate = false } = {}) {
+  // Payment, configuration, Send and cancellation serialize on this row. A
+  // pooled one-shot query cannot hold that lock for the surrounding operation.
+  if (forUpdate && !client) throw new Error('Order locks require a transaction client');
+  const lock = forUpdate ? ' for update' : '';
   if (!isUuid(id)) {
     const result = await executor(client).query(
-      'select *, hub_id as centre_id from print_orders where order_code = $1',
+      'select *, hub_id as centre_id from print_orders where order_code = $1' + lock,
       [id]
     );
     return mapOrder(result.rows[0]);
   }
 
   const result = await executor(client).query(
-    'select *, hub_id as centre_id from print_orders where id = $1::uuid or order_code = $2',
+    'select *, hub_id as centre_id from print_orders where id = $1::uuid or order_code = $2' + lock,
     [id, id]
   );
   return mapOrder(result.rows[0]);
@@ -498,7 +502,7 @@ export async function cancelActivePrintJobsForOrder(orderId, hubId, reasonText =
          failed_at = coalesce(failed_at, now())
      where order_id = $1
        and hub_id = $2
-       and status in ('queued', 'assigned', 'accepted', 'downloading', 'printing')
+       and status in ('queued', 'assigned', 'accepted', 'downloading', 'printing', 'submitted_to_printer')
      returning *`,
     [orderId, hubId, reasonText]
   );
@@ -603,6 +607,8 @@ export async function updateOrderConfiguration(orderId, updates, client) {
 }
 
 export async function updateOrderFileConfiguration(orderFileId, updates, client) {
+  // Persist the verified conversion count with settings, replacing legacy
+  // unknown/zero counts so later reprints and billing use the same page basis.
   const result = await executor(client).query(
     `update print_order_files
      set copies = $2,
@@ -611,7 +617,8 @@ export async function updateOrderFileConfiguration(orderFileId, updates, client)
          printable_page_count = $5,
          sheet_count = $6,
          print_options = $7::jsonb,
-         line_amount_paise = $8
+         line_amount_paise = $8,
+         original_page_count = coalesce($9, original_page_count)
      where id = $1
      returning *`,
     [
@@ -622,7 +629,8 @@ export async function updateOrderFileConfiguration(orderFileId, updates, client)
       updates.printablePageCount,
       updates.sheetCount,
       updates.printOptions ? JSON.stringify(updates.printOptions) : null,
-      updates.lineAmountPaise
+      updates.lineAmountPaise,
+      updates.originalPageCount ?? null
     ]
   );
   return mapOrderFile(result.rows[0]);

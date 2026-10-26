@@ -1,6 +1,7 @@
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { getSupabaseAdminClient, getSupabaseBucketName } from '../config/supabase.js';
 import { pool } from '../config/db.js';
+import crypto from 'node:crypto';
 
 export async function runInternalCleanup() {
   try {
@@ -55,9 +56,17 @@ export async function runInternalCleanup() {
 
 export const cleanupOldData = asyncHandler(async (req, res) => {
   const authHeader = req.headers.authorization;
-  const cronSecret = process.env.SYSTEM_CRON_SECRET || 'printease_secret_cleanup_token';
+  // Fail closed without an operator-configured secret. A published fallback
+  // credential would let anyone invoke destructive retention cleanup.
+  const cronSecret = process.env.SYSTEM_CRON_SECRET;
+  if (!cronSecret) {
+    return res.status(503).json({ success: false, message: 'Scheduled cleanup is not configured.' });
+  }
   
-  if (!authHeader || authHeader !== `Bearer ${cronSecret}`) {
+  // Fixed-length digests permit timingSafeEqual even for malformed headers.
+  const supplied = crypto.createHash('sha256').update(String(authHeader || '')).digest();
+  const expected = crypto.createHash('sha256').update(`Bearer ${cronSecret}`).digest();
+  if (!crypto.timingSafeEqual(supplied, expected)) {
     return res.status(401).json({ success: false, message: 'Unauthorized cleanup request' });
   }
 
