@@ -67,11 +67,22 @@ check at desktop, 375px and 320px widths. No renderer errors or unexpected previ
 writes were observed. The existing large-vendor-chunk build warning remains;
 dependency/chunking changes are outside this visual refresh.
 
-Mobile footer follow-up: the fixed upload actions use a blue-grey background,
+Mobile footer follow-up: the fixed upload actions use a neutral light-grey background,
 stronger top divider and upward shadow, distinct from the white scrolling form.
 Its inner summary is transparent on mobile so it cannot hide that separation.
 Position, buttons, footer measurement and desktop summary styling are unchanged.
 The layout smoke check asserts this visual distinction as well as non-overlap.
+The neutral shade replaces the initial blue-grey based on user feedback; teal
+buttons and the rest of the selected website palette remain unchanged.
+
+Payment action follow-up: on mobile, Request Payment (and the existing selected
+online/QR action) is fixed above bottom navigation, not merely sticky near the
+end of the form. The shared measured-inset hook reserves its real height. It
+disconnects when a cancelled order has no action bar. Desktop keeps its existing
+in-page button. Eligibility, disabled states, callbacks and payment APIs are
+unchanged. Browser checks assert a stable position while scrolling and that the
+manual-payment notice remains reachable above the fixed bar.
+This follow-up passed 42 unit tests, the web build and all six layout viewports.
 
 Physical Android devices, system keyboards, real transactions and screen-reader
 compatibility still need human checks. No claim of full accessibility certification

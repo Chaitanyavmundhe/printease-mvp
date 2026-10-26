@@ -5,8 +5,8 @@ import { useBottomBarInset } from "../useBottomBarInset";
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
-function Harness() {
-  const { contentRef, barRef } = useBottomBarInset();
+function Harness({ enabled = true }) {
+  const { contentRef, barRef } = useBottomBarInset(enabled);
   return <main ref={contentRef}><footer ref={barRef}>Summary</footer></main>;
 }
 
@@ -42,4 +42,15 @@ it("also measures on resize and details toggle without ResizeObserver", () => {
   height = 260;
   container.querySelector("footer").dispatchEvent(new Event("toggle"));
   expect(container.querySelector("main").style.getPropertyValue("--pe-action-bar-height")).toBe("260px");
+});
+
+it("attaches only while the action bar is enabled and cleans up when cancelled", () => {
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({ height: 84 });
+  const { container, rerender } = render(<Harness enabled={false} />);
+  const main = container.querySelector("main");
+  expect(main.style.getPropertyValue("--pe-action-bar-height")).toBe("");
+  rerender(<Harness enabled />);
+  expect(main.style.getPropertyValue("--pe-action-bar-height")).toBe("84px");
+  rerender(<Harness enabled={false} />);
+  expect(main.style.getPropertyValue("--pe-action-bar-height")).toBe("");
 });

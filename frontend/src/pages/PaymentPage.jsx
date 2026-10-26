@@ -3,6 +3,7 @@ import { Clock, CreditCard, IndianRupee, QrCode, ShieldCheck } from "lucide-reac
 import Card from "../components/Card";
 import Row from "../components/Row";
 import { buildPaymentPriceFromOrder } from "../utils/paymentOrderPricing";
+import { useBottomBarInset } from "../hooks/useBottomBarInset";
 
 const paymentOptions = [
   {
@@ -109,6 +110,7 @@ export default function PaymentPage({
   const upiQrUrl = selectedCentre?.upiQrImageUrl || "";
   const isMultiFileOrder = Array.isArray(effectivePrice?.files) && effectivePrice.files.length > 1;
   const isCancelled = normalizeStatus(effectiveOrder?.rawStatus || effectiveOrder?.status) === "cancelled";
+  const { contentRef, barRef } = useBottomBarInset(!isCancelled);
   const cancellationReason = effectiveOrder?.priceSnapshot?.message || effectiveOrder?.price_snapshot?.message || null;
   const failedDocument = Array.isArray(effectiveOrder?.documents) ? effectiveOrder.documents.find((document) => (
     document?.preparationStatus === "failed" || document?.preparation_status === "failed"
@@ -198,7 +200,7 @@ export default function PaymentPage({
   }
 
   return (
-    <div className="pe-customer-flow pe-payment mx-auto pb-[calc(6rem+env(safe-area-inset-bottom))] sm:pb-8">
+    <div ref={contentRef} className="pe-customer-flow pe-payment mx-auto">
       <Card className="p-4 sm:p-6">
         <h2 className="text-xl sm:text-2xl font-bold min-w-0">Payment</h2>
         <p className="mt-2 text-slate-600">
@@ -333,7 +335,7 @@ export default function PaymentPage({
       </Card>
 
       {/* Floating Action Bar */}
-      <div className="pe-payment-actions sticky z-40 mt-4 border bg-white p-2 md:static md:z-auto md:mt-6 md:block md:border-0 md:bg-transparent md:p-0">
+      <div ref={barRef} className="pe-payment-actions fixed inset-x-0 z-40 border-t bg-white md:static md:z-auto md:mt-6 md:block md:border-0 md:bg-transparent md:p-0">
         <button
           disabled={isDisabled || conversionFailed}
           onClick={handlePaymentClick}

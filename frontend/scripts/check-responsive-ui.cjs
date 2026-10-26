@@ -139,6 +139,16 @@ async function noIntersection(first, second, label) {
       await page.getByRole("button", { name: "Continue to Payment", exact: true }).click();
       await page.getByRole("heading", { name: "Payment", exact: true }).waitFor();
       await checkWidth(page, `${label} payment`);
+      if (width < 768) {
+        const actions = page.locator(".pe-payment-actions");
+        assert.equal(await actions.evaluate(element => getComputedStyle(element).position), "fixed", `${label} payment must be fixed, not sticky`);
+        const initial = await actions.boundingBox();
+        assert(initial.y >= 0 && initial.y + initial.height <= height, `${label} payment action initially outside viewport`);
+        await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+        const scrolled = await actions.boundingBox();
+        assert(Math.abs(initial.y - scrolled.y) <= 1, `${label} payment action moved while scrolling`);
+        await noIntersection(page.getByText(/This does not mark payment successful/), actions, `${label} manual notice hidden by fixed payment action`);
+      }
       assert.equal(await page.getByRole("button", { name: /Manual Request/ }).getAttribute("aria-pressed"), "true");
       await page.getByRole("button", { name: /Pay Online/ }).click();
       assert.equal(await page.getByRole("button", { name: /Pay Online/ }).getAttribute("aria-pressed"), "true");
