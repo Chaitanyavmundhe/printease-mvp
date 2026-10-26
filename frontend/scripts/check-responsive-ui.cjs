@@ -105,6 +105,14 @@ async function noIntersection(first, second, label) {
       await page.screenshot({ path: path.join(evidence, `${label}-upload.png`), fullPage: true });
       if (width < 768) {
         const dock = page.locator(".pe-upload-dock");
+        assert.equal(await dock.evaluate(element => {
+          const style = getComputedStyle(element);
+          const form = getComputedStyle(document.querySelector(".pe-upload-form"));
+          const summary = getComputedStyle(element.querySelector(".pe-panel"));
+          return style.backgroundColor !== form.backgroundColor &&
+            summary.backgroundColor === "rgba(0, 0, 0, 0)" &&
+            parseFloat(style.borderTopWidth) >= 2 && style.boxShadow !== "none";
+        }), true, `${label} fixed actions must be visually distinct from the scrollable form`);
         await noIntersection(dock, page.getByRole("navigation", { name: "Mobile navigation" }), "Upload footer overlaps navigation");
         await dock.locator("summary").click();
         await page.waitForFunction(() => {

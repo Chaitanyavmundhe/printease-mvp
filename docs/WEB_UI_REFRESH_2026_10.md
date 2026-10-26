@@ -67,6 +67,12 @@ check at desktop, 375px and 320px widths. No renderer errors or unexpected previ
 writes were observed. The existing large-vendor-chunk build warning remains;
 dependency/chunking changes are outside this visual refresh.
 
+Mobile footer follow-up: the fixed upload actions use a blue-grey background,
+stronger top divider and upward shadow, distinct from the white scrolling form.
+Its inner summary is transparent on mobile so it cannot hide that separation.
+Position, buttons, footer measurement and desktop summary styling are unchanged.
+The layout smoke check asserts this visual distinction as well as non-overlap.
+
 Physical Android devices, system keyboards, real transactions and screen-reader
 compatibility still need human checks. No claim of full accessibility certification
 or old-browser compatibility is made by a Chromium viewport test alone.

@@ -213,6 +213,17 @@ body {
 .pe-payment-method p:last-child { font-size: 14px; line-height: 1.5; }
 .pe-payment-actions { bottom: calc(var(--pe-mobile-nav-height) + env(safe-area-inset-bottom) + 8px); border-radius: 8px; box-shadow: 0 2px 12px #142c2612; }
 
+@media (max-width: 767px) {
+  /* Separate the fixed actions from the white, scrollable form. The inner
+     summary must not paint white over this mobile-only dock background. */
+  .pe-app .pe-upload-dock {
+    background: #e7eff5;
+    border-top: 2px solid #8199ad;
+    box-shadow: 0 -8px 20px #20374426;
+  }
+  .pe-app .pe-upload-dock > .pe-panel { background: transparent; }
+}
+
 @media (min-width: 520px) {
   .pe-centre-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .pe-centre-filters > label { grid-column: 1 / -1; }
