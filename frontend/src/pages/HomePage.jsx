@@ -255,9 +255,6 @@ export default function HomePage({
             </button>
           </div>
           <div className="relative z-30 space-y-3">
-            <div className={`inline-flex rounded-full px-4 py-2 text-sm font-medium ${heroScannerActive ? "bg-white/15 text-white backdrop-blur" : "bg-slate-200 text-slate-700"}`}>
-              QR based web printing platform
-            </div>
             <div>
               <h2 className={`font-bold ${heroScannerActive ? "text-white drop-shadow-[0_2px_6px_rgba(0,0,0,0.6)]" : "text-slate-950"}`}>
                 Print documents securely.
