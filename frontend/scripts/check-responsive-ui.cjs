@@ -12,18 +12,25 @@ const assert = require("node:assert/strict");
 const root = path.resolve(__dirname, "../dist");
 const evidence = fs.mkdtempSync(path.join(os.tmpdir(), "printease-web-ui-"));
 const user = { id: "ui-user", role: "user", name: "Preview Customer With A Long Display Name" };
-const centre = { id: "ui-centre", centreCode: "UITEST", name: "University Print and Document Centre", printerOnline: true, upiId: "university.document.centre@upi", pricing: { bwSingle: 2, bwDouble: 2, colorSingle: 5, colorDouble: 5, watermarkCharge: 0 } };
+const centre = { id: "ui-centre", ownerId: "ui-owner", centreCode: "UITEST", name: "University Print and Document Centre", printerOnline: true, upiId: "university.document.centre@upi", pricing: { bwSingle: 2, bwDouble: 2, colorSingle: 5, colorDouble: 5, watermarkCharge: 0 } };
+const expensive = { ...centre, id: "expensive", name: "Alpha Print", centreCode: "1001", pricing: { bwSingle: 9, bwDouble: 8, colorSingle: 4, colorDouble: 3 } };
+const cheap = { ...centre, id: "cheap", name: "Beta Print", centreCode: "2045", printerOnline: false, pricing: { bwSingle: 1, bwDouble: 1, colorSingle: 12, colorDouble: 10 } };
 const errors = [];
 const results = [];
 
-async function mockApi(context, origin) {
+async function mockApi(context, origin, sessionUser = user) {
   let serial = 0;
   let latest;
   await context.route(/^https?:\/\//, async route => {
     const url = new URL(route.request().url());
     if (url.origin === origin) return route.continue();
+    if (url.hostname === "api.github.com" && url.pathname.endsWith("/releases/latest")) {
+      assert(!route.request().headers().authorization, "Account token must not go to GitHub");
+      return route.fulfill({ contentType: "application/json", body: JSON.stringify({ tag_name: "desktop-v0.1.999", draft: false, prerelease: false, assets: [{ name: "PrintEase-Desktop-Setup-0.1.999.exe", size: 7, browser_download_url: "https://github.com/adityasomde/printease-desk/releases/download/desktop-v0.1.999/PrintEase-Desktop-Setup-0.1.999.exe" }] }) });
+    }
+    if (url.hostname === "github.com" && url.pathname.endsWith("/PrintEase-Desktop-Setup-0.1.999.exe")) return route.fulfill({ contentType: "application/octet-stream", headers: { "Content-Disposition": 'attachment; filename="PrintEase-Desktop-Setup-0.1.999.exe"' }, body: "fixture" });
     if (!url.pathname.startsWith("/api/")) return route.abort();
-    let data = { success: true, centres: [centre], centre, user, orders: [], stats: {} };
+    let data = { success: true, centres: sessionUser.role === "hub" ? [centre] : [centre, expensive, cheap], centre, user: sessionUser, orders: [], stats: {}, agents: [], printers: [], jobs: [] };
     if (url.pathname === "/api/uploads") {
       const body = route.request().postDataBuffer()?.toString() || "";
       const name = /filename="([^"]+)"/.exec(body)?.[1] || "document.pdf";
@@ -89,6 +96,20 @@ async function noIntersection(first, second, label) {
       await page.getByRole("heading", { name: centre.name, exact: true }).waitFor();
       await checkWidth(page, `${label} home`);
       await page.screenshot({ path: path.join(evidence, `${label}-home.png`), fullPage: true });
+      assert.equal(await page.getByRole("button", { name: "Download Windows App", exact: true }).count(), 0);
+      for (const [mode, first] of [["price_bw", cheap.name], ["price_color", expensive.name], ["name", expensive.name]]) {
+        await page.getByLabel("Sort printing centres", { exact: true }).selectOption(mode);
+        await page.waitForFunction(first => document.querySelector(".pe-centre-card h4")?.textContent === first, first);
+      }
+      await page.getByRole("navigation", { name: width < 768 ? "Mobile navigation" : "Main navigation" }).getByRole("button", { name: width < 768 ? "Scan" : "Centre Code", exact: true }).click();
+      await page.getByRole("heading", { name: "Find a Printing Centre", exact: true }).waitFor();
+      assert.equal(await page.getByLabel("Sort printing centres", { exact: true }).inputValue(), "name", "Sorting preference was lost between pages");
+      await page.getByLabel("Sort printing centres", { exact: true }).selectOption("price_bw");
+      await page.waitForFunction(first => document.querySelector(".pe-centre-card h4")?.textContent === first, cheap.name);
+      await page.getByLabel("Search centres by name, code or area").fill("UITEST");
+      await page.waitForFunction(() => document.querySelectorAll(".pe-centre-card").length === 1);
+      await checkWidth(page, `${label} centre search`);
+      await page.screenshot({ path: path.join(evidence, `${label}-centres.png`), fullPage: true });
       await page.getByRole("button", { name: "Upload to this Centre", exact: true }).click();
       await page.getByRole("heading", { name: "Upload Document", exact: true }).waitFor();
       await page.locator("input[type=file]").setInputFiles([
@@ -147,7 +168,7 @@ async function noIntersection(first, second, label) {
         await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
         const scrolled = await actions.boundingBox();
         assert(Math.abs(initial.y - scrolled.y) <= 1, `${label} payment action moved while scrolling`);
-        await noIntersection(page.getByText(/This does not mark payment successful/), actions, `${label} manual notice hidden by fixed payment action`);
+        await noIntersection(page.locator(".pe-manual-payment-notice"), actions, `${label} manual notice hidden by fixed payment action`);
       }
       assert.equal(await page.getByRole("button", { name: /Manual Request/ }).getAttribute("aria-pressed"), "true");
       await page.getByRole("button", { name: /Pay Online/ }).click();
@@ -158,9 +179,37 @@ async function noIntersection(first, second, label) {
       await pay.scrollIntoViewIfNeeded();
       if (width < 768) await noIntersection(pay, page.getByRole("navigation", { name: "Mobile navigation" }), "Payment action overlaps navigation");
       await page.screenshot({ path: path.join(evidence, `${label}-payment.png`), fullPage: true });
-      results.push({ viewport: label, home: "pass", upload: "pass", expandedFooter: "pass", fileDialog: "pass", payment: "pass" });
+      await page.getByRole("navigation", { name: width < 768 ? "Mobile navigation" : "Main navigation" }).getByRole("button", { name: width < 768 ? "History" : "Print History", exact: true }).click();
+      await page.locator(".pe-history-summary").waitFor();
+      const stats = page.locator(".pe-history-summary > *").filter({ visible: true });
+      assert.equal(await stats.count(), width < 768 ? 3 : 4);
+      if (width < 768) {
+        const positions = await stats.evaluateAll(elements => elements.map(element => element.getBoundingClientRect().y));
+        assert(positions.every(y => Math.abs(y - positions[0]) < 1), "Mobile history stats must share one row");
+        assert.equal(await page.getByRole("group", { name: "Last Print Date", exact: true }).isVisible(), false);
+      }
+      await checkWidth(page, `${label} history`);
+      await page.screenshot({ path: path.join(evidence, `${label}-history.png`), fullPage: true });
+      results.push({ viewport: label, home: "pass", centreSorting: "pass", upload: "pass", expandedFooter: "pass", fileDialog: "pass", payment: "pass", history: "pass" });
       await context.close();
     }
+    const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const hubUser = { id: "ui-owner", role: "hub", name: "UI Hub Owner", centreId: centre.id };
+    await mockApi(context, origin, hubUser);
+    await context.addInitScript(hubUser => { localStorage.setItem("printease_user", JSON.stringify(hubUser)); localStorage.setItem("printease_token", "mocked-ui-token"); }, hubUser);
+    const page = await context.newPage();
+    await page.goto(origin);
+    await page.getByRole("button", { name: "Download Windows App", exact: true }).waitFor();
+    await page.getByRole("navigation", { name: "Main navigation" }).getByRole("button", { name: "Hub Dashboard", exact: true }).click();
+    await page.getByRole("heading", { name: "Print Centre Dashboard", exact: true }).waitFor();
+    const download = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Download Windows App", exact: true }).click();
+    const file = await download;
+    assert.equal(file.suggestedFilename(), "PrintEase-Desktop-Setup-0.1.999.exe");
+    assert.equal(await file.failure(), null);
+    await page.screenshot({ path: path.join(evidence, "hub-windows-download.png") });
+    results.push({ hubWebWindowsDownload: "pass" });
+    await context.close();
     assert.deepEqual(errors, [], "Renderer errors");
     fs.writeFileSync(path.join(evidence, "results.json"), JSON.stringify({ results, errors }, null, 2));
     console.log(JSON.stringify({ evidence, results, errors }, null, 2));

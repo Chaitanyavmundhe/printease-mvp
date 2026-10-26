@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Clock, CreditCard, IndianRupee, QrCode, ShieldCheck } from "lucide-react";
+import { Clock, CreditCard, QrCode, CircleX } from "lucide-react";
 import Card from "../components/Card";
-import Row from "../components/Row";
+import CheckoutSummary from "../components/payment/CheckoutSummary";
 import { buildPaymentPriceFromOrder } from "../utils/paymentOrderPricing";
 import { useBottomBarInset } from "../hooks/useBottomBarInset";
 
@@ -9,19 +9,19 @@ const paymentOptions = [
   {
     id: "manual",
     title: "Manual Request",
-    description: "Pay cash or centre UPI. Hub owner confirms from dashboard.",
+    description: "Cash or the centre's UPI.",
     icon: Clock,
   },
   {
     id: "razorpay",
     title: "Pay Online",
-    description: "Use Razorpay Checkout when online payments are enabled.",
+    description: "Checkout with Razorpay.",
     icon: CreditCard,
   },
   {
     id: "upi_qr",
-    title: "UPI QR",
-    description: "Generate a Razorpay QR for this exact order amount.",
+    title: "Online UPI QR",
+    description: "A payment QR for this order.",
     icon: QrCode,
   },
 ];
@@ -56,15 +56,6 @@ function hasPendingPricing(price, order) {
     rawStatus === "awaiting_hub_bill_confirmation" ||
     billStatus === "awaiting_hub_confirmation" ||
     files.some((file) => file?.pricingPending || file?.reasonCode === "DESKTOP_PREPARATION_PENDING")
-  );
-}
-
-function OrderSummaryRow({ label, value, highlight = false }) {
-  return (
-    <div className={`pe-summary-row ${highlight ? "text-base font-bold" : ""}`}>
-      <span className={highlight ? "text-slate-900" : "text-slate-500"}>{label}</span>
-      <span className={`text-right font-semibold capitalize ${highlight ? "text-emerald-700" : ""}`}>{value}</span>
-    </div>
   );
 }
 
@@ -104,11 +95,9 @@ export default function PaymentPage({
   );
   const isPricingPending = hasPendingPricing(effectivePrice, effectiveOrder);
   const amount = isPricingPending ? null : (effectivePrice?.totalAmount ?? effectiveOrder?.amount ?? null);
-  const rate = isPricingPending ? null : (effectivePrice?.pricePerPage ?? effectivePrice?.files?.[0]?.pricePerPage ?? null);
   const selectedPageCount = Number(effectivePrice?.selectedPageCount || effectiveOrder?.selectedPageCount || pages || 0);
   const centreUpi = selectedCentre?.upiId || "";
   const upiQrUrl = selectedCentre?.upiQrImageUrl || "";
-  const isMultiFileOrder = Array.isArray(effectivePrice?.files) && effectivePrice.files.length > 1;
   const isCancelled = normalizeStatus(effectiveOrder?.rawStatus || effectiveOrder?.status) === "cancelled";
   const { contentRef, barRef } = useBottomBarInset(!isCancelled);
   const cancellationReason = effectiveOrder?.priceSnapshot?.message || effectiveOrder?.price_snapshot?.message || null;
@@ -119,7 +108,7 @@ export default function PaymentPage({
   const conversionFailedMessage =
     failedDocument?.preparationErrorMessage ||
     failedDocument?.preparation_error_message ||
-    "Document conversion failed. Please save as PDF and try again or do it from mobile app.";
+    "This document could not be prepared. Save it as a PDF and upload it again.";
   const displayValue = (value) => (isPricingPending ? "Pending" : (value || value === 0 ? value : "Pending"));
   const displayMoney = (value) => (isPricingPending ? "Pending" : formatCurrency(value));
 
@@ -188,7 +177,7 @@ export default function PaymentPage({
       <div className="mx-auto max-w-2xl pb-6 sm:pb-8">
         <Card className="p-6 border-red-200 bg-red-50 text-center">
           <div className="mx-auto w-12 h-12 flex items-center justify-center rounded-full bg-red-100 text-red-600 mb-4">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>
+            <CircleX size={24} />
           </div>
           <h2 className="text-xl font-bold text-red-900">Order Cancelled</h2>
           <p className="mt-2 text-red-700 max-w-md mx-auto">
@@ -203,47 +192,7 @@ export default function PaymentPage({
     <div ref={contentRef} className="pe-customer-flow pe-payment mx-auto">
       <Card className="p-4 sm:p-6">
         <h2 className="text-xl sm:text-2xl font-bold min-w-0">Payment</h2>
-        <p className="mt-2 text-slate-600">
-          Choose manual collection for shop-owner confirmation, or use Razorpay when online payments are enabled.
-        </p>
-
-        {/* Order summary */}
-        <div className="pe-payment-summary mt-6 space-y-3 p-4">
-          <Row label="Centre" value={selectedCentre?.name || "N/A"} />
-          <Row label="Document" value={documentName || "Uploaded Document"} />
-          <Row label="Original Pages" value={displayValue(effectivePrice?.originalPageCount || pages)} />
-          <Row label="Selected Pages" value={displayValue(effectivePrice?.selectedPageCount || pages)} />
-          <Row label="Printable Pages" value={displayValue(effectivePrice?.printablePageCount || (Number(pages || 0) > 0 ? Number(pages || 0) * Number(copies || 0) : null))} />
-          <Row label="Sheets" value={displayValue(effectivePrice?.sheetCount)} />
-          {isMultiFileOrder ? (
-            <Row label="Copies / Rate" value="Shown per file below" />
-          ) : (
-            <>
-              <Row label="Copies" value={copies} />
-              <Row label="Rate" value={displayMoney(rate)} />
-            </>
-          )}
-          <div className="border-t pt-3">
-            <OrderSummaryRow label="Total Amount" value={displayMoney(amount)} highlight />
-          </div>
-        </div>
-
-        {/* Multi-file breakdown */}
-        {isMultiFileOrder && (
-          <div className="mt-4 space-y-2 rounded-2xl border p-4 text-sm">
-            <p className="font-semibold">Files</p>
-            {effectivePrice.files.map((file, index) => {
-              if (!file) return null;
-              return (
-                <Row
-                  key={file.documentId || file.fileName || index}
-                  label={`${file.fileName || "Document"} — ${file.pricingPending ? "pending" : `${file.selectedPageCount}p × ${file.copies}`}`}
-                  value={file.pricingPending ? "Pending" : formatCurrency(file.totalAmount)}
-                />
-              );
-            })}
-          </div>
-        )}
+        <CheckoutSummary centreName={selectedCentre?.name} documentName={documentName} pages={pages} copies={copies} price={effectivePrice} amount={amount} displayMoney={displayMoney} displayValue={displayValue} />
 
         {/* Payment method selector */}
         <div role="group" aria-label="Payment method" className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -275,28 +224,26 @@ export default function PaymentPage({
           })}
         </div>
 
-        <div className="mt-4 rounded-2xl border p-4">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between min-w-0">
+        {paymentMethod === "manual" && (centreUpi || upiQrUrl) && <div className="mt-4 border-t pt-4">
+          {centreUpi && <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between min-w-0">
             <div className="min-w-0">
               <p className="font-semibold">UPI ID</p>
-              <p className="mt-1 break-words text-sm text-slate-600">{centreUpi || "This centre has not added a UPI ID."}</p>
+              <p className="mt-1 break-words text-sm text-slate-600">{centreUpi}</p>
             </div>
-            <ShieldCheck className="text-emerald-600" size={24} />
-          </div>
+          </div>}
 
           {upiQrUrl && (
             <div className="mt-4 rounded-2xl bg-slate-50 p-4 text-center">
               <img src={upiQrUrl} alt="Centre UPI QR" className="mx-auto h-48 w-48 object-contain" />
-              <p className="mt-2 text-xs text-slate-500">Scan the centre QR. The hub owner confirms payment from their dashboard.</p>
+              <p className="mt-2 text-sm text-slate-500">Centre payment QR</p>
             </div>
           )}
-        </div>
+        </div>}
 
         {/* Warning notice */}
-        <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-          <p className="font-semibold">Manual confirmation</p>
-          <p className="mt-1">This does not mark payment successful. It only opens a pending request. The print hub must collect/verify payment and click Cash Collected.</p>
-        </div>
+        {paymentMethod === "manual" && <p className="pe-manual-payment-notice mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+          Your request stays pending until the centre confirms payment.
+        </p>}
 
         {/* Validation: zero amount */}
         {conversionFailed && (
@@ -307,10 +254,10 @@ export default function PaymentPage({
         )}
 
         {isPricingPending && !conversionFailed && !paymentLoading && (
-          <p className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-700">
+          <p role="status" className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-700">
             {refreshingBill
-              ? "Preparing the verified bill from the converted document. This page refreshes automatically."
-              : "Waiting for the desktop agent to return the verified bill. The payment request unlocks automatically after that."}
+              ? "Preparing your documents and final price..."
+              : "Your final price will update automatically when document preparation finishes."}
           </p>
         )}
 

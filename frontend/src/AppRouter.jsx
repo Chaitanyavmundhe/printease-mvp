@@ -78,6 +78,7 @@ return (
               element={
                 <HomePage
                   currentUser={currentUser}
+                  desktopAvailable={desktopAvailable}
                   navigate={navigate}
                   centres={prioritizedCentres}
                   startLogin={startLogin}
@@ -160,6 +161,8 @@ return (
               currentUser?.role === "hub" ? (
                 <HubDashboard
                   currentHub={currentHub}
+                  currentUser={currentUser}
+                  desktopAvailable={desktopAvailable}
                   hubOrders={hubOrders}
                   updateOrderStatus={updateOrderStatus}
                   refreshOrders={() => loadOrdersForSession(currentUser, centres)}

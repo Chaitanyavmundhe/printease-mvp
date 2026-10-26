@@ -21,14 +21,14 @@ import {
 const paymentColor = (status) => getStatusColor("payment", status);
 const printStatusColor = (status) => getStatusColor("print", status);
 
-function SummaryCard({ title, value, icon }) {
+function SummaryCard({ title, mobileTitle = title, value, icon, className = "" }) {
   return (
-    <div className="rounded-2xl border bg-white p-4 shadow-sm">
+    <div role="group" aria-label={title} className={`pe-history-stat rounded-lg border bg-white p-4 ${className}`}>
       <div className="flex items-center justify-between gap-3">
-        <p className="text-sm font-semibold text-slate-500">{title}</p>
-        <span className="text-slate-400">{icon}</span>
+        <p className="text-sm font-semibold text-slate-500"><span className="md:hidden">{mobileTitle}</span><span className="hidden md:inline">{title}</span></p>
+        <span className="hidden text-slate-400 md:inline">{icon}</span>
       </div>
-      <p className="mt-3 text-2xl font-extrabold text-slate-950">{value}</p>
+      <p className="pe-history-stat-value mt-3 text-2xl font-extrabold text-slate-950">{value}</p>
     </div>
   );
 }
@@ -494,11 +494,11 @@ export default function HistoryPage({ orders = [], currentUser, lastUpdatedAt, o
         </div>
         <div className="flex items-center gap-2 text-sm text-slate-500">
           <RefreshCw size={14} className={loading ? "animate-spin text-slate-900" : ""} />
-          <span>Last refreshed {formatDateTime(historyData?.summary?.last_print_date || new Date())}</span>
+          <span className="min-w-0 flex-1">Last refreshed {formatDateTime(historyData?.summary?.last_print_date || new Date())}</span>
           <button
             onClick={() => loadHistory(true)}
             disabled={loading}
-            className="ml-2 rounded border px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            className="ml-2 min-h-11 shrink-0 rounded border px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
           >
             Refresh
           </button>
@@ -512,11 +512,11 @@ export default function HistoryPage({ orders = [], currentUser, lastUpdatedAt, o
         </p>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <SummaryCard title="Total Orders" value={summary.total_orders || 0} icon={<FileText size={18} />} />
-        <SummaryCard title="Total Pages Printed" value={summary.total_pages_printed || 0} icon={<Printer size={18} />} />
-        <SummaryCard title="Total Amount Spent" value={`₹${summary.total_amount_spent || 0}`} icon={<IndianRupee size={18} />} />
-        <SummaryCard title="Last Print Date" value={formatDate(summary.last_print_date)} icon={<Calendar size={18} />} />
+      <div className="pe-history-summary grid grid-cols-3 gap-2 md:grid-cols-2 md:gap-3 lg:grid-cols-4">
+        <SummaryCard title="Total Orders" mobileTitle="Orders" value={summary.total_orders || 0} icon={<FileText size={18} />} />
+        <SummaryCard title="Total Pages Printed" mobileTitle="Pages" value={summary.total_pages_printed || 0} icon={<Printer size={18} />} />
+        <SummaryCard title="Total Amount Spent" mobileTitle="Spent" value={`₹${summary.total_amount_spent || 0}`} icon={<IndianRupee size={18} />} />
+        <SummaryCard title="Last Print Date" value={formatDate(summary.last_print_date)} icon={<Calendar size={18} />} className="hidden md:block" />
       </div>
 
       <Card>

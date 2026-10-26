@@ -1,22 +1,24 @@
+import { normalizeCentreSort } from "./centreSort";
 const EARTH_RADIUS_KM = 6371;
 
 function toNumber(value) {
+  if (value === null || value === undefined || typeof value === "boolean" || String(value).trim() === "") return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
 }
 
 function toTimestamp(value) {
   if (!value) return 0;
+  if (typeof value === "number") return Number.isFinite(value) && value > 0 ? value : 0;
   const parsed = Date.parse(value);
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
 export function hasCentreLocation(centre) {
-  return Boolean(
-    centre?.locationEnabled &&
-      toNumber(centre.latitude) !== null &&
-      toNumber(centre.longitude) !== null
-  );
+  const latitude = toNumber(centre?.latitude);
+  const longitude = toNumber(centre?.longitude);
+  return Boolean(centre?.locationEnabled && latitude !== null && longitude !== null &&
+    Math.abs(latitude) <= 90 && Math.abs(longitude) <= 180);
 }
 
 export function getCentreDistanceKm(centre, userLocation) {
@@ -27,6 +29,7 @@ export function getCentreDistanceKm(centre, userLocation) {
   const lat2 = toNumber(centre.latitude);
   const lng2 = toNumber(centre.longitude);
   if ([lat1, lng1, lat2, lng2].some((value) => value === null)) return null;
+  if (Math.abs(lat1) > 90 || Math.abs(lng1) > 180) return null;
 
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLng = ((lng2 - lng1) * Math.PI) / 180;
@@ -36,7 +39,8 @@ export function getCentreDistanceKm(centre, userLocation) {
       Math.cos((lat2 * Math.PI) / 180) *
       Math.sin(dLng / 2) ** 2;
 
-  return EARTH_RADIUS_KM * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const bounded = Math.min(1, Math.max(0, a));
+  return EARTH_RADIUS_KM * 2 * Math.atan2(Math.sqrt(bounded), Math.sqrt(1 - bounded));
 }
 
 export function formatDistanceKm(distanceKm) {
@@ -64,16 +68,19 @@ export function getCentreLowestPrice(centre) {
 export function buildCentreUsageProfile(orders = []) {
   const usage = new Map();
 
-  for (const order of orders || []) {
-    const keys = [order?.centreId, order?.centreCode, order?.hub?.id, order?.hub?.code].filter(Boolean);
+  for (const [index, order] of (orders || []).entries()) {
+    const keys = new Set([order?.centreId, order?.centreCode, order?.hub?.id, order?.hub?.code].filter(Boolean).map(String));
+    const orderKey = String(order?.backendId || order?.id || `row-${index}`);
     const usedAt = toTimestamp(order?.createdAt || order?.created_at || order?.date || order?.updatedAt || order?.updated_at);
 
     for (const key of keys) {
       const normalizedKey = String(key);
-      const current = usage.get(normalizedKey) || { count: 0, lastUsedAt: 0 };
+      const current = usage.get(normalizedKey) || { count: 0, lastUsedAt: 0, orderKeys: new Set() };
+      const orderKeys = new Set([...current.orderKeys, orderKey]);
       usage.set(normalizedKey, {
-        count: current.count + 1,
+        count: orderKeys.size,
         lastUsedAt: Math.max(current.lastUsedAt, usedAt),
+        orderKeys,
       });
     }
   }
@@ -84,8 +91,9 @@ export function buildCentreUsageProfile(orders = []) {
 function getUsageForCentre(centre, usageProfile) {
   const byId = usageProfile.get(String(centre?.id || "")) || { count: 0, lastUsedAt: 0 };
   const byCode = usageProfile.get(String(centre?.code || "")) || { count: 0, lastUsedAt: 0 };
+  const orderKeys = new Set([...(byId.orderKeys || []), ...(byCode.orderKeys || [])]);
   return {
-    count: byId.count + byCode.count || Number(centre?.usageCount || 0),
+    count: orderKeys.size || Number(centre?.usageCount || 0),
     lastUsedAt: Math.max(byId.lastUsedAt, byCode.lastUsedAt, toTimestamp(centre?.lastUsedAt)),
   };
 }
@@ -113,16 +121,16 @@ function requestedPriceValues(centre, query) {
     return true;
   });
 
-  return (narrowed.length ? narrowed : entries).map(([, value]) => value);
+  return narrowed.map(([, value]) => value);
 }
 
 function tokenizeSearch(query) {
   return String(query || "")
     .toLowerCase()
+    .replace(/(?:under|below|less than|upto|up to|<=|<)\s*(?:₹|rs\.?)?\s*\d+(?:\.\d+)?/g, " ")
     .replace(/₹|rs\.?|[^\w\s.-]/g, " ")
     .split(/\s+/)
     .filter(Boolean)
-    .filter((token) => !/^\d+(?:\.\d+)?$/.test(token))
     .filter((token) => ![
       "under",
       "below",
@@ -146,7 +154,7 @@ function tokenizeSearch(query) {
 
 function centreSearchText(centre) {
   const prices = centrePrices(centre);
-  const availability = centre?.printerOnline || String(centre?.status || "").toLowerCase() === "available" ? "available online open" : "unavailable offline";
+  const availability = isCentreAvailable(centre) ? "available online open" : "unavailable offline";
 
   return [
     centre?.name,
@@ -178,7 +186,7 @@ export function centreMatchesSearch(centre, query) {
   }
 
   if (/\b(?:available|online|open)\b/.test(normalized)) {
-    const available = centre?.printerOnline || String(centre?.status || "").toLowerCase() === "available";
+    const available = isCentreAvailable(centre);
     if (!available) return false;
   }
 
@@ -191,6 +199,7 @@ export function centreMatchesSearch(centre, query) {
 }
 
 export function rankCentres(centres = [], { orders = [], userLocation = null, query = "", sortBy = "smart" } = {}) {
+  const mode = normalizeCentreSort(sortBy);
   const usageProfile = buildCentreUsageProfile(orders);
   const now = Date.now();
 
@@ -211,63 +220,48 @@ export function rankCentres(centres = [], { orders = [], userLocation = null, qu
       };
     })
     .sort((left, right) => {
-      const rightAvailable = right.printerOnline || String(right.status || "").toLowerCase() === "available" ? 1 : 0;
-      const leftAvailable = left.printerOnline || String(left.status || "").toLowerCase() === "available" ? 1 : 0;
-      if (rightAvailable !== leftAvailable) return rightAvailable - leftAvailable;
-
-      if (sortBy === "price" || sortBy === "price_bw" || sortBy === "price_color") {
-        const getPrice = (c) => {
-          if (sortBy === "price_bw") {
-            const val = Math.min(
-              c.bwSingle ?? Infinity, 
-              c.bwDouble ?? Infinity, 
-              c.pricing?.bwSingle ?? Infinity, 
-              c.pricing?.bwDouble ?? Infinity
-            );
-            return val === Infinity ? null : val;
-          }
-          if (sortBy === "price_color") {
-            const val = Math.min(
-              c.colorSingle ?? Infinity, 
-              c.colorDouble ?? Infinity, 
-              c.pricing?.colorSingle ?? Infinity, 
-              c.pricing?.colorDouble ?? Infinity
-            );
-            return val === Infinity ? null : val;
-          }
-          return c.lowestPrice;
-        };
-
-        const leftPrice = getPrice(left);
-        const rightPrice = getPrice(right);
-
-        if (leftPrice !== rightPrice) {
-          if (leftPrice === null) return 1;
-          if (rightPrice === null) return -1;
-          return leftPrice - rightPrice;
-        }
+      // An explicit choice must be the primary key, not availability in disguise.
+      // Availability is only a tie-breaker outside Recommended/Available first.
+      let primary = 0;
+      if (mode.startsWith("price")) primary = compareKnown(priceForSort(left, mode), priceForSort(right, mode));
+      if (mode === "nearest") primary = compareKnown(left.distanceKm, right.distanceKm);
+      if (mode === "used") primary = right.usageCount - left.usageCount;
+      if (mode === "recent") primary = (right.lastUsedAt || 0) - (left.lastUsedAt || 0);
+      if (mode === "name") primary = String(left.name || "").localeCompare(String(right.name || ""));
+      if (primary) return primary;
+      const available = Number(isCentreAvailable(right)) - Number(isCentreAvailable(left));
+      if (available) return available;
+      if (mode === "smart") {
+        // Fixed distance buckets keep comparison transitive; a pairwise distance
+        // threshold mixed with usage can otherwise produce inconsistent ordering.
+        const distance = userLocation ? compareKnown(distanceBucket(left.distanceKm), distanceBucket(right.distanceKm)) : 0;
+        if (distance) return distance;
+        if (right.usageCount !== left.usageCount) return right.usageCount - left.usageCount;
+        if (right.lastUsedAt !== left.lastUsedAt) return (right.lastUsedAt || 0) - (left.lastUsedAt || 0);
+        const price = compareKnown(left.lowestPrice, right.lowestPrice);
+        if (price) return price;
       }
-
-      const leftDistance = left.distanceKm;
-      const rightDistance = right.distanceKm;
-
-      if (userLocation && leftDistance !== null && rightDistance !== null && Math.abs(leftDistance - rightDistance) > 0.35) {
-        return leftDistance - rightDistance;
-      }
-      if (userLocation && leftDistance !== rightDistance) {
-        if (leftDistance === null) return 1;
-        if (rightDistance === null) return -1;
-      }
-
-      if (right.usageCount !== left.usageCount) return right.usageCount - left.usageCount;
-      if (right.recentUseScore !== left.recentUseScore) return right.recentUseScore - left.recentUseScore;
-
-      if (left.lowestPrice !== right.lowestPrice) {
-        if (left.lowestPrice === null) return 1;
-        if (right.lowestPrice === null) return -1;
-        return left.lowestPrice - right.lowestPrice;
-      }
-
-      return String(left.name || "").localeCompare(String(right.name || ""));
+      return String(left.name || "").localeCompare(String(right.name || "")) || String(left.id || "").localeCompare(String(right.id || ""));
     });
+}
+
+function isCentreAvailable(centre) {
+  if (typeof centre?.printerOnline === "boolean") return centre.printerOnline;
+  return String(centre?.status || "").toLowerCase() === "available";
+}
+
+function compareKnown(left, right) {
+  if (left === right) return 0;
+  if (left === null) return 1;
+  if (right === null) return -1;
+  return left - right;
+}
+
+function distanceBucket(value) { return value === null ? null : Math.floor(value / 0.35); }
+
+function priceForSort(centre, mode) {
+  if (mode === "price") return centre.lowestPrice;
+  const fields = { price_bw: "bwSingle", price_bw_double: "bwDouble", price_color: "colorSingle", price_color_double: "colorDouble" };
+  const value = centrePrices(centre)[fields[mode]];
+  return value !== null && value > 0 ? value : null;
 }

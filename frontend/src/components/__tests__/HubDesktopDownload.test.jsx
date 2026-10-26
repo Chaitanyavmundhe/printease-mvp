@@ -27,4 +27,11 @@ describe('hub web desktop download', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Windows EXE' }));
     await waitFor(() => expect(downloadLatestDesktopInstaller).toHaveBeenCalledWith('windows'));
   });
+  it('offers a prominent Windows button while retaining desktop and user guards', async () => {
+    const { rerender } = render(<HubDesktopDownload role="hub" desktopAvailable={false} platform="windows" variant="button" label="Download Windows App" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Download Windows App' }));
+    await waitFor(() => expect(downloadLatestDesktopInstaller).toHaveBeenCalledWith('windows'));
+    rerender(<HubDesktopDownload role="hub" desktopAvailable platform="windows" variant="button" label="Download Windows App" />);
+    expect(screen.queryByRole('button')).toBeNull();
+  });
 });

@@ -84,6 +84,48 @@ unchanged. Browser checks assert a stable position while scrolling and that the
 manual-payment notice remains reachable above the fixed bar.
 This follow-up passed 42 unit tests, the web build and all six layout viewports.
 
+## Checkout, history and centre-discovery follow-up
+
+- `components/payment/CheckoutSummary.jsx` keeps centre, document(s), selected
+  pages/copies, per-file prices and total visible. Secondary single-file print
+  facts remain under Print details. Unknown facts are not filled with defaults.
+  This component does not calculate totals or aggregate the first file's count
+  as if it were the whole multi-file order.
+- `PaymentPage.jsx` removes repeated instructions, the internal Cash Collected
+  button reference and a misleading verification-shield decoration. Centre UPI
+  details show only for manual payment and only when supplied. Online QR stays
+  a separate payment method. Pending/failed/cancelled and login/payment guards,
+  polling and callbacks are retained.
+- `HistoryPage.jsx` shows Orders, Pages and Spent in one row below 768px; Last
+  Print Date is hidden there, not removed from server data or desktop layouts.
+- `HubDesktopDownload.jsx` supports a visible header button on the web hub home
+  and dashboard, not just the profile menu. Download Windows App requests the
+  latest stable GitHub EXE on click using the existing trusted URL resolver.
+  Normal users and the Electron app never see this button. No version is pinned.
+- `CentreSortControl.jsx`, `useCentreSort.js` and `utils/centreSort.js` share sort
+  options and a validated browser preference across Home and Centre Code. Nearest
+  is unavailable without location; the hook never stores coordinates.
+- `centreDiscovery.js` makes explicit price/name/distance/usage choices primary;
+  availability no longer silently overrides Lowest price. Separate single/double
+  B/W/colour price options compare the advertised rate. Missing/nonpositive/invalid
+  prices sort last and display Pending on centre cards, never zero as a low price.
+  Recommended retains availability, nearby distance buckets, usage/recency, then
+  price. Stable distance buckets avoid non-transitive comparisons. One order is
+  counted once even when it carries both centre ID and code. Missing coordinates
+  stay unknown, not (0,0); numeric centre codes remain searchable.
+
+The browser test additionally verifies real list reordering, saved sort between
+pages, numeric/code searches, the compact history row and a mocked latest Windows
+EXE download from the visible hub dashboard button. All API requests are isolated
+fixtures; no live payment, upload or print request is made. The scanner has not
+been changed in this follow-up; its existing transparent behavior is retained.
+
+Validation for this follow-up: 62 frontend tests, production web build, the six
+responsive/browser scenarios plus visible hub Windows download, and the existing
+three-size local/converted PDF worker checks passed. The Windows resolver was
+also checked against GitHub's actual latest release. No backend/Supabase change,
+desktop build, desktop source sync or release tag is part of this batch.
+
 Physical Android devices, system keyboards, real transactions and screen-reader
 compatibility still need human checks. No claim of full accessibility certification
 or old-browser compatibility is made by a Chromium viewport test alone.

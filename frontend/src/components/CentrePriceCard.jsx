@@ -1,6 +1,12 @@
 import { Upload, MapPin } from "lucide-react";
 import Row from "./Row";
 
+function displayRate(value) {
+  if (value == null || typeof value === "boolean" || String(value).trim() === "") return "Pending";
+  const rate = Number(value);
+  return Number.isFinite(rate) && rate > 0 ? `₹${rate}/page` : "Pending";
+}
+
 export default function CentrePriceCard({ centre, onUpload, onOpenMap }) {
   const hasLocation = centre.locationEnabled && centre.latitude != null && centre.longitude != null;
 
@@ -52,10 +58,10 @@ export default function CentrePriceCard({ centre, onUpload, onOpenMap }) {
       </div>
 
       <div className="pe-centre-rates mt-4 space-y-2 text-sm">
-        <Row label="A4 B/W Single Side" value={`₹${centre.bwSingle}/page`} />
-        <Row label="A4 B/W Double Side" value={`₹${centre.bwDouble}/page`} />
-        <Row label="A4 Color Single Side" value={`₹${centre.colorSingle}/page`} />
-        <Row label="A4 Color Double Side" value={`₹${centre.colorDouble}/page`} />
+        <Row label="A4 B/W Single Side" value={displayRate(centre.bwSingle)} />
+        <Row label="A4 B/W Double Side" value={displayRate(centre.bwDouble)} />
+        <Row label="A4 Color Single Side" value={displayRate(centre.colorSingle)} />
+        <Row label="A4 Color Double Side" value={displayRate(centre.colorDouble)} />
       </div>
 
       <button

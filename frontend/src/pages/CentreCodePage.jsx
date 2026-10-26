@@ -4,6 +4,9 @@ import Card from "../components/Card";
 import CentrePriceCard from "../components/CentrePriceCard";
 import CentreScannerTile from "../components/CentreScannerTile";
 import { hasCentreLocation, rankCentres } from "../utils/centreDiscovery";
+import { useCentreSort } from "../hooks/useCentreSort";
+import { centreSortLabel } from "../utils/centreSort";
+import CentreSortControl from "../components/CentreSortControl";
 
 // Lazy-load the map modal — only downloaded when user clicks "Map" for the first time.
 // This keeps the desktop bundle untouched since DesktopAgentPage never imports this component.
@@ -30,7 +33,7 @@ export default function CentreCodePage({
     await selectCentreByCode(code);
   }, [selectCentreByCode, setCentreCode]);
 
-  const [centreSort, setCentreSort] = useState("smart");
+  const [centreSort, setCentreSort] = useCentreSort(userLocation);
   const filteredCentres = useMemo(
     () => rankCentres(centres, { userLocation, query: centreCode, sortBy: centreSort }),
     [centreCode, centres, userLocation, centreSort]
@@ -69,7 +72,7 @@ export default function CentreCodePage({
                 : "Use my location";
 
   return (
-    <div className="space-y-8">
+    <div className="pe-customer-flow space-y-8">
       <Card className="text-center sm:text-left sm:p-8">
         <h2 className="text-3xl font-bold text-slate-900">Find a Printing Centre</h2>
 
@@ -89,6 +92,7 @@ export default function CentreCodePage({
               <Search className="pointer-events-none absolute left-5 top-1/2 -translate-y-1/2 text-slate-400" size={22} />
               <input
                 value={centreCode}
+                aria-label="Search centres by name, code or area"
                 onChange={(e) => setCentreCode(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
@@ -100,22 +104,13 @@ export default function CentreCodePage({
               />
             </div>
             <div className="flex gap-2">
-              <select
-                value={centreSort}
-                onChange={(e) => setCentreSort(e.target.value)}
-                className="w-full rounded-2xl border bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-slate-300"
-              >
-                <option value="smart">Smart Sort (Distance & Usage)</option>
-                <option value="price">Lowest Overall Price</option>
-                <option value="price_bw">Lowest B/W Price</option>
-                <option value="price_color">Lowest Color Price</option>
-              </select>
+              <CentreSortControl value={centreSort} onChange={setCentreSort} userLocation={userLocation} className="w-full" />
             </div>
-            <div className="flex flex-col sm:flex-row gap-3">
+            <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3">
               <button
                 onClick={handleCentreCode}
                 disabled={lookupLoading || !String(centreCode).trim()}
-                className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-2xl bg-slate-900 px-8 py-4 font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50"
+                className="pe-primary-button inline-flex w-full sm:w-auto items-center justify-center gap-2 px-5 py-3 transition disabled:opacity-50"
               >
                 Search Online
               </button>
@@ -151,7 +146,7 @@ export default function CentreCodePage({
         <div className="mb-4 flex items-center justify-between">
           <div>
             <h3 className="text-xl font-bold">Centre List With Prices</h3>
-            <p className="text-sm text-slate-600">Frequently used centres appear first.</p>
+            <p role="status" className="text-sm text-slate-600">{filteredCentres.length} centres · {centreSortLabel(centreSort)}</p>
           </div>
           {mappableCentres.length > 0 ? (
             <button

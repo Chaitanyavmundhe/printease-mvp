@@ -7,6 +7,9 @@ import CentrePriceCard from "../components/CentrePriceCard";
 import CameraScanLayer from "../components/CameraScanLayer";
 import CentreScannerTile from "../components/CentreScannerTile";
 import HubActiveOrdersManager from "../components/HubActiveOrdersManager";
+import HubDesktopDownload from "../components/HubDesktopDownload";
+import CentreSortControl from "../components/CentreSortControl";
+import { useCentreSort } from "../hooks/useCentreSort";
 import { hasCentreLocation, rankCentres } from "../utils/centreDiscovery";
 
 import QRScanner from "../components/QRScanner";
@@ -30,6 +33,7 @@ function getSavedScannerMode() {
 
 export default function HomePage({
   currentUser,
+  desktopAvailable = false,
   navigate,
   centres,
   startLogin,
@@ -141,7 +145,7 @@ export default function HomePage({
   };
 
   const isAndroid = typeof navigator !== "undefined" ? /android/i.test(navigator.userAgent || navigator.vendor || window.opera) : false;
-  const [centreSort, setCentreSort] = useState("smart");
+  const [centreSort, setCentreSort] = useCentreSort(userLocation);
   const [centrePriceFilter, setCentrePriceFilter] = useState("");
   
   const combinedQuery = (centreSearch + (centrePriceFilter ? ` under ${centrePriceFilter}` : "")).trim();
@@ -187,6 +191,8 @@ export default function HomePage({
                 Set pricing and manage incoming print orders from one focused screen.
               </p>
             </div>
+            <div className="flex flex-wrap items-center gap-3">
+            <HubDesktopDownload role={currentUser.role} desktopAvailable={desktopAvailable} platform="windows" variant="button" label="Download Windows App" />
             <button
               onClick={() => navigate("hubPricing")}
               className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-5 py-4 font-semibold text-white transition hover:bg-slate-800"
@@ -194,6 +200,7 @@ export default function HomePage({
               <IndianRupee size={20} />
               Pricing & Payment
             </button>
+            </div>
           </div>
         </Card>
 
@@ -403,16 +410,7 @@ export default function HomePage({
               <option value="3">Under ₹3</option>
               <option value="5">Under ₹5</option>
             </select>
-            <select
-              value={centreSort}
-              aria-label="Sort printing centres"
-              onChange={(e) => setCentreSort(e.target.value)}
-              className="shrink-0 rounded-2xl border bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-slate-300"
-            >
-              <option value="smart">Smart Sort</option>
-              <option value="price_bw">Lowest Price (B/W)</option>
-              <option value="price_color">Lowest Price (Color)</option>
-            </select>
+            <CentreSortControl value={centreSort} onChange={setCentreSort} userLocation={userLocation} />
           </div>
         </div>
 

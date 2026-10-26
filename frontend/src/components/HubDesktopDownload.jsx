@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Download, Loader2 } from 'lucide-react';
 import { detectDesktopPlatform, downloadLatestDesktopInstaller } from '../services/desktopDownloads';
 
-export default function HubDesktopDownload({ role, desktopAvailable, platform = detectDesktopPlatform() }) {
+export default function HubDesktopDownload({ role, desktopAvailable, platform = detectDesktopPlatform(), variant = 'menu', label = 'Download Desktop App' }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [choosePlatform, setChoosePlatform] = useState(false);
@@ -17,9 +17,9 @@ export default function HubDesktopDownload({ role, desktopAvailable, platform = 
   }
   return (
     <div>
-      <button type="button" disabled={busy} onClick={() => download(platform)} className="flex min-h-10 w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm hover:bg-slate-100 disabled:opacity-60">
+      <button type="button" disabled={busy} onClick={() => download(platform)} className={variant === 'menu' ? 'flex min-h-11 w-full items-center gap-3 rounded-md px-3 py-2 text-left text-sm hover:bg-slate-100 disabled:opacity-60' : 'pe-secondary-button inline-flex w-full items-center justify-center gap-2 border border-teal-200 bg-white px-4 py-3 text-sm font-semibold hover:bg-teal-50 disabled:opacity-60'}>
         {busy ? <Loader2 size={16} className="shrink-0 animate-spin" /> : <Download size={16} className="shrink-0" />}
-        {busy ? 'Finding latest installer...' : 'Download Desktop App'}
+        {busy ? 'Finding latest installer...' : label}
       </button>
       {choosePlatform && <div className="flex flex-wrap gap-2 px-3 py-2">
         {['windows', 'linux'].map(target => <button key={target} type="button" disabled={busy} onClick={() => download(target)} className="inline-flex min-h-10 items-center gap-1.5 rounded-md border px-2 py-1 text-xs font-semibold"><Download size={14} />{target === 'windows' ? 'Windows EXE' : 'Linux AppImage'}</button>)}

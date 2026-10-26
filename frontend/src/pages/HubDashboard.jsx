@@ -5,6 +5,7 @@ import Metric from "../components/Metric";
 import HubLocationCard from "../components/HubLocationCard";
 import HubAfterOrderSettingsCard from "../components/HubAfterOrderSettingsCard";
 import HubActiveOrdersManager from "../components/HubActiveOrdersManager";
+import HubDesktopDownload from "../components/HubDesktopDownload";
 import { apiRequest, getHubAgentSummary, pairAgent } from "../services/api";
 
 function normalizeStatus(status) {
@@ -110,7 +111,7 @@ function formatDateTime(value) {
   });
 }
 
-export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus, refreshOrders, onOrderSaved, onAfterOrderSettingsUpdate, navigate }) {
+export default function HubDashboard({ currentHub, currentUser, desktopAvailable = false, hubOrders, updateOrderStatus, refreshOrders, onOrderSaved, onAfterOrderSettingsUpdate, navigate }) {
   const [agents, setAgents] = useState([]);
   const [agentPrinters, setAgentPrinters] = useState([]);
   const [printJobs, setPrintJobs] = useState([]);
@@ -363,9 +364,12 @@ export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus,
           <h2 className="text-2xl sm:text-3xl font-bold">Print Centre Dashboard</h2>
           <p className="text-slate-600 text-sm sm:text-base">{currentHub.name} · Code {currentHub.code}</p>
         </div>
+        <div className="flex flex-wrap items-center gap-3">
+        <HubDesktopDownload role={currentUser?.role} desktopAvailable={desktopAvailable} platform="windows" variant="button" label="Download Windows App" />
         <button onClick={() => navigate("hubPricing")} className="rounded-2xl bg-slate-900 px-5 py-3 font-semibold text-white w-full sm:w-auto">
           Set Prices
         </button>
+        </div>
       </div>
 
       <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-4">
