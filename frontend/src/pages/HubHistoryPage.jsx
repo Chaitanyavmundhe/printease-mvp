@@ -1,10 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { BarChart3, Download, Eye, FileText, IndianRupee, Printer, ShieldCheck, X, Search, Filter, ArrowUpDown } from "lucide-react";
 import Card from "../components/Card";
 import InlineDocumentPreview from "../components/InlineDocumentPreview";
 import Metric from "../components/Metric";
 import StatusBadge from "../components/StatusBadge";
-import { downloadDocumentBlob, getDesktopCachedDocumentUrl, getOrderDocuments } from "../services/api";
+import { downloadDocumentBlob, getOrderDocuments } from "../services/api";
+import { loadDocumentPreview } from "../services/documentPreview";
 
 function normalizeStatus(status) {
   return String(status || "").toLowerCase().replace(/\s+/g, "_");
@@ -62,6 +63,9 @@ export default function HubHistoryPage({ currentHub, hubOrders }) {
   const [orderDocuments, setOrderDocuments] = useState([]);
   const [documentsLoading, setDocumentsLoading] = useState(false);
   const [documentPreview, setDocumentPreview] = useState(null);
+  useEffect(() => () => {
+    if (documentPreview?.url?.startsWith('blob:')) URL.revokeObjectURL(documentPreview.url);
+  }, [documentPreview?.url]);
   const [documentActionId, setDocumentActionId] = useState("");
   const [agentError, setAgentError] = useState("");
   
@@ -147,34 +151,13 @@ export default function HubHistoryPage({ currentHub, hubOrders }) {
     setDocumentActionId(`${mode}:${documentId}`);
     try {
       if (mode === "view") {
-        const cachedUrl = await getDesktopCachedDocumentUrl(documentId);
-        if (cachedUrl) {
-          setDocumentPreview({
-            url: cachedUrl,
-            name: document.fileName || "Document preview",
-            fileType: document.fileType || "",
-            documentId,
-          });
-          return;
-        }
+        const { blob, name, fileType, textContent } = await loadDocumentPreview(document);
+        setDocumentPreview({ url: URL.createObjectURL(blob), name, fileType, textContent, documentId });
+        return;
       }
 
       const blob = await downloadDocumentBlob(documentId);
       const localUrl = URL.createObjectURL(blob);
-
-      if (mode === "view") {
-        const fileType = blob.type || document.fileType || "";
-        const name = document.fileName || "Document preview";
-        const isText = String(fileType).startsWith("text/") || /\.(txt|csv|json)$/i.test(name);
-        setDocumentPreview({
-          url: localUrl,
-          name,
-          fileType,
-          documentId,
-          textContent: isText ? await blob.text() : "",
-        });
-        return;
-      }
 
       const a = window.document.createElement("a");
       a.href = localUrl;

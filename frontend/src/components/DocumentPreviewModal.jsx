@@ -1,8 +1,9 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState } from "react";
 import { X, Download, FileText, Image, FileCode, AlertCircle, Loader2, Settings, Eye } from "lucide-react";
 import InlineDocumentFrame from "./InlineDocumentFrame";
 import FileSettingsPanel from "./upload/FileSettingsPanel";
 import { getDocumentPreviewBlob } from "../services/api";
+import { isPreviewPending } from "../utils/documentPreview";
 
 export default function DocumentPreviewModal({
   isOpen,
@@ -27,65 +28,54 @@ export default function DocumentPreviewModal({
   const [internalBlobUrl, setInternalBlobUrl] = useState("");
   const [isFetching, setIsFetching] = useState(false);
   const [fetchError, setFetchError] = useState("");
-  const timerRef = useRef(null);
+  const [pendingMessage, setPendingMessage] = useState("");
+  const [retry, setRetry] = useState(0);
 
   useEffect(() => {
-    if (!isOpen || !documentId) {
-      setInternalBlobUrl("");
-      setFetchError("");
-      setIsFetching(false);
-      if (timerRef.current) clearInterval(timerRef.current);
-      return;
-    }
-
+    setInternalBlobUrl("");
+    setFetchError("");
+    setPendingMessage("");
+    setIsFetching(false);
+    if (!isOpen || !documentId || blobUrl) return;
     let isSubscribed = true;
-    
+    let timer;
+    let ownedUrl;
+    const deadline = Date.now() + 120000;
+
     const fetchBlob = async () => {
+      setIsFetching(true);
       try {
-        if (!internalBlobUrl) setIsFetching(true);
         const blob = await getDocumentPreviewBlob(documentId, fetchConvertedPdf);
         if (isSubscribed) {
-          const url = URL.createObjectURL(blob);
-          setInternalBlobUrl(url);
+          ownedUrl = URL.createObjectURL(blob);
+          setInternalBlobUrl(ownedUrl);
           setIsFetching(false);
           setFetchError("");
-          if (timerRef.current) {
-            clearInterval(timerRef.current);
-            timerRef.current = null;
-          }
+          setPendingMessage("");
         }
       } catch (err) {
         if (isSubscribed) {
-          if (fetchConvertedPdf) {
-            // If waiting for converted PDF, it might not be ready yet. Keep polling.
-            setFetchError("Waiting for Hub to convert document...");
-            setIsFetching(true);
+          // Only the backend's explicit pending status permits another read.
+          // Sequential, bounded polling never starts/retries conversion itself.
+          if (fetchConvertedPdf && isPreviewPending(err) && Date.now() < deadline) {
+            setPendingMessage("Preparing PDF preview...");
+            timer = setTimeout(fetchBlob, 3000);
           } else {
-            setFetchError("Could not load preview. " + err.message);
+            setFetchError(isPreviewPending(err) ? "PDF preview is still preparing. Try again shortly." : "Could not load preview. " + err.message);
+            setPendingMessage("");
             setIsFetching(false);
-            if (timerRef.current) clearInterval(timerRef.current);
           }
         }
       }
     };
 
     fetchBlob();
-    
-    if (fetchConvertedPdf) {
-      timerRef.current = setInterval(fetchBlob, 3000);
-    }
-
     return () => {
       isSubscribed = false;
-      if (timerRef.current) clearInterval(timerRef.current);
+      clearTimeout(timer);
+      if (ownedUrl) URL.revokeObjectURL(ownedUrl);
     };
-  }, [isOpen, documentId, fetchConvertedPdf]);
-
-  useEffect(() => {
-    return () => {
-      if (internalBlobUrl) URL.revokeObjectURL(internalBlobUrl);
-    };
-  }, [internalBlobUrl]);
+  }, [isOpen, documentId, fetchConvertedPdf, blobUrl, retry]);
 
   const activeBlobUrl = blobUrl || internalBlobUrl;
   const loading = externalLoading || isFetching;
@@ -159,7 +149,7 @@ export default function DocumentPreviewModal({
             <div className="flex min-w-0 items-center gap-2 text-white drop-shadow-md">
               <div className="hidden sm:block">{renderIcon()}</div>
               <div className="min-w-0">
-                <p className="truncate text-xs font-medium sm:text-sm">{fileName}</p>
+                <p id="document-preview-title" className="truncate text-xs font-medium sm:text-sm">{fileName}</p>
                 <p className="text-xs opacity-80">{fileSize > 0 ? formatSize(fileSize) : ""}</p>
               </div>
             </div>
@@ -175,6 +165,7 @@ export default function DocumentPreviewModal({
               )}
               <button
                 onClick={onClose}
+                aria-label="Close preview"
                 className="flex min-h-9 items-center gap-2 rounded-md bg-rose-600/90 px-2.5 py-1.5 text-xs font-bold text-white shadow-sm backdrop-blur-md transition hover:bg-rose-500 sm:px-3"
               >
                 <X className="h-3.5 w-3.5" />
@@ -187,12 +178,17 @@ export default function DocumentPreviewModal({
             {loading ? (
               <div className="flex flex-col items-center gap-3">
                 <Loader2 className="h-8 w-8 animate-spin text-slate-500" />
-                <p className="text-sm font-medium text-slate-500">Loading preview...</p>
+                <p className="text-sm font-medium text-slate-500">{pendingMessage || "Loading preview..."}</p>
               </div>
             ) : error ? (
               <div className="flex flex-col items-center gap-3 bg-white p-6 rounded-xl shadow-sm border border-slate-200">
                 <AlertCircle className="h-8 w-8 text-rose-500" />
                 <p className="text-sm font-medium text-slate-700">{error}</p>
+                {documentId && !externalError && (
+                  <button type="button" onClick={() => setRetry(value => value + 1)} className="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold">
+                    Retry preview
+                  </button>
+                )}
                 <button
                   onClick={onDownload}
                   className="mt-2 flex items-center gap-2 rounded-md bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"

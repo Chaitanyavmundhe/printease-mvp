@@ -1,13 +1,16 @@
 import { useState } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
-import { ChevronLeft, ChevronRight, Loader2, AlertCircle } from 'lucide-react';
+import { AlertCircle } from 'lucide-react';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
-pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+// Vite emits the matching installed worker into assets; no CDN, second PDF copy
+// or converter is involved. Relative assets also work in packaged app:// URLs.
+pdfjs.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
 
 export default function InlineDocumentFrame({ url, config = {}, title = "Document preview", className = "" }) {
   const [numPages, setNumPages] = useState(null);
+  config = config || {};
 
   function onDocumentLoadSuccess({ numPages }) {
     setNumPages(numPages);

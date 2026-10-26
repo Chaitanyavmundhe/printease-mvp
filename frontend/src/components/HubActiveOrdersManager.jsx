@@ -22,11 +22,11 @@ import {
   apiRequest,
   collectManualPayment,
   downloadDocumentBlob,
-  getDesktopCachedDocumentUrl,
   getHubAgentSummary,
   getOrderDocuments,
   sendOrderToAgent,
 } from "../services/api";
+import { loadDocumentPreview } from "../services/documentPreview";
 
 function normalizeStatus(status) {
   return String(status || "").toLowerCase().replace(/\s+/g, "_");
@@ -199,6 +199,9 @@ export default function HubActiveOrdersManager({
   const [orderDocuments, setOrderDocuments] = useState([]);
   const [documentsLoading, setDocumentsLoading] = useState(false);
   const [documentPreview, setDocumentPreview] = useState(null);
+  useEffect(() => () => {
+    if (documentPreview?.url?.startsWith('blob:')) URL.revokeObjectURL(documentPreview.url);
+  }, [documentPreview?.url]);
   const [documentActionId, setDocumentActionId] = useState("");
   const [configModalOpen, setConfigModalOpen] = useState(false);
   const [globalAutoPrintAfterCash, setGlobalAutoPrintAfterCash] = useState(() => {
@@ -433,31 +436,13 @@ export default function HubActiveOrdersManager({
     setDocumentActionId(`${mode}:${documentId}`);
     try {
       if (mode === "view") {
-        const cachedUrl = await getDesktopCachedDocumentUrl(documentId);
-        if (cachedUrl) {
-          setDocumentPreview({
-            url: cachedUrl,
-            name: document.fileName || "Document preview",
-            fileType: document.fileType || "",
-            documentId,
-          });
-          return;
-        }
+        const { blob, name, fileType, textContent } = await loadDocumentPreview(document);
+        setDocumentPreview({ url: URL.createObjectURL(blob), name, fileType, textContent, documentId });
+        return;
       }
 
       const blob = await downloadDocumentBlob(documentId);
       const localUrl = URL.createObjectURL(blob);
-      if (mode === "view") {
-        let textContent = "";
-        const fileType = blob.type || document.fileType || "";
-        const name = document.fileName || "Document preview";
-        const isText = String(fileType).startsWith("text/") || /\.(txt|csv|json)$/i.test(name);
-        if (isText) {
-          textContent = await blob.text();
-        }
-        setDocumentPreview({ url: localUrl, name, fileType, textContent, documentId });
-        return;
-      }
       const link = window.document.createElement("a");
       link.href = localUrl;
       link.download = document.fileName || "document.pdf";

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { getDocumentPreviewBlob, getDocumentDownloadBlob } from "../services/api";
+import { getDocumentDownloadBlob } from "../services/api";
+import { loadDocumentPreview } from "../services/documentPreview";
 
 export function useDocumentPreview() {
   const [documentId, setDocumentId] = useState(null);
@@ -13,6 +14,7 @@ export function useDocumentPreview() {
   const [error, setError] = useState("");
 
   const activeUrlRef = useRef(null);
+  const requestRef = useRef(0);
 
   const revokeActive = useCallback(() => {
     if (activeUrlRef.current) {
@@ -22,6 +24,7 @@ export function useDocumentPreview() {
   }, []);
 
   const closePreview = useCallback(() => {
+    requestRef.current++;
     revokeActive();
     setDocumentId(null);
     setBlobUrl(null);
@@ -31,16 +34,19 @@ export function useDocumentPreview() {
     setFileSize(0);
     setTextContent("");
     setError("");
+    setLoading(false);
   }, [revokeActive]);
 
   useEffect(() => {
     return () => {
+      requestRef.current++;
       revokeActive();
     };
   }, [revokeActive]);
 
   const openPreview = useCallback(async (docId, name, type, size) => {
     closePreview();
+    const request = requestRef.current;
     setLoading(true);
     setDocumentId(docId);
     setFileName(name || "Document");
@@ -48,41 +54,21 @@ export function useDocumentPreview() {
     setFileSize(size || 0);
 
     try {
-      const blob = await getDocumentPreviewBlob(docId);
-      const mime = (blob.type || "").toLowerCase();
-      let kind = "unsupported";
-
-      if (mime === "application/pdf") {
-        kind = "pdf";
-      } else if (mime.startsWith("image/")) {
-        kind = "image";
-      } else if (mime === "text/plain" || mime === "text/csv" || mime === "application/json") {
-        kind = "text";
-      }
-
-      // Fallback: infer from file extension when MIME is generic
-      if (kind === "unsupported" && name) {
-        const ext = (name.split(".").pop() || "").toLowerCase();
-        if (ext === "pdf") kind = "pdf";
-        else if (["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"].includes(ext)) kind = "image";
-        else if (["txt", "csv", "json", "log"].includes(ext)) kind = "text";
-      }
-
-      if (kind === "text") {
-        const text = await blob.text();
-        setTextContent(text);
-      } else {
-        setTextContent("");
-      }
-
-      const url = URL.createObjectURL(blob);
+      const preview = await loadDocumentPreview({ documentId: docId, fileName: name, fileType: type });
+      // Closing/switching documents invalidates older in-flight responses.
+      if (request !== requestRef.current) return;
+      setTextContent(preview.textContent);
+      setFileName(preview.name);
+      setFileType(preview.fileType);
+      setFileSize(preview.blob.size);
+      const url = URL.createObjectURL(preview.blob);
       activeUrlRef.current = url;
       setBlobUrl(url);
-      setPreviewKind(kind);
+      setPreviewKind(preview.kind);
     } catch (err) {
-      setError(err.message || "Failed to load document preview.");
+      if (request === requestRef.current) setError(err.status === 425 ? 'PDF preview is still preparing. Please try again shortly.' : err.message || "Failed to load document preview.");
     } finally {
-      setLoading(false);
+      if (request === requestRef.current) setLoading(false);
     }
   }, [closePreview]);
 

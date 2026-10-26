@@ -1,8 +1,9 @@
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import { Blob as NodeBlob } from 'node:buffer';
+import { createHash, webcrypto } from 'node:crypto';
 
 beforeEach(() => { vi.resetModules(); localStorage.clear(); vi.stubGlobal('Blob', NodeBlob); });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.unstubAllGlobals(); delete window.printeaseDesktop; });
 
 it('forwards the same capability for subsequent anonymous uploads', async () => {
   localStorage.setItem('printease_order_access_token', 'guest-capability');
@@ -38,4 +39,22 @@ it('never caches an Office source as the converted PDF', async () => {
   await expect(downloadDocumentBlob('document-id', true)).rejects.toThrow(/not ready/);
   await expect(downloadDocumentBlob('document-id', true)).rejects.toThrow(/not ready/);
   expect(fetch).toHaveBeenCalledTimes(4);
+});
+
+it.each([true, false])('uses the desktop cached PDF only when its hash matches the authorized artifact (match=%s)', async matches => {
+  vi.stubGlobal('crypto', webcrypto);
+  const content = '%PDF-verified-conversion';
+  const sha256 = createHash('sha256').update(content).digest('hex');
+  window.printeaseDesktop = { getCachedDocumentUrl: vi.fn().mockResolvedValue({ success: true, url: 'app://printease/cache/document-id' }) };
+  const fetch = vi.fn().mockImplementation(async url => {
+    if (String(url).includes('signed-download')) return new Response(JSON.stringify({ signedUrl: 'https://private-storage/converted.pdf', document: { fileType: 'application/pdf', fileSha256: sha256 } }), { headers: { 'content-type': 'application/json' } });
+    if (String(url).startsWith('app:')) return new Response(matches ? content : 'PK-original-office-file');
+    return new Response(content, { headers: { 'content-type': 'application/pdf' } });
+  });
+  vi.stubGlobal('fetch', fetch);
+  const { getDocumentPreviewBlob } = await import('../api');
+  const blob = await getDocumentPreviewBlob('document-id', true);
+  expect(await blob.text()).toBe(content);
+  expect(fetch.mock.calls[0][0]).toContain('signed-download?converted=true');
+  expect(fetch).toHaveBeenCalledTimes(matches ? 2 : 3);
 });

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import UploadPage from '../UploadPage';
+import { prepareUploadPreview } from '../../utils/filePreparation/prepareUploadPreview';
 
 vi.mock('../../hooks/useAutoUploadPreparation', () => ({ useAutoUploadPreparation: () => ({ uploadedDocuments: [] }) }));
 vi.mock('../../utils/filePreparation/prepareUploadPreview', () => ({
@@ -10,7 +11,8 @@ vi.mock('../../utils/filePreparation/prepareUploadPreview', () => ({
   revokePreparationPreview: vi.fn(),
 }));
 vi.mock('../../components/DocumentPreviewModal', () => ({
-  default: ({ fileName, config, onChangeConfig }) => <section>
+  default: ({ fileName, config, onChangeConfig, loading }) => <section>
+    <output data-testid="preview-loading">{String(loading)}</output>
     <span>{fileName}: copies {config.copies}</span>
     <button onClick={() => onChangeConfig('copies', 7)}>Change preview copies</button>
   </section>
@@ -45,4 +47,16 @@ it('keeps ready-preview changes attached to the second file, not an undefined ke
   expect(configs[1].copies).toBe(7);
   expect(configs[0].copies).toBe(1);
   expect(configs.undefined).toBeUndefined();
+});
+
+it('updates an already-open preview when local PDF preparation finishes', async () => {
+  let resolve;
+  prepareUploadPreview.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+  const { container } = render(<Harness />);
+  fireEvent.change(container.querySelector('input[type=file]'), { target: { files: [new File(['%PDF-test'], 'loading.pdf', { type: 'application/pdf' })] } });
+  await waitFor(() => expect(resolve).toBeTypeOf('function'));
+  fireEvent.click(screen.getByRole('button', { name: 'Preview' }));
+  expect(screen.getByTestId('preview-loading').textContent).toBe('true');
+  resolve({ status: 'ready', pageCount: 2, previewKind: 'pdf', previewPdfUrl: 'blob:ready' });
+  await waitFor(() => expect(screen.getByTestId('preview-loading').textContent).toBe('false'));
 });

@@ -363,7 +363,28 @@ function cacheDocumentBlob(cacheKey, blob) {
   }
 }
 
-async function fetchSignedDocumentBlob(documentId, converted = false) {
+async function readMatchingDesktopPreview(documentId, document) {
+  // Authorize via signed-download first, then reuse only bytes matching that
+  // artifact's verified hash. A cached Office source/order render is not a
+  // substitute for the converted PDF; never mutate the agent's cache here.
+  if (!/^[a-f0-9]{64}$/i.test(document?.fileSha256 || '') || !globalThis.crypto?.subtle) return null;
+  const cachedUrl = await getDesktopCachedDocumentUrl(documentId);
+  if (!cachedUrl || !cachedUrl.startsWith('app://printease/cache/')) return null;
+  try {
+    const response = await fetch(cachedUrl);
+    if (!response.ok) return null;
+    const bytes = await response.arrayBuffer();
+    const digest = await globalThis.crypto.subtle.digest('SHA-256', bytes);
+    const hash = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('');
+    return hash === document.fileSha256.toLowerCase()
+      ? new Blob([bytes], { type: document.fileType || 'application/octet-stream' })
+      : null;
+  } catch {
+    return null; // Cache misses/read failures fall back to the authorized link.
+  }
+}
+
+async function fetchSignedDocumentBlob(documentId, converted = false, { preferDesktopCache = false } = {}) {
   // Private blobs cannot outlive their login/capability identity in memory.
   // Clear on identity change and reject an older request that finishes afterward.
   const identity = localStorage.getItem("printease_token") ||
@@ -382,12 +403,14 @@ async function fetchSignedDocumentBlob(documentId, converted = false) {
     throw new Error("Could not create secure document link.");
   }
 
-  const response = await fetch(data.signedUrl);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch document: ${response.status}`);
+  let blob = preferDesktopCache ? await readMatchingDesktopPreview(documentId, data.document) : null;
+  if (!blob) {
+    const response = await fetch(data.signedUrl);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch document: ${response.status}`);
+    }
+    blob = await response.blob();
   }
-
-  const blob = await response.blob();
   const rawType = (blob.type || "").toLowerCase();
   const isGenericType = !rawType || rawType === "application/octet-stream";
   const bestType = isGenericType
@@ -421,7 +444,7 @@ export async function getDesktopCachedDocumentUrl(documentId) {
 }
 
 export async function getDocumentPreviewBlob(documentId, converted = false) {
-  return fetchSignedDocumentBlob(documentId, converted);
+  return fetchSignedDocumentBlob(documentId, converted, { preferDesktopCache: true });
 }
 
 export async function getDocumentDownloadBlob(documentId, converted = false) {

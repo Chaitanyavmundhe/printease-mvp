@@ -125,6 +125,15 @@ export default function UploadPage({
     enabled: !reprintSourceDocuments?.length,
   });
 
+  // A preview opened during local parsing must leave its loading snapshot once
+  // parsing finishes. This observes preview state only, not order preparation.
+  useEffect(() => {
+    const index = localPreview?.fileIndex;
+    if (!localPreview?.loading || index == null) return;
+    const status = filePreparationState[index]?.status;
+    if (status === PREPARATION_STATUS.READY || status === PREPARATION_STATUS.FAILED) handleLocalPreview(index);
+  }, [filePreparationState, localPreview?.fileIndex, localPreview?.loading]);
+
   function releasePreparationState(state = filePreparationState) {
     Object.values(state || {}).forEach(revokePreparationPreview);
   }
