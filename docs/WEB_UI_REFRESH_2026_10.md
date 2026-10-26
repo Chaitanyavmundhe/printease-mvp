@@ -190,3 +190,28 @@ browser viewports, the new-visitor location-permission check, and three-size
 local/verified-converted PDF preview checks all passed. No renderer errors were
 observed. Physical older Android devices and the system keyboard still need
 manual checks. This remains web-only; desktop source and release tags are unchanged.
+
+## Shorter scan-page cards
+
+The two-column scan results were too tall because every rate put its label above
+the amount and Map occupied a separate full row. `CentrePriceCard.jsx` now keeps
+the full centre name first and aligns each of the four rate labels beside a bold
+amount. A single A4 rates / page caption retains the currency unit information
+without repeating /page four times. Invalid/unknown amounts still read Pending.
+
+Compact-card availability, distance/location and account usage sit below rates.
+The centre code is retained. Map is a labelled, tooltip-equipped icon button next
+to Upload; both retain 44px touch targets. No names, amounts or metadata are hidden
+or line-clamped. Long names, Pending and larger prices may use more height to keep
+their full content readable. Existing full Home cards keep their original rates,
+UPI details and map/upload labels. No selection, search, payment, conversion,
+printing, agent or early-download handlers have changed.
+
+Unit tests assert all compact details and both action callbacks, including the
+offline/missing-location/Pending case. The responsive test checks four visible
+rate rows, label/amount separation, one-row accessible actions and a 350px height
+budget for a normal short-name card at mobile widths. It retains all existing
+six-viewport upload, payment, history and discovery regression checks.
+Validation passed: 74 frontend tests, production web build and all six browser
+viewports. The 320px and 390px screenshots were visually inspected. No backend
+or desktop source/build/release changes are included.

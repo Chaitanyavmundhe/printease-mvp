@@ -120,6 +120,19 @@ async function noIntersection(first, second, label) {
       const actionBoxes = await locationActions.evaluateAll(elements => elements.map(element => element.getBoundingClientRect().toJSON()));
       assert(Math.abs(actionBoxes[0].y - actionBoxes[1].y) < 1, "Location and map actions must be side by side");
       assert.equal(await page.locator(".pe-scan-centre-grid").evaluate(element => getComputedStyle(element).gridTemplateColumns.split(" ").length), 2, "Scan page must display two centre cards per row");
+      const firstCard = page.locator(".pe-scan-centre-grid > .pe-centre-card").first();
+      const compact = await firstCard.boundingBox();
+      if (width < 768) assert(compact.height <= 350, `${label} short-name centre card is too tall: ${compact.height}`);
+      const rateRows = firstCard.locator(".pe-summary-row");
+      assert.equal(await rateRows.count(), 4, "Compact card must retain all four rates");
+      for (const row of await rateRows.all()) {
+        const value = row.locator("span").last();
+        assert.equal(await value.isVisible(), true);
+        await noIntersection(row.locator("span").first(), value, "Rate label and price overlap");
+      }
+      await noIntersection(firstCard.getByRole("button", { name: "View on map" }), firstCard.getByRole("button", { name: "Upload", exact: true }), "Map and upload must not overlap");
+      const actionBoxesInCard = await firstCard.locator(".pe-centre-actions button").evaluateAll(elements => elements.map(element => element.getBoundingClientRect().toJSON()));
+      assert(actionBoxesInCard.every(box => box.height >= 44 && box.width >= 44 && Math.abs(box.y - actionBoxesInCard[0].y) < 1), "Map and upload need one accessible row");
       await checkWidth(page, `${label} centre grid`);
       await page.screenshot({ path: path.join(evidence, `${label}-centre-grid.png`), fullPage: true });
       assert.equal(await page.getByLabel("Sort printing centres", { exact: true }).inputValue(), "name", "Sorting preference was lost between pages");

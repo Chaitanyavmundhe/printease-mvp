@@ -160,10 +160,16 @@ body {
 .pe-centre-card-compact h4 { font-size: 16px; line-height: 1.4; overflow-wrap: anywhere; }
 .pe-centre-card-compact .pe-centre-tools { width: 100%; align-items: flex-start; }
 .pe-centre-card-compact .pe-centre-availability { max-width: 100%; padding-inline: 6px; }
-.pe-centre-card-compact .pe-centre-rates { margin-top: auto; }
-.pe-centre-card-compact .pe-summary-row { grid-template-columns: minmax(0, 1fr); gap: 0; font-size: 13px; }
-.pe-centre-card-compact .pe-summary-row > :last-child { text-align: left; font-weight: 600; }
-.pe-centre-card-compact > button { margin-top: 12px; padding-inline: 6px; }
+.pe-centre-card-compact .pe-centre-rates { margin-top: 8px; padding-block: 8px; }
+.pe-centre-card-compact .pe-centre-rates > * + * { margin-top: 5px; }
+.pe-centre-card-compact .pe-summary-row { grid-template-columns: minmax(0, 1fr) max-content; align-items: center; gap: 4px; font-size: 12px; line-height: 1.35; }
+.pe-centre-card-compact .pe-summary-row > :last-child { max-width: 64px; text-align: right; font-size: 14px; font-weight: 700; color: var(--pe-ink); }
+.pe-centre-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; padding-block: 8px; }
+.pe-centre-meta > p { margin-top: 0; }
+.pe-centre-actions { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 6px; margin-top: auto; padding-top: 4px; }
+.pe-centre-actions > button { min-width: 0; min-height: 44px; margin-top: 0; padding: 8px 4px; }
+.pe-centre-actions .pe-centre-map { width: 44px; }
+.pe-centre-map:disabled { color: #94a3b8; }
 
 .pe-summary-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; gap: 12px; font-size: 14px; line-height: 1.5; }
 .pe-summary-row > * { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
@@ -264,8 +270,7 @@ body {
 
 @media (min-width: 768px) {
   .pe-centre-card-compact { padding: 16px; }
-  .pe-centre-card-compact .pe-summary-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; font-size: 14px; }
-  .pe-centre-card-compact .pe-summary-row > :last-child { text-align: right; }
+  .pe-centre-card-compact .pe-summary-row { gap: 8px; font-size: 14px; }
   .pe-content, .pe-header-inner { padding-inline: 24px; }
   .pe-content { padding-bottom: 32px; }
   .pe-upload { grid-template-columns: minmax(0, 1fr) minmax(280px, 340px); padding-bottom: 0; }
