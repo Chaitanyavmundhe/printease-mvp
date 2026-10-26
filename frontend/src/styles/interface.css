@@ -157,8 +157,9 @@ body {
 .pe-centre-card-compact .pe-centre-heading { flex-direction: column; gap: 8px; }
 .pe-centre-card-compact .pe-centre-heading > :first-child { width: 100%; min-width: 0; }
 .pe-centre-card-compact p { overflow-wrap: anywhere; }
-.pe-centre-card-compact h4 { font-size: 16px; line-height: 1.4; overflow-wrap: anywhere; }
-.pe-centre-code-inline { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--pe-muted); }
+.pe-centre-card-compact h4 { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; font-size: 16px; line-height: 1.4; overflow-wrap: anywhere; }
+.pe-centre-card-compact .pe-centre-name { flex: 1; min-width: 0; }
+.pe-centre-code-inline { flex: 0 1 auto; max-width: 44%; text-align: right; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--pe-muted); }
 .pe-centre-card-compact .pe-centre-tools { width: 100%; align-items: flex-start; }
 .pe-centre-card-compact .pe-centre-availability { max-width: 100%; padding-inline: 6px; }
 .pe-centre-card-compact .pe-centre-rates { margin-top: 8px; padding-block: 8px; }

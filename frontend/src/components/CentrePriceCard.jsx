@@ -51,8 +51,8 @@ export default function CentrePriceCard({ centre, onUpload, onOpenMap, compact =
       <div className="pe-centre-heading flex items-start justify-between gap-4">
         <div className="flex-1 min-w-0">
           <h4 className="break-words text-lg font-bold">
-            {compact && centre.code && <><span className="pe-centre-code-inline"><span className="sr-only">Centre code </span>{centre.code}</span>{" "}</>}
             <span className="pe-centre-name">{centre.name}</span>
+            {compact && centre.code && <>{" "}<span className="pe-centre-code-inline"><span className="sr-only">Centre code </span>{centre.code}</span></>}
           </h4>
           {!compact && <p className="text-sm text-slate-600">Centre Code: {centre.code}</p>}
           {!compact && <p className="break-all text-sm text-slate-500">UPI: {centre.upiId}</p>}

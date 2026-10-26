@@ -216,7 +216,8 @@ Validation passed: 74 frontend tests, production web build and all six browser
 viewports. The 320px and 390px screenshots were visually inspected. No backend
 or desktop source/build/release changes are included.
 
-Centre-code placement follow-up: scan cards now put the code before the name in
-the same heading instead of reserving a separate Code row. The name remains the
-larger, bold text; code and name wrap naturally without truncation. Screen readers
-retain the Centre code label. Full Home cards keep their separate labelled code.
+Centre-code placement follow-up: scan cards put the name on the left and code
+on the right of the same heading instead of reserving a separate Code row. The
+name remains the larger, bold text; code and name wrap without truncation or
+overlap. Screen readers read the name first and retain the Centre code label.
+Full Home cards keep their separate labelled code.

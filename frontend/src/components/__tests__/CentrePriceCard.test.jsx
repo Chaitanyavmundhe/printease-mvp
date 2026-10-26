@@ -25,7 +25,8 @@ it("keeps every compact-card detail and both actions while sharing the price uni
   for (const text of [centre.name, "A4 rates / page", "B/W single", "B/W double", "Color single", "Color double", "₹2", "₹3", "₹6", "₹7.5", "500 m away", "Available", "Used 3 times from this account"]) {
     expect(screen.getByText(text)).toBeTruthy();
   }
-  const heading = screen.getByRole("heading", { name: `Centre code 2045 ${centre.name}` });
+  const heading = screen.getByRole("heading", { name: `${centre.name} Centre code 2045` });
+  expect(heading.firstElementChild.className).toBe("pe-centre-name");
   expect(heading.querySelector(".pe-centre-code-inline").textContent).toBe("Centre code 2045");
   expect(screen.queryByText("Code: 2045")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "View on map" }));

@@ -121,7 +121,13 @@ async function noIntersection(first, second, label) {
       assert(Math.abs(actionBoxes[0].y - actionBoxes[1].y) < 1, "Location and map actions must be side by side");
       assert.equal(await page.locator(".pe-scan-centre-grid").evaluate(element => getComputedStyle(element).gridTemplateColumns.split(" ").length), 2, "Scan page must display two centre cards per row");
       const firstCard = page.locator(".pe-scan-centre-grid > .pe-centre-card").first();
-      assert.equal(await firstCard.locator("h4 .pe-centre-code-inline").textContent(), "Centre code 1001", "Centre code must precede the name inside its heading");
+      assert.equal(await firstCard.locator("h4 .pe-centre-code-inline").textContent(), "Centre code 1001");
+      const cardName = firstCard.locator("h4 .pe-centre-name");
+      const cardCode = firstCard.locator("h4 .pe-centre-code-inline");
+      await noIntersection(cardName, cardCode, "Centre name and code must not overlap");
+      const nameBox = await cardName.boundingBox();
+      const codeBox = await cardCode.boundingBox();
+      assert(codeBox.x >= nameBox.x + nameBox.width, "Name belongs on the left and code on the right");
       const compact = await firstCard.boundingBox();
       if (width < 768) assert(compact.height <= 350, `${label} short-name centre card is too tall: ${compact.height}`);
       const rateRows = firstCard.locator(".pe-summary-row");
