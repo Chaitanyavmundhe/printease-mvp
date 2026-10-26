@@ -1,5 +1,6 @@
 import { User, QrCode, History, Home, Building2, Printer, LogOut, Menu, X, Settings, Plus, Store, Upload, FileCog, Rocket } from "lucide-react";
 import logo from '../assets/logo.png';
+import HubDesktopDownload from './HubDesktopDownload';
 
 function NavButton({ children, icon, active, onClick }) {
   return (
@@ -114,6 +115,7 @@ export default function Navbar({
                         <MenuItem icon={<Building2 size={16} />} onClick={() => navigate("hubDashboard")}>Hub Dashboard</MenuItem>
                         <MenuItem icon={<Printer size={16} />} onClick={() => navigate("hubPrinters")}>Desktop Agent</MenuItem>
                         <MenuItem icon={<Settings size={16} />} onClick={() => navigate("hubPricing")}>Pricing & Payment</MenuItem>
+                        <HubDesktopDownload role={currentUser.role} desktopAvailable={desktopAvailable} />
                       </>
                     )}
                     <MenuItem icon={<User size={16} />} onClick={openProfile}>Profile</MenuItem>

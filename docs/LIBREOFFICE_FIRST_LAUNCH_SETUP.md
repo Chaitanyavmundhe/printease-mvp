@@ -105,3 +105,23 @@ corresponding source links in LIBREOFFICE_GITHUB_DOWNLOAD_SOURCE.md.
 The administrator-capable CI VM cannot test a human UAC click or every supported
 Windows version. Physical printers, production payments and unrelated enterprise
 security policies remain manual checks. No complete security guarantee is implied.
+
+## Web Hub Installer Download
+
+The profile menu offers Download Desktop App only to signed-in hub accounts on
+the website. It is hidden for ordinary users, logged-out visitors and inside
+the desktop shell. A click resolves GitHub's latest stable application release,
+selects its Windows EXE or Linux x86_64 AppImage and starts the asset download.
+Unsupported/mobile OS detection offers an explicit Windows/Linux choice rather
+than mistaking Android for Linux desktop. No backend/user/agent token is sent to
+GitHub, no release version is hardcoded, and dependency/prerelease/foreign-host
+assets are rejected. Failed lookup shows an error and permits retry.
+
+Native Windows setup passed on the disposable runner:
+https://github.com/adityasomde/printease-desk/actions/runs/40401244099
+
+The Linux hub Activity and Hub History PDF preview paths also pass the packaged
+canvas/worker smoke test. An installed 0.1.112 process was found still running
+with the old external worker and no bundled worker: restarting the new app is
+required to use 0.1.113-or-newer preview code. Do not close an active print agent
+or interrupt physical printing merely to apply a UI update.
