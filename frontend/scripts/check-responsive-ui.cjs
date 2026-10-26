@@ -129,7 +129,17 @@ async function noIntersection(first, second, label) {
       const codeBox = await cardCode.boundingBox();
       assert(codeBox.x >= nameBox.x + nameBox.width, "Name belongs on the left and code on the right");
       const compact = await firstCard.boundingBox();
-      if (width < 768) assert(compact.height <= 350, `${label} short-name centre card is too tall: ${compact.height}`);
+      if (width < 768) assert(compact.height <= 310, `${label} short-name centre card is too tall: ${compact.height}`);
+      const spacing = await firstCard.evaluate(element => ({
+        padding: parseFloat(getComputedStyle(element).paddingTop),
+        nameSize: parseFloat(getComputedStyle(element.querySelector("h4")).fontSize),
+        rateSize: parseFloat(getComputedStyle(element.querySelector(".pe-summary-row > :last-child")).fontSize),
+        ratePadding: parseFloat(getComputedStyle(element.querySelector(".pe-centre-rates")).paddingTop),
+      }));
+      assert.equal(spacing.padding, width < 768 ? 6 : 16, "Only mobile card padding should become tighter");
+      assert.equal(spacing.ratePadding, width < 768 ? 4 : 8, "Desktop rate spacing must stay unchanged");
+      assert.equal(spacing.nameSize, 16, "Card name text must not shrink");
+      assert.equal(spacing.rateSize, 14, "Rate amounts must not shrink");
       const rateRows = firstCard.locator(".pe-summary-row");
       assert.equal(await rateRows.count(), 4, "Compact card must retain all four rates");
       for (const row of await rateRows.all()) {

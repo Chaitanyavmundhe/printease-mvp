@@ -221,3 +221,12 @@ on the right of the same heading instead of reserving a separate Code row. The
 name remains the larger, bold text; code and name wrap without truncation or
 overlap. Screen readers read the name first and retain the Centre code label.
 Full Home cards keep their separate labelled code.
+
+Mobile scan-card spacing follow-up: below 768px only, reduce vertical card padding
+from 10px to 6px, rate-section margin/padding from 8px to 4px, rate-row gaps from
+5px to 2px, metadata padding from 8px to 4px and the action-section top padding
+from 4px to 2px. Rules are scoped to the scan results grid. No content, DOM order,
+horizontal spacing, typography, alignment, card columns or 44px action targets
+change. Desktop web, full Home cards and the desktop app are untouched. Browser
+checks assert unchanged 16px name/14px amount sizes and original desktop spacing,
+with a 310px budget for ordinary short-name mobile cards.

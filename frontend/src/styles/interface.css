@@ -252,6 +252,13 @@ body {
 }
 
 @media (max-width: 767px) {
+  /* Mobile scan cards only: remove vertical whitespace, not content, order,
+     typography, column widths, or the existing 44px action targets. */
+  .pe-scan-centre-grid .pe-centre-card-compact { padding-block: 6px; }
+  .pe-scan-centre-grid .pe-centre-rates { margin-top: 4px; padding-block: 4px; }
+  .pe-scan-centre-grid .pe-centre-rates > * + * { margin-top: 2px; }
+  .pe-scan-centre-grid .pe-centre-meta { padding-block: 4px; row-gap: 2px; }
+  .pe-scan-centre-grid .pe-centre-actions { padding-top: 2px; }
   .pe-history-stat { min-width: 0; padding: 10px; }
   .pe-history-stat p:first-child { font-size: 12px; }
   .pe-history-stat .pe-history-stat-value { margin-top: 6px; font-size: 19px; line-height: 1.3; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
