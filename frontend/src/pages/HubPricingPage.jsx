@@ -65,16 +65,21 @@ export default function HubPricingPage({ currentHub, updateCentrePrice, updateCe
 
   return (
     <div className="space-y-6">
+      <div className="border-b border-slate-200/80 pb-4">
+        <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">Centre Pricing & Payments</h2>
+        <p className="mt-1 text-sm text-slate-500">Configure page rates, paper modes, and UPI collection details for your store.</p>
+      </div>
+
       <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">
         <Card>
-          <div className="flex items-start justify-between gap-4">
+          <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-3">
             <div>
-              <h2 className="text-2xl font-bold">Centre Pricing</h2>
-              <p className="mt-2 text-sm text-slate-600">Set your own price per page. Changes save when you leave the field.</p>
+              <h3 className="text-lg font-bold text-slate-900">Printing Rates (₹)</h3>
+              <p className="text-xs text-slate-500">Auto-saved when you click away from any input.</p>
             </div>
             <SaveStatus status={pricingStatus} />
           </div>
-          <div className="mt-6 space-y-4">
+          <div className="mt-4 space-y-3.5">
             <NumberInput label="A4 B/W Single Side" value={currentHub.bwSingle} onChange={(value) => handlePriceChange("bwSingle", value)} helperText="Most common" />
             <NumberInput label="A4 B/W Double Side" value={currentHub.bwDouble} onChange={(value) => handlePriceChange("bwDouble", value)} />
             <NumberInput label="A4 Color Single Side" value={currentHub.colorSingle} onChange={(value) => handlePriceChange("colorSingle", value)} />
@@ -84,21 +89,21 @@ export default function HubPricingPage({ currentHub, updateCentrePrice, updateCe
         </Card>
 
         <Card>
-          <div className="flex items-start justify-between gap-4">
+          <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-3">
             <div>
-              <h2 className="text-2xl font-bold">Payment Method</h2>
-              <p className="mt-2 text-sm text-slate-600">Customers see these details for manual payment. Only the hub dashboard can confirm collection.</p>
+              <h3 className="text-lg font-bold text-slate-900">Payment Collection</h3>
+              <p className="text-xs text-slate-500">Displayed to customers when choosing manual counter UPI transfer.</p>
             </div>
             <SaveStatus status={paymentStatus} />
           </div>
-          <div className="mt-6 space-y-4">
-            <Input label="UPI ID" icon={<CreditCard size={18} />} value={currentHub.upiId} setValue={(value) => handlePaymentChange("upiId", value)} placeholder="example@upi" />
-            <Input label="UPI QR Image URL" icon={<CreditCard size={18} />} value={currentHub.upiQrImageUrl || ""} setValue={(value) => handlePaymentChange("upiQrImageUrl", value)} placeholder="https://.../qr.png" />
-            <div className="rounded-2xl bg-slate-50 p-4">
-              <div className="flex items-start gap-3">
-                <ShieldCheck className="mt-1 text-green-600" />
-                <p className="text-sm text-slate-600">
-                  Security: customers cannot mark payment successful. Keep QR images public-only and never paste payment gateway secrets, API keys, or private tokens here.
+          <div className="mt-4 space-y-3.5">
+            <Input label="UPI ID" icon={<CreditCard size={16} />} value={currentHub.upiId} setValue={(value) => handlePaymentChange("upiId", value)} placeholder="e.g. mobile@upi" />
+            <Input label="UPI QR Image URL" icon={<CreditCard size={16} />} value={currentHub.upiQrImageUrl || ""} setValue={(value) => handlePaymentChange("upiQrImageUrl", value)} placeholder="https://example.com/qr.png" />
+            <div className="rounded-xl border border-slate-200/60 bg-slate-50/70 p-3.5">
+              <div className="flex items-start gap-2.5">
+                <ShieldCheck className="mt-0.5 text-emerald-600 shrink-0" size={16} />
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Only public URLs should be added here. Never enter private credentials or keys.
                 </p>
               </div>
             </div>

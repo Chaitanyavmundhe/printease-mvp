@@ -572,48 +572,56 @@ export default function HubActiveOrdersManager({
   if (!currentHub) return null;
 
   return (
-    <section className="rounded-3xl border bg-white p-4 shadow-sm sm:p-5 relative left-1/2 w-[calc(100vw-1rem)] -translate-x-1/2 sm:w-[calc(100vw-2rem)] lg:w-[min(1800px,calc(100vw-3rem))]">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+    <section className="rounded-2xl border border-slate-200/80 bg-white p-5 sm:p-6 shadow-sm relative left-1/2 w-[calc(100vw-1rem)] -translate-x-1/2 sm:w-[calc(100vw-2rem)] lg:w-[min(1800px,calc(100vw-3rem))]">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between border-b border-slate-100 pb-4">
         <div>
-          <h3 className="text-xl font-bold">Incoming / Active Orders</h3>
-          <p className="mt-1 text-sm text-slate-600">Manage active print orders for your print hub.</p>
+          <div className="flex items-center gap-2.5">
+            <h3 className="text-xl font-bold tracking-tight text-slate-900">Incoming & Active Orders</h3>
+            <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600">
+              {filteredOrders.length}
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-slate-500">Manage real-time incoming jobs, payments, and print queues.</p>
         </div>
-        <div className="grid gap-3 lg:w-[420px]">
-          <label className="relative block">
-            <Search className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={17} />
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+          <label className="relative min-w-[260px] sm:w-[320px]">
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
             <input
               value={orderSearch}
               onChange={(event) => setOrderSearch(event.target.value)}
-              placeholder="Search name, mobile, order, document"
-              className="w-full rounded-2xl border bg-white py-3 pl-11 pr-4 text-sm outline-none focus:ring-2 focus:ring-slate-300"
+              placeholder="Search order ID, mobile, customer..."
+              className="w-full rounded-xl border border-slate-200/80 bg-slate-50/50 py-2 pl-9 pr-3 text-xs outline-none focus:bg-white focus:border-slate-400 focus:ring-1 focus:ring-slate-300 transition"
             />
           </label>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <label className="flex items-center gap-2 rounded-xl border bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700">
+          <div className="flex items-center gap-2">
+            <label className="flex items-center gap-2 rounded-xl border border-slate-200/80 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-700 cursor-pointer hover:bg-slate-100 transition">
               <input
                 type="checkbox"
                 checked={globalAutoPrintAfterCash}
                 onChange={(event) => setGlobalAutoPrintAfterCash(event.target.checked)}
+                className="rounded border-slate-300 text-slate-900 focus:ring-slate-500"
               />
-              Auto-print after cash collected
+              <span className="whitespace-nowrap">Auto-print on cash</span>
             </label>
             <button
               type="button"
               onClick={refreshAgentStatus}
               disabled={agentLoading}
-              className="inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold disabled:opacity-50"
+              title="Refresh desktop agent and queue status"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200/80 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 shadow-sm transition"
             >
-              <RefreshCw size={14} /> Agent
+              <RefreshCw size={13} className={agentLoading ? "animate-spin" : ""} />
+              Agent
             </button>
           </div>
-          {orderSearch && <p className="text-xs text-slate-500">{filteredOrders.length} of {ordersForHub.length} orders shown</p>}
         </div>
       </div>
 
       {(agentError || message) && (
-        <p className={`mt-4 rounded-2xl px-4 py-3 text-sm font-semibold ${agentError ? "bg-rose-50 text-rose-700" : "bg-emerald-50 text-emerald-700"}`}>
-          {agentError || message}
-        </p>
+        <div className={`mt-4 rounded-xl px-4 py-2.5 text-xs font-semibold flex items-center justify-between ${agentError ? "bg-rose-50 text-rose-700 border border-rose-200" : "bg-emerald-50 text-emerald-700 border border-emerald-200"}`}>
+          <span>{agentError || message}</span>
+          <button onClick={() => { setAgentError(""); setMessage(""); }} className="text-slate-400 hover:text-slate-700"><X size={14} /></button>
+        </div>
       )}
 
       <div className="mt-5 grid gap-3 md:hidden">

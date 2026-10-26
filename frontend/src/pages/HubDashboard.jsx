@@ -358,75 +358,94 @@ export default function HubDashboard({ currentHub, hubOrders, updateOrderStatus,
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-slate-200/80 pb-5">
         <div>
-          <h2 className="text-2xl sm:text-3xl font-bold">Print Centre Dashboard</h2>
-          <p className="text-slate-600 text-sm sm:text-base">{currentHub.name} · Code {currentHub.code}</p>
+          <div className="flex items-center gap-2.5">
+            <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">Print Centre Dashboard</h2>
+            <span className="rounded-full bg-slate-100 px-3 py-0.5 text-xs font-semibold text-slate-700 border border-slate-200">
+              Code: {currentHub.code}
+            </span>
+          </div>
+          <p className="mt-1 text-sm text-slate-500">{currentHub.name}</p>
         </div>
-        <button onClick={() => navigate("hubPricing")} className="rounded-2xl bg-slate-900 px-5 py-3 font-semibold text-white w-full sm:w-auto">
-          Set Prices
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => navigate("hubPrinterAgent")}
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-200/80 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50"
+          >
+            <Printer size={16} />
+            Printers
+          </button>
+          <button
+            onClick={() => navigate("hubPricing")}
+            className="rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800"
+          >
+            Set Prices
+          </button>
+        </div>
       </div>
 
-      <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-4">
-        <Metric title="Total Orders" value={ordersForHub.length} icon={<FileText />} />
-        <Metric title="Active Orders" value={pendingOrders} icon={<Printer />} />
-        <Metric title="Pages Printed" value={totalPages} icon={<BarChart3 />} />
-        <Metric title="Collected Amount" value={`₹${totalRevenue}`} icon={<IndianRupee />} />
+      <div className="grid gap-4 grid-cols-2 sm:grid-cols-2 md:grid-cols-4">
+        <Metric title="Total Orders" value={ordersForHub.length} icon={<FileText size={18} />} />
+        <Metric title="Active Orders" value={pendingOrders} icon={<Printer size={18} />} />
+        <Metric title="Pages Printed" value={totalPages} icon={<BarChart3 size={18} />} />
+        <Metric title="Collected" value={`₹${totalRevenue}`} icon={<IndianRupee size={18} />} />
       </div>
 
-      <Card>
-        <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
-          <div>
-            <div className="flex items-center gap-2">
-              <QrCode size={22} />
-              <h3 className="text-xl font-bold">Customer Upload QR</h3>
+      <Card className="overflow-hidden">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="flex-1">
+            <div className="flex items-center gap-2 text-slate-900">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
+                <QrCode size={18} />
+              </div>
+              <h3 className="text-lg font-bold">Direct Customer Upload QR</h3>
             </div>
-            <p className="mt-2 text-sm text-slate-600">
-              Customers scan this QR to open the upload page with <b>{currentHub.name}</b> selected automatically.
+            <p className="mt-1.5 text-sm text-slate-500 leading-relaxed">
+              Print or display this code at your counter. Customers scan it to instantly open your direct upload portal.
             </p>
-            <div className="mt-4 rounded-2xl bg-slate-50 p-3 text-xs text-slate-600">
-              <span className="font-semibold text-slate-900">Link: </span>
-              <span className="break-all">{centreUploadUrl}</span>
+            <div className="mt-3 flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600 border border-slate-200/60 max-w-xl">
+              <span className="font-semibold text-slate-700 shrink-0">Upload URL:</span>
+              <span className="truncate">{centreUploadUrl}</span>
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
               <button
                 type="button"
                 onClick={copyCentreUploadLink}
-                className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white min-h-[44px]"
+                className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-3.5 py-2 text-xs font-semibold text-white transition hover:bg-slate-800 shadow-sm"
               >
-                <Copy size={16} />
+                <Copy size={14} />
                 {centreLinkCopied ? "Copied" : "Copy Link"}
               </button>
               <button
                 type="button"
                 onClick={() => openExternalUrl(centreUploadUrl).catch(() => setAgentError("Could not open upload page."))}
-                className="inline-flex items-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold min-h-[44px]"
+                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200/80 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 shadow-sm"
               >
-                <Link2 size={16} />
-                Open Upload Page
+                <Link2 size={14} />
+                Open Page
               </button>
               <button
                 type="button"
                 onClick={() => downloadQrImage(largeCentreQrUrl, `PrintEase-${currentHub.code || "centre"}-upload-qr.png`).catch(() => setAgentError("Could not download QR code."))}
-                className="inline-flex items-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold min-h-[44px]"
+                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200/80 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 shadow-sm"
               >
-                <Download size={16} />
-                Download QR
+                <Download size={14} />
+                Download PNG
               </button>
               <button
                 type="button"
                 onClick={printCentreQr}
-                className="inline-flex items-center gap-2 rounded-xl border px-4 py-3 text-sm font-semibold min-h-[44px]"
+                className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200/80 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 shadow-sm"
               >
-                <Printer size={16} />
-                Print QR
+                <Printer size={14} />
+                Print Sign
               </button>
             </div>
           </div>
           {centreQrUrl && (
-            <div className="mx-auto rounded-3xl border bg-white p-3 shadow-sm lg:mx-0">
-              <img src={centreQrUrl} alt={`Upload QR for ${currentHub.name}`} className="h-44 w-44 rounded-2xl" />
+            <div className="flex shrink-0 items-center justify-center rounded-2xl border border-slate-200/80 bg-slate-50/50 p-2.5">
+              <img src={centreQrUrl} alt={`Upload QR for ${currentHub.name}`} className="h-32 w-32 rounded-xl bg-white shadow-sm" />
             </div>
           )}
         </div>

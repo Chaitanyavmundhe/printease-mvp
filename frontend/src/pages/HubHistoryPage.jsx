@@ -192,28 +192,31 @@ export default function HubHistoryPage({ currentHub, hubOrders }) {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-slate-200/80 pb-4">
         <div>
-          <h2 className="text-3xl font-black tracking-tight text-slate-950">Hub History</h2>
-          <p className="text-slate-600">{currentHub.name} · Code {currentHub.code}</p>
+          <div className="flex items-center gap-2.5">
+            <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">Hub Order History</h2>
+            <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600 border border-slate-200">
+              Code: {currentHub.code}
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-slate-500">{currentHub.name} · Complete audit log of past and completed orders</p>
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-4">
-        <Metric title="Total Orders" value={ordersForHub.length} icon={<FileText />} />
-        <Metric title="Active Orders" value={pendingOrders} icon={<Printer />} />
-        <Metric title="Pages Printed" value={totalPages} icon={<BarChart3 />} />
-        <Metric title="Collected Amount" value={`₹${totalRevenue}`} icon={<IndianRupee />} />
+      <div className="grid gap-3.5 grid-cols-2 sm:grid-cols-4">
+        <Metric title="Total Orders" value={ordersForHub.length} icon={<FileText size={16} />} />
+        <Metric title="Active Orders" value={pendingOrders} icon={<Printer size={16} />} />
+        <Metric title="Pages Printed" value={totalPages} icon={<BarChart3 size={16} />} />
+        <Metric title="Collected" value={`₹${totalRevenue}`} icon={<IndianRupee size={16} />} />
       </div>
 
-      <Card className="relative left-1/2 w-[calc(100vw-1rem)] -translate-x-1/2 px-3 sm:w-[calc(100vw-2rem)] sm:px-4 lg:w-[min(1500px,calc(100vw-3rem))] lg:px-5">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <h3 className="text-xl font-bold">Historical Orders</h3>
-            <p className="mt-2 text-sm text-slate-600">
-              Search and filter all hub orders. Operations are managed in Dashboard.
-            </p>
-          </div>
+      <Card className="relative left-1/2 w-[calc(100vw-1rem)] -translate-x-1/2 px-4 sm:w-[calc(100vw-2rem)] sm:px-5 lg:w-[min(1500px,calc(100vw-3rem))]">
+        <div className="flex flex-col gap-1 border-b border-slate-100 pb-3">
+          <h3 className="text-base font-bold text-slate-900">Historical Archive</h3>
+          <p className="text-xs text-slate-500">
+            Search, filter, and inspect previous documents and payment histories.
+          </p>
         </div>
 
         {/* Filters Controls */}

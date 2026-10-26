@@ -189,65 +189,70 @@ export default function HubPrinterAgentPage({ navigate }) {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-slate-200/80 pb-4">
         <div>
-          <h2 className="text-3xl font-bold">Printer Status Sync</h2>
-          <p className="text-slate-600">Backend monitors printer status for monitoring only. Actual printing happens on PrintEase Desktop, which selects the local printer and reports success or failure.</p>
-          <p className={`mt-2 text-sm font-semibold ${backendHealth?.success ? "text-emerald-700" : "text-amber-700"}`}>
-            Backend: {backendHealth ? (backendHealth.success ? "online" : "check failed") : "checking"}
+          <div className="flex items-center gap-2.5">
+            <h2 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900">Printer & Desktop Agents</h2>
+            <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ${backendHealth?.success ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-amber-50 text-amber-700 border border-amber-200"}`}>
+              <span className={`h-1.5 w-1.5 rounded-full ${backendHealth?.success ? "bg-emerald-500" : "bg-amber-500"}`} />
+              Backend {backendHealth?.success ? "Online" : "Offline"}
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-slate-500">
+            Monitor shop PC background agents, CUPS/spooler connections, and printer queues.
+            {desktopAvailable && localPrinters.length > 0 && ` (Local: ${localPrinterNames})`}
           </p>
-          {lastUpdatedAt && <p className="mt-2 text-xs text-slate-500">Last updated: {new Date(lastUpdatedAt).toLocaleTimeString()}</p>}
-          {desktopAvailable && (
-            <p className={`mt-2 text-sm font-semibold ${localPrinters.length > 0 ? "text-emerald-700" : "text-amber-700"}`}>
-              Local desktop printers: {localPrinters.length > 0 ? localPrinterNames : "checking"}
-            </p>
-          )}
         </div>
-        <div className="flex flex-wrap gap-2">
-          <button onClick={() => navigate("hubDashboard")} className="inline-flex items-center gap-2 rounded-xl border px-4 py-3 font-semibold">
-            <RotateCcw size={16} /> Dashboard
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => navigate("hubDashboard")}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200/80 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 shadow-sm transition"
+          >
+            <RotateCcw size={14} /> Back to Hub
           </button>
-          <button onClick={refreshAll} disabled={loading} className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-3 font-semibold text-white disabled:opacity-60">
-            <RefreshCw size={16} /> Refresh
+          <button
+            onClick={refreshAll}
+            disabled={loading}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-3.5 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-60 shadow-sm transition"
+          >
+            <RefreshCw size={14} className={loading ? "animate-spin" : ""} /> Refresh
           </button>
         </div>
       </div>
 
       {(message || error) && (
-        <p className={`rounded-2xl p-4 text-sm font-semibold ${error ? "bg-rose-50 text-rose-700" : "bg-emerald-50 text-emerald-700"}`}>
-          {error || message}
-        </p>
+        <div className={`rounded-xl px-4 py-2.5 text-xs font-semibold flex items-center justify-between ${error ? "bg-rose-50 text-rose-700 border border-rose-200" : "bg-emerald-50 text-emerald-700 border border-emerald-200"}`}>
+          <span>{error || message}</span>
+          <button onClick={() => { setError(""); setMessage(""); }} className="text-slate-400 hover:text-slate-700">✕</button>
+        </div>
       )}
 
-      <div className="grid gap-4 md:grid-cols-4">
-        <Metric title="Online Devices" value={analytics.onlineAgents} icon={<Wifi />} />
-        <Metric title="Available Printers" value={analytics.availablePrinters} icon={<Printer />} />
-        <Metric title="Queued Jobs" value={analytics.queuedJobs} icon={<Activity />} />
-        <Metric title="Failed Today" value={analytics.failedJobsToday} icon={<ShieldX />} />
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-4">
-        <Metric title="Offline Devices" value={analytics.offlineAgents} icon={<Wifi />} />
-        <Metric title="Total Printers" value={analytics.totalPrinters} icon={<Printer />} />
-        <Metric title="Printing Jobs" value={analytics.printingJobs} icon={<Activity />} />
-        <Metric title="Completed Today" value={analytics.completedJobsToday} icon={<Activity />} />
+      <div className="grid gap-3.5 grid-cols-2 sm:grid-cols-4">
+        <Metric title="Online Agents" value={analytics.onlineAgents} icon={<Wifi size={16} />} />
+        <Metric title="Available Printers" value={analytics.availablePrinters} icon={<Printer size={16} />} />
+        <Metric title="Queued Jobs" value={analytics.queuedJobs} icon={<Activity size={16} />} />
+        <Metric title="Failed Today" value={analytics.failedJobsToday} icon={<ShieldX size={16} />} />
       </div>
 
       <Card>
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h3 className="text-xl font-bold">Pair Desktop Device</h3>
-            <p className="mt-1 text-sm text-slate-600">Open PrintEase Desktop on a shop PC, start pairing, then enter the code here.</p>
+            <h3 className="text-base font-bold text-slate-900">Pair New Shop PC</h3>
+            <p className="mt-0.5 text-xs text-slate-500">Open PrintEase Desktop on the counter computer, generate a pairing code, and enter it below.</p>
           </div>
-          <div className="flex gap-2 lg:min-w-[360px]">
+          <div className="flex gap-2 lg:w-[320px]">
             <input
               value={pairingCode}
               onChange={(event) => setPairingCode(event.target.value)}
-              placeholder="Pairing code"
-              className="min-w-0 flex-1 rounded-xl border px-3 py-3"
+              placeholder="Enter 6-digit code"
+              className="min-w-0 flex-1 rounded-xl border border-slate-200/80 bg-slate-50/50 px-3 py-2 text-xs outline-none focus:bg-white focus:border-slate-400 focus:ring-1 focus:ring-slate-300"
             />
-            <button onClick={submitPairingCode} disabled={loading} className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-3 font-semibold text-white disabled:opacity-60">
-              <Link2 size={16} /> Pair
+            <button
+              onClick={submitPairingCode}
+              disabled={loading}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-800 disabled:opacity-60 shadow-sm transition"
+            >
+              <Link2 size={14} /> Pair
             </button>
           </div>
         </div>
