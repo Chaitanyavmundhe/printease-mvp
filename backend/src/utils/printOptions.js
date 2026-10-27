@@ -160,6 +160,11 @@ export function normalizePrintOptions(input = {}, totalPages = 1) {
     },
     copies,
     orientation: pick(source.orientation, ALLOWED_ORIENTATIONS, defaults.orientation),
+    // Preserve validated hub controls; absent fields must not override a
+    // printer profile's existing defaults for ordinary customer orders.
+    ...(['normal', 'reverse'].includes(source.pageOrder) ? { pageOrder: source.pageOrder } : {}),
+    ...(['auto', 'normal', 'rotate-180'].includes(source.backSideRotation) ? { backSideRotation: source.backSideRotation } : {}),
+    ...(['auto', 'long-edge', 'short-edge'].includes(source.duplexBinding) ? { duplexBinding: source.duplexBinding } : {}),
     colorMode: pick(source.colorMode, ALLOWED_COLOR_MODES, defaults.colorMode),
     paperSize: pick(source.paperSize, ALLOWED_PAPER_SIZES, defaults.paperSize),
     sides: pick(source.sides, ALLOWED_SIDES, defaults.sides),

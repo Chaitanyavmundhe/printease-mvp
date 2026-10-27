@@ -420,6 +420,7 @@ export const getOrderDocuments = asyncHandler(async (req, res) => {
       fileSizeBytes: file.document?.fileSizeBytes,
       fileSha256: file.document?.fileSha256,
       pageCount: file.document?.pageCount,
+      preparedPageCount: file.document?.preparedPageCount,
       uploadedAt: file.document?.createdAt,
       originalPageCount: file.originalPageCount,
       selectedPages: file.selectedPages,

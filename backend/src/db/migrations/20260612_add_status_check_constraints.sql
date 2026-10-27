@@ -16,8 +16,8 @@ DO $$
 BEGIN
   ALTER TABLE print_orders ADD CONSTRAINT print_orders_payment_status_check CHECK (
     payment_status IS NULL OR
-    payment_status IN ('draft', 'pending', 'verified', 'collected', 'failed', 'expired', 'cancelled')
-  );
+    payment_status IN ('draft', 'not_requested', 'pending', 'requested', 'verified', 'collected', 'paid', 'failed', 'expired', 'cancelled')
+  ) NOT VALID;
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
@@ -33,16 +33,16 @@ END $$;
 DO $$
 BEGIN
   ALTER TABLE agents ADD CONSTRAINT agents_status_check CHECK (
-    status IN ('pending', 'active', 'offline', 'revoked', 'paused')
-  );
+    status IN ('pending', 'active', 'online', 'offline', 'busy', 'error', 'unknown', 'revoked', 'paused')
+  ) NOT VALID;
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
 DO $$
 BEGIN
   ALTER TABLE agent_pairing_sessions ADD CONSTRAINT agent_pairing_sessions_status_check CHECK (
-    status IN ('pending', 'claimed', 'approved', 'rejected', 'expired')
-  );
+    status IN ('pending', 'claimed', 'approved', 'confirmed', 'rejected', 'expired')
+  ) NOT VALID;
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 

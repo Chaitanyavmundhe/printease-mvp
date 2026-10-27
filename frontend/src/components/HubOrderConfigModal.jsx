@@ -1,122 +1,15 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useId, useRef } from "react";
 import { X, FileText, Settings2, ShieldAlert, Sparkles, Loader2 } from "lucide-react";
-
-// Client-side pricing calculation mirroring the backend logic
-export function calculatePrintPricingLocal({
-  pricing,
-  originalPageCount,
-  selectedPagesMode,
-  selectedPagesRange,
-  copies,
-  colorMode,
-  sides,
-  pagesPerSheet = 1,
-  watermarkEnabled = false
-}) {
-  const pageCount = Number(originalPageCount);
-  if (!Number.isFinite(pageCount) || pageCount <= 0) {
-    return {
-      pending: true,
-      reason: "PAGE_COUNT_PENDING",
-      selectedPageCount: null,
-      printablePageCount: null,
-      sheetCount: null,
-      physicalSheetCount: null,
-      pricePerPage: null,
-      watermarkCharge: null,
-      totalAmount: null,
-      totalAmountPaise: null
-    };
-  }
-
-  const copyCount = Math.max(1, parseInt(copies || 1, 10));
-  
-  let selectedPageCount = pageCount;
-  if (selectedPagesMode === "custom" && selectedPagesRange) {
-    try {
-      const parts = selectedPagesRange.split(",").map(p => p.trim()).filter(Boolean);
-      let count = 0;
-      const parsedPages = new Set();
-      
-      for (const part of parts) {
-        if (/^\d+$/.test(part)) {
-          const pNum = parseInt(part, 10);
-          if (pNum >= 1 && pNum <= pageCount) {
-            parsedPages.add(pNum);
-          }
-        } else {
-          const match = part.match(/^(\d+)\s*-\s*(\d+)$/);
-          if (match) {
-            const start = parseInt(match[1], 10);
-            const end = parseInt(match[2], 10);
-            if (start <= end && start >= 1 && end <= pageCount) {
-              for (let page = start; page <= end; page++) {
-                parsedPages.add(page);
-              }
-            }
-          }
-        }
-      }
-      if (parsedPages.size > 0) {
-        selectedPageCount = parsedPages.size;
-      }
-    } catch (e) {
-      // Fail-silent fallback to full pages
-    }
-  }
-
-  const printablePageCount = selectedPageCount * copyCount;
-  const sheetCount = Math.ceil(printablePageCount / pagesPerSheet);
-  const physicalSheetCount = (sides === "two_sided" || sides === "two_sided_long_edge" || sides === "two_sided_short_edge")
-    ? Math.ceil(sheetCount / 2)
-    : sheetCount;
-
-  const isColor = colorMode === "color";
-  const isDouble = sides === "two_sided" || sides === "two_sided_long_edge" || sides === "two_sided_short_edge";
-
-  let pricePerPage;
-  if (!isColor && !isDouble) pricePerPage = pricing.bwSingle;
-  else if (!isColor && isDouble) pricePerPage = pricing.bwDouble;
-  else if (isColor && !isDouble) pricePerPage = pricing.colorSingle;
-  else pricePerPage = pricing.colorDouble;
-
-  const rate = Number(pricePerPage);
-  if (!Number.isFinite(rate) || rate <= 0) {
-    return {
-      pending: true,
-      reason: "PRICE_RATE_PENDING",
-      selectedPageCount,
-      printablePageCount,
-      sheetCount,
-      physicalSheetCount,
-      pricePerPage: null,
-      watermarkCharge: null,
-      totalAmount: null,
-      totalAmountPaise: null
-    };
-  }
-
-  const base = printablePageCount * rate;
-  const watermarkCharge = watermarkEnabled ? Number(pricing.watermarkCharge || 0) : 0;
-  const totalAmount = base + watermarkCharge;
-
-  return {
-    selectedPageCount,
-    printablePageCount,
-    sheetCount,
-    physicalSheetCount,
-    pricePerPage: rate,
-    watermarkCharge,
-    totalAmount,
-    totalAmountPaise: Math.round(totalAmount * 100)
-  };
-}
+import ModalPortal from "./ModalPortal";
+import { calculatePrintPricingLocal, normalizeConfigurationFile, configurationPayload } from "../utils/hubOrderConfiguration";
+export { calculatePrintPricingLocal } from "../utils/hubOrderConfiguration";
+const EMPTY_FILES = [];
 
 export default function HubOrderConfigModal({
   isOpen,
   onClose,
   order,
-  files = [],
+  files = EMPTY_FILES,
   pricing = {},
   onSave,
   isLoading = false
@@ -126,73 +19,17 @@ export default function HubOrderConfigModal({
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
-  // Prevent background scrolling when open
+  const titleId = useId();
+  const noteId = useId();
+  const scrollBody = useRef(null);
+  useEffect(() => { if (errorMsg && scrollBody.current) scrollBody.current.scrollTop = 0; }, [errorMsg]);
+
   useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
-    }
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, [isOpen]);
-
-  // Normalize legacy color values
-  function normalizeColorMode(value) {
-    if (value === "black_white" || value === "black-white" || value === "bw") return "bw";
-    if (value === "color") return "color";
-    return "bw";
-  }
-
-  // Normalize legacy scale values
-  function normalizeScaleMode(value) {
-    if (value === "fit-to-page" || value === "fit_to_page") return "fit_to_page";
-    if (value === "actual-size" || value === "original") return "original";
-    if (value === "shrink-to-fit" || value === "fit_to_page_width") return "fit_to_page_width";
-    return "original";
-  }
-
-  // Load and prefill file options
-  useEffect(() => {
-    if (isOpen && Array.isArray(files)) {
-      const initial = files.map(file => {
-        const printOptions = file.printOptions || {};
-        const wm = printOptions.watermark || {};
-        return {
-          id: file.id,
-          fileName: file.fileName,
-          originalPageCount: file.originalPageCount || file.pageCount || "",
-          copies: file.copies || 1,
-          colorMode: normalizeColorMode(printOptions.colorMode),
-          sideType: printOptions.sideType || (printOptions.sides?.startsWith('two') ? 'double' : 'single'),
-          duplexBinding: printOptions.duplexBinding || (printOptions.sides?.includes('short') ? 'short-edge' : printOptions.sides?.includes('long') ? 'long-edge' : 'auto'),
-          orientation: printOptions.orientation || "auto",
-          backSideRotation: printOptions.backSideRotation || "auto",
-          pageOrder: printOptions.pageOrder || "normal",
-          scaleMode: normalizeScaleMode(printOptions.scaleMode),
-          paperSize: printOptions.paperSize || "A4",
-          pagesPerSheet: Number(printOptions.pagesPerSheet) || 1,
-          printDpi: Number(printOptions.printDpi || printOptions.dpi) || 300,
-          marginMode: printOptions.marginMode || "default",
-          pagesMode: printOptions.pages?.mode || "all",
-          pagesRange: printOptions.pages?.range || "",
-          watermarkEnabled: Boolean(wm.enabled),
-          watermarkType: wm.type || "order_code",
-          watermarkPosition: wm.position || "bottom_right",
-          watermarkOpacity: Number(wm.opacity) || 0.18,
-          watermarkFontSize: Number(wm.fontSize) || 18,
-          watermarkRotation: Number(wm.rotation) || 0,
-          watermarkText: wm.text || "",
-        };
-      });
-      setFormFiles(initial);
-      setNote("");
-      setErrorMsg("");
-    }
+    if (!isOpen) return;
+    setFormFiles(files.map(normalizeConfigurationFile));
+    setNote("");
+    setErrorMsg("");
   }, [isOpen, files]);
-
-  if (!isOpen || !order) return null;
 
   // Handler to update attributes of a single file in the form state
   const handleUpdateFile = (fileId, key, value) => {
@@ -202,7 +39,7 @@ export default function HubOrderConfigModal({
   };
 
   // Compile calculations for each file in the state
-  const calculatedFiles = formFiles.map(file => {
+  const calculatedFiles = useMemo(() => formFiles.map(file => {
     const calc = calculatePrintPricingLocal({
       pricing,
       originalPageCount: file.originalPageCount,
@@ -215,62 +52,29 @@ export default function HubOrderConfigModal({
       watermarkEnabled: file.watermarkEnabled
     });
     return { ...file, calc };
-  });
+  }), [formFiles, pricing]);
 
-  const hasPendingCalculation = calculatedFiles.some((file) => file.calc?.pending);
+  const hasPendingCalculation = isLoading || calculatedFiles.length === 0 || calculatedFiles.some((file) => file.calc?.pending);
   const totalCalculatedAmount = hasPendingCalculation
     ? null
     : calculatedFiles.reduce((sum, f) => sum + f.calc.totalAmount, 0);
-  const totalPreviousAmount = Number(order.totalAmountPaise || 0) / 100;
-  const isPriceDifferent = !hasPendingCalculation && Math.abs(totalCalculatedAmount - totalPreviousAmount) > 0.01;
+  const totalPreviousAmount = order?.totalAmountPaise != null ? Number(order.totalAmountPaise) / 100 : order?.amount != null ? Number(order.amount) : null;
+  const isPriceDifferent = !hasPendingCalculation && totalPreviousAmount !== null && Number.isFinite(totalPreviousAmount) && Math.abs(totalCalculatedAmount - totalPreviousAmount) > 0.01;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSubmitting(true);
     setErrorMsg("");
 
-    const payload = {
-      note: note.trim(),
-      files: calculatedFiles.map(f => ({
-        id: f.id,
-        copies: parseInt(f.copies, 10),
-        printOptions: {
-          colorMode: f.colorMode,
-          sideType: f.sideType,
-          duplexBinding: f.duplexBinding,
-          orientation: f.orientation,
-          backSideRotation: f.backSideRotation,
-          pageOrder: f.pageOrder,
-          scaleMode: f.scaleMode,
-          paperSize: f.paperSize,
-          pagesPerSheet: f.pagesPerSheet,
-          printDpi: f.printDpi,
-          marginMode: f.marginMode,
-          pages: {
-            mode: f.pagesMode,
-            range: f.pagesMode === "custom" ? f.pagesRange : ""
-          },
-          watermark: {
-            enabled: f.watermarkEnabled,
-            type: f.watermarkType,
-            position: f.watermarkPosition,
-            opacity: f.watermarkOpacity,
-            fontSize: f.watermarkFontSize,
-            rotation: f.watermarkRotation,
-            text: f.watermarkType === "custom_text" ? f.watermarkText : "",
-          }
-        }
-      }))
-    };
 
     if (hasPendingCalculation) {
-      setErrorMsg("Document preparation is still pending. Wait for the hub desktop to finish before saving.");
+      setErrorMsg(calculatedFiles.find(file => file.calc.pending)?.calc.error || "Verified page count or centre rates are unavailable. Wait for preparation or refresh centre pricing before saving.");
       setSubmitting(false);
       return;
     }
 
     try {
-      await onSave(payload);
+      await onSave(configurationPayload(calculatedFiles, note));
       onClose();
     } catch (err) {
       setErrorMsg(err.message || "Failed to update configuration.");
@@ -279,31 +83,28 @@ export default function HubOrderConfigModal({
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-[100] flex items-end justify-center p-2 sm:items-center sm:p-4">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity duration-300"
-        onClick={onClose}
-      />
+  if (!isOpen || !order) return null;
 
+  return (
+    <ModalPortal onClose={onClose} busy={submitting} labelledBy={titleId} className="flex items-center justify-center bg-slate-950/50 p-2 sm:p-4">
       {/* Modal Container */}
       <form
+        noValidate
         onSubmit={handleSubmit}
-        className="relative z-10 flex h-auto max-h-[92dvh] sm:max-h-[90vh] w-full max-w-3xl flex-col rounded-t-3xl sm:rounded-3xl border border-slate-200/80 bg-white shadow-2xl transition-all duration-300 dark:border-slate-800/80 dark:bg-slate-900"
+        className="relative flex h-[94vh] h-[94dvh] min-h-0 w-full max-w-5xl flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-xl"
       >
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 dark:border-slate-800">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-400">
+            <div className="flex h-10 w-10 items-center justify-center rounded-md bg-indigo-50 text-indigo-600">
               <Settings2 className="h-5 w-5" />
             </div>
             <div>
-              <h3 className="text-base font-semibold text-slate-800 dark:text-slate-100">
+              <h3 id={titleId} className="text-base font-semibold text-slate-800">
                 Override Print Settings
               </h3>
               <p className="text-xs text-slate-400">
-                Configuring Order #{order.orderCode}
+                Order {order.orderCode || order.id}
               </p>
             </div>
           </div>
@@ -311,16 +112,18 @@ export default function HubOrderConfigModal({
           <button
             type="button"
             onClick={onClose}
-            className="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+            disabled={submitting}
+            aria-label="Close configuration"
+            className="rounded-full p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
 
         {/* Content Body */}
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-6 bg-slate-50/50 dark:bg-slate-950/20" style={{ WebkitOverflowScrolling: "touch" }}>
+        <div ref={scrollBody} data-testid="configuration-scroll" className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-white p-4" style={{ WebkitOverflowScrolling: "touch" }}>
           {errorMsg && (
-            <div className="mb-4 flex items-center gap-3 rounded-2xl bg-rose-50 p-4 text-sm font-medium text-rose-600 dark:bg-rose-950/20 dark:text-rose-400">
+            <div role="alert" className="mb-4 flex items-center gap-3 rounded-md bg-rose-50 p-3 text-sm font-medium text-rose-700">
               <ShieldAlert className="h-5 w-5 shrink-0" />
               <span>{errorMsg}</span>
             </div>
@@ -336,11 +139,11 @@ export default function HubOrderConfigModal({
               {calculatedFiles.map((file, idx) => (
                 <div
                   key={file.id}
-                  className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm dark:border-slate-800/80 dark:bg-slate-900"
+                  className="border-b border-slate-200 pb-5 last:border-0"
                 >
-                  <div className="mb-4 flex items-center gap-2 border-b border-slate-100 pb-3 dark:border-slate-800">
+                  <div className="mb-4 flex items-center gap-2 border-b border-slate-100 pb-3">
                     <FileText className="h-5 w-5 text-indigo-500 shrink-0" />
-                    <span className="truncate font-semibold text-slate-800 dark:text-slate-100">
+                    <span className="truncate font-semibold text-slate-800">
                       File {idx + 1}: {file.fileName}
                     </span>
                     <span className="ml-auto text-xs font-semibold text-slate-400">
@@ -348,32 +151,32 @@ export default function HubOrderConfigModal({
                     </span>
                   </div>
 
-                  <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
                     {/* Copies */}
                     <div>
-                      <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                      <label className="block text-xs font-semibold text-slate-500 uppercase tracking-normal mb-1.5">
                         Copies
                       </label>
                       <input
                         type="number"
                         min="1"
                         max="99"
-                        value={file.copies}
+                        aria-label={`Copies for ${file.fileName}`} value={file.copies}
                         onChange={(e) => handleUpdateFile(file.id, "copies", e.target.value)}
-                        className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition focus:border-indigo-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
+                        className="w-full rounded-md border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition focus:border-indigo-500"
                         required
                       />
                     </div>
 
                     {/* Color Mode */}
                     <div>
-                      <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                      <label className="block text-xs font-semibold text-slate-500 uppercase tracking-normal mb-1.5">
                         Color mode
                       </label>
                       <select
-                        value={file.colorMode}
+                        aria-label={`Colour for ${file.fileName}`} value={file.colorMode}
                         onChange={(e) => handleUpdateFile(file.id, "colorMode", e.target.value)}
-                        className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition focus:border-indigo-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
+                        className="w-full rounded-md border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition focus:border-indigo-500"
                       >
                         <option value="bw">Black & White</option>
                         <option value="color">Color</option>
@@ -382,13 +185,13 @@ export default function HubOrderConfigModal({
 
                     {/* Side Type */}
                     <div>
-                      <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                      <label className="block text-xs font-semibold text-slate-500 uppercase tracking-normal mb-1.5">
                         Sides
                       </label>
                       <select
-                        value={file.sideType}
+                        aria-label={`Sides for ${file.fileName}`} value={file.sideType}
                         onChange={(e) => handleUpdateFile(file.id, "sideType", e.target.value)}
-                        className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition focus:border-indigo-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
+                        className="w-full rounded-md border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition focus:border-indigo-500"
                       >
                         <option value="single">Single side</option>
                         <option value="double">Double side</option>
@@ -397,13 +200,13 @@ export default function HubOrderConfigModal({
 
                     {/* Paper Size */}
                     <div>
-                      <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                      <label className="block text-xs font-semibold text-slate-500 uppercase tracking-normal mb-1.5">
                         Paper size
                       </label>
                       <select
-                        value={file.paperSize}
+                        aria-label={`Paper size for ${file.fileName}`} value={file.paperSize}
                         onChange={(e) => handleUpdateFile(file.id, "paperSize", e.target.value)}
-                        className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition focus:border-indigo-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
+                        className="w-full rounded-md border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition focus:border-indigo-500"
                       >
                         <option value="A4">A4</option>
                         <option value="A3">A3</option>
@@ -414,13 +217,13 @@ export default function HubOrderConfigModal({
 
                     {/* Orientation */}
                     <div>
-                      <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                      <label className="block text-xs font-semibold text-slate-500 uppercase tracking-normal mb-1.5">
                         Orientation
                       </label>
                       <select
-                        value={file.orientation}
+                        aria-label={`Orientation for ${file.fileName}`} value={file.orientation}
                         onChange={(e) => handleUpdateFile(file.id, "orientation", e.target.value)}
-                        className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition focus:border-indigo-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
+                        className="w-full rounded-md border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition focus:border-indigo-500"
                       >
                         <option value="auto">Auto</option>
                         <option value="portrait">Portrait</option>
@@ -430,13 +233,13 @@ export default function HubOrderConfigModal({
 
                     {/* Pages per Sheet */}
                     <div>
-                      <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                      <label className="block text-xs font-semibold text-slate-500 uppercase tracking-normal mb-1.5">
                         Pages per sheet
                       </label>
                       <select
-                        value={file.pagesPerSheet}
+                        aria-label={`Pages per sheet for ${file.fileName}`} value={file.pagesPerSheet}
                         onChange={(e) => handleUpdateFile(file.id, "pagesPerSheet", Number(e.target.value))}
-                        className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition focus:border-indigo-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
+                        className="w-full rounded-md border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition focus:border-indigo-500"
                       >
                         <option value={1}>1 page per sheet</option>
                         <option value={2}>2 pages per sheet</option>
@@ -449,13 +252,13 @@ export default function HubOrderConfigModal({
 
                     {/* Print Quality / DPI */}
                     <div>
-                      <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                      <label className="block text-xs font-semibold text-slate-500 uppercase tracking-normal mb-1.5">
                         Print quality
                       </label>
                       <select
-                        value={file.printDpi}
+                        aria-label={`Print quality for ${file.fileName}`} value={file.printDpi}
                         onChange={(e) => handleUpdateFile(file.id, "printDpi", Number(e.target.value))}
-                        className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition focus:border-indigo-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
+                        className="w-full rounded-md border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition focus:border-indigo-500"
                       >
                         <option value={203}>Draft — 203 DPI</option>
                         <option value={300}>Standard — 300 DPI</option>
@@ -465,13 +268,13 @@ export default function HubOrderConfigModal({
 
                     {/* Scale */}
                     <div>
-                      <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                      <label className="block text-xs font-semibold text-slate-500 uppercase tracking-normal mb-1.5">
                         Scale
                       </label>
                       <select
-                        value={file.scaleMode}
+                        aria-label={`Scale for ${file.fileName}`} value={file.scaleMode}
                         onChange={(e) => handleUpdateFile(file.id, "scaleMode", e.target.value)}
-                        className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition focus:border-indigo-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
+                        className="w-full rounded-md border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition focus:border-indigo-500"
                       >
                         <option value="original">Original size</option>
                         <option value="fit_to_page">Fit to page</option>
@@ -481,13 +284,13 @@ export default function HubOrderConfigModal({
 
                     {/* Margins */}
                     <div>
-                      <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                      <label className="block text-xs font-semibold text-slate-500 uppercase tracking-normal mb-1.5">
                         Margins
                       </label>
                       <select
-                        value={file.marginMode}
+                        aria-label={`Margins for ${file.fileName}`} value={file.marginMode}
                         onChange={(e) => handleUpdateFile(file.id, "marginMode", e.target.value)}
-                        className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition focus:border-indigo-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
+                        className="w-full rounded-md border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition focus:border-indigo-500"
                       >
                         <option value="default">Default</option>
                         <option value="minimum">Minimum</option>
@@ -497,13 +300,13 @@ export default function HubOrderConfigModal({
 
                     {/* Page Selection */}
                     <div>
-                      <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                      <label className="block text-xs font-semibold text-slate-500 uppercase tracking-normal mb-1.5">
                         Page selection
                       </label>
                       <select
-                        value={file.pagesMode}
+                        aria-label={`Page selection for ${file.fileName}`} value={file.pagesMode}
                         onChange={(e) => handleUpdateFile(file.id, "pagesMode", e.target.value)}
-                        className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition focus:border-indigo-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
+                        className="w-full rounded-md border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition focus:border-indigo-500"
                       >
                         <option value="all">All Pages</option>
                         <option value="custom">Custom Range</option>
@@ -513,15 +316,15 @@ export default function HubOrderConfigModal({
                     {/* Custom Page Range Input */}
                     {file.pagesMode === "custom" && (
                       <div>
-                        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                        <label className="block text-xs font-semibold text-slate-500 uppercase tracking-normal mb-1.5">
                           Page range (e.g. 1-3,5)
                         </label>
                         <input
                           type="text"
                           placeholder="e.g. 1-3, 5"
-                          value={file.pagesRange}
+                          aria-label={`Page range for ${file.fileName}`} value={file.pagesRange}
                           onChange={(e) => handleUpdateFile(file.id, "pagesRange", e.target.value)}
-                          className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition focus:border-indigo-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
+                          className="w-full rounded-md border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition focus:border-indigo-500"
                           required
                         />
                       </div>
@@ -529,13 +332,13 @@ export default function HubOrderConfigModal({
 
                     {/* Page Order — hub-only advanced */}
                     <div>
-                      <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5 flex items-center gap-1 text-amber-600">
+                      <label className="block text-xs font-semibold text-slate-500 uppercase tracking-normal mb-1.5 flex items-center gap-1 text-amber-600">
                         <Settings2 className="h-3 w-3"/> Page order
                       </label>
                       <select
-                        value={file.pageOrder}
+                        aria-label={`Page order for ${file.fileName}`} value={file.pageOrder}
                         onChange={(e) => handleUpdateFile(file.id, "pageOrder", e.target.value)}
-                        className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition focus:border-indigo-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
+                        className="w-full rounded-md border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition focus:border-indigo-500"
                       >
                         <option value="normal">Normal (1 to N)</option>
                         <option value="reverse">Reverse (N to 1)</option>
@@ -546,13 +349,13 @@ export default function HubOrderConfigModal({
                     {file.sideType === 'double' && (
                       <>
                         <div>
-                          <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5 flex items-center gap-1 text-amber-600">
+                          <label className="block text-xs font-semibold text-slate-500 uppercase tracking-normal mb-1.5 flex items-center gap-1 text-amber-600">
                             <Settings2 className="h-3 w-3"/> Duplex binding
                           </label>
                           <select
-                            value={file.duplexBinding}
+                            aria-label={`Duplex binding for ${file.fileName}`} value={file.duplexBinding}
                             onChange={(e) => handleUpdateFile(file.id, "duplexBinding", e.target.value)}
-                            className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition focus:border-indigo-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
+                            className="w-full rounded-md border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition focus:border-indigo-500"
                           >
                             <option value="auto">Auto (Profile default)</option>
                             <option value="long-edge">Long Edge (Book)</option>
@@ -560,13 +363,13 @@ export default function HubOrderConfigModal({
                           </select>
                         </div>
                         <div>
-                          <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5 flex items-center gap-1 text-amber-600">
+                          <label className="block text-xs font-semibold text-slate-500 uppercase tracking-normal mb-1.5 flex items-center gap-1 text-amber-600">
                             <Settings2 className="h-3 w-3"/> Back-side rotation
                           </label>
                           <select
-                            value={file.backSideRotation}
+                            aria-label={`Back-side rotation for ${file.fileName}`} value={file.backSideRotation}
                             onChange={(e) => handleUpdateFile(file.id, "backSideRotation", e.target.value)}
-                            className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition focus:border-indigo-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
+                            className="w-full rounded-md border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition focus:border-indigo-500"
                           >
                             <option value="auto">Auto</option>
                             <option value="normal">Normal</option>
@@ -587,7 +390,7 @@ export default function HubOrderConfigModal({
                       />
                       <label
                         htmlFor={`watermark-${file.id}`}
-                        className="text-sm font-semibold text-slate-700 dark:text-slate-300 cursor-pointer"
+                        className="text-sm font-semibold text-slate-700 cursor-pointer"
                       >
                         Add watermark to printable PDF
                       </label>
@@ -595,13 +398,13 @@ export default function HubOrderConfigModal({
 
                     {/* Expanded watermark options */}
                     {file.watermarkEnabled && (
-                      <div className="col-span-full grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/40">
+                      <div className="col-span-full grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 rounded-md border border-slate-200 bg-slate-50 p-4">
                         <div>
-                          <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Type</label>
+                          <label className="block text-xs font-semibold text-slate-500 uppercase tracking-normal mb-1.5">Type</label>
                           <select
-                            value={file.watermarkType}
+                            aria-label={`Watermark type for ${file.fileName}`} value={file.watermarkType}
                             onChange={(e) => handleUpdateFile(file.id, "watermarkType", e.target.value)}
-                            className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-indigo-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
+                            className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm outline-none focus:border-indigo-500"
                           >
                             <option value="order_code">Order code</option>
                             <option value="pickup_code">Pickup code</option>
@@ -610,11 +413,11 @@ export default function HubOrderConfigModal({
                           </select>
                         </div>
                         <div>
-                          <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Position</label>
+                          <label className="block text-xs font-semibold text-slate-500 uppercase tracking-normal mb-1.5">Position</label>
                           <select
-                            value={file.watermarkPosition}
+                            aria-label={`Watermark position for ${file.fileName}`} value={file.watermarkPosition}
                             onChange={(e) => handleUpdateFile(file.id, "watermarkPosition", e.target.value)}
-                            className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-indigo-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
+                            className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm outline-none focus:border-indigo-500"
                           >
                             <option value="bottom_right">Bottom right</option>
                             <option value="bottom_center">Bottom center</option>
@@ -627,37 +430,37 @@ export default function HubOrderConfigModal({
                         </div>
                         {file.watermarkType === "custom_text" && (
                           <div>
-                            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Custom text</label>
+                            <label className="block text-xs font-semibold text-slate-500 uppercase tracking-normal mb-1.5">Custom text</label>
                             <input
-                              value={file.watermarkText}
+                              aria-label={`Watermark text for ${file.fileName}`} value={file.watermarkText}
                               onChange={(e) => handleUpdateFile(file.id, "watermarkText", e.target.value)}
                               placeholder="Watermark text"
-                              className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-indigo-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100"
+                              className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm outline-none focus:border-indigo-500"
                             />
                           </div>
                         )}
                         <div>
-                          <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Opacity — {Math.round(file.watermarkOpacity * 100)}%</label>
-                          <input type="range" min="0.05" max="0.6" step="0.01" value={file.watermarkOpacity} onChange={(e) => handleUpdateFile(file.id, "watermarkOpacity", Number(e.target.value))} className="w-full accent-indigo-600" />
+                          <label className="block text-xs font-semibold text-slate-500 uppercase tracking-normal mb-1.5">Opacity — {Math.round(file.watermarkOpacity * 100)}%</label>
+                          <input type="range" min="0.05" max="0.6" step="0.01" aria-label={`Watermark opacity for ${file.fileName}`} value={file.watermarkOpacity} onChange={(e) => handleUpdateFile(file.id, "watermarkOpacity", Number(e.target.value))} className="w-full accent-indigo-600" />
                         </div>
                         <div>
-                          <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Rotation — {file.watermarkRotation}°</label>
-                          <input type="range" min="-90" max="90" step="5" value={file.watermarkRotation} onChange={(e) => handleUpdateFile(file.id, "watermarkRotation", Number(e.target.value))} className="w-full accent-indigo-600" />
+                          <label className="block text-xs font-semibold text-slate-500 uppercase tracking-normal mb-1.5">Rotation — {file.watermarkRotation}°</label>
+                          <input type="range" min="-90" max="90" step="5" aria-label={`Watermark rotation for ${file.fileName}`} value={file.watermarkRotation} onChange={(e) => handleUpdateFile(file.id, "watermarkRotation", Number(e.target.value))} className="w-full accent-indigo-600" />
                         </div>
                         <div>
-                          <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">Font size</label>
-                          <input type="number" min="8" max="72" value={file.watermarkFontSize} onChange={(e) => handleUpdateFile(file.id, "watermarkFontSize", e.target.value === "" ? "" : Number(e.target.value))} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-indigo-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100" />
+                          <label className="block text-xs font-semibold text-slate-500 uppercase tracking-normal mb-1.5">Font size</label>
+                          <input type="number" min="8" max="72" aria-label={`Watermark font size for ${file.fileName}`} value={file.watermarkFontSize} onChange={(e) => handleUpdateFile(file.id, "watermarkFontSize", e.target.value === "" ? "" : Number(e.target.value))} className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm outline-none focus:border-indigo-500" />
                         </div>
                       </div>
                     )}
                   </div>
 
                   {/* File Pricing Summary */}
-                  <div className="mt-4 rounded-xl bg-slate-50 p-3 text-xs font-medium text-slate-500 dark:bg-slate-950/40 dark:text-slate-400 flex flex-wrap gap-x-4 gap-y-1">
+                  <div className="mt-4 rounded-md bg-slate-50 p-3 text-xs font-medium text-slate-500 flex flex-wrap gap-x-4 gap-y-1">
                     <span>Selected: <strong>{file.calc.pending ? "Pending" : file.calc.selectedPageCount}</strong> pgs</span>
                     <span>Printable: <strong>{file.calc.pending ? "Pending" : file.calc.printablePageCount}</strong> pgs</span>
                     <span>Sheets: <strong>{file.calc.pending ? "Pending" : file.calc.physicalSheetCount}</strong> sheets</span>
-                    <span className="ml-auto text-indigo-600 dark:text-indigo-400">
+                    <span className="ml-auto text-indigo-600">
                       File total: <strong>{file.calc.pending ? "Pending" : `₹${file.calc.totalAmount.toFixed(2)}`}</strong>
                     </span>
                   </div>
@@ -666,14 +469,16 @@ export default function HubOrderConfigModal({
 
               {/* Note/Audit Reason */}
               <div>
-                <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1.5">
+                <label htmlFor={noteId} className="mb-1.5 block text-xs font-semibold text-slate-600">
                   Note / Reason for configuration override (Required)
                 </label>
                 <textarea
-                  placeholder="Describe why you are overrides configurations (e.g. User requested double sided, user wanted 2 copies)..."
+                  id={noteId}
+                  maxLength={500}
+                  placeholder="For example: Customer requested two copies."
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
-                  className="w-full h-20 rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition focus:border-indigo-500 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100 resize-none"
+                  className="w-full h-20 rounded-md border border-slate-200 px-3.5 py-2.5 text-sm outline-none transition focus:border-indigo-500 resize-none"
                   required
                 />
               </div>
@@ -682,15 +487,15 @@ export default function HubOrderConfigModal({
         </div>
 
         {/* Footer */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between border-t border-slate-100 px-6 py-4 dark:border-slate-800 gap-4 bg-slate-50/50 dark:bg-slate-900">
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-slate-50 p-3 sm:px-4">
           <div className="text-left">
             <span className="text-xs text-slate-400 font-medium block">Total Price Summary</span>
             <div className="flex items-baseline gap-2">
-              <span className="text-xl font-bold text-slate-800 dark:text-slate-100">
+              <span className="text-xl font-bold text-slate-800">
                 {hasPendingCalculation ? "Pending" : `₹${totalCalculatedAmount.toFixed(2)}`}
               </span>
               {isPriceDifferent && (
-                <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 flex items-center gap-1">
+                <span className="text-xs font-semibold text-indigo-600 flex items-center gap-1">
                   <Sparkles className="h-3 w-3" />
                   Was ₹{totalPreviousAmount.toFixed(2)}
                 </span>
@@ -702,15 +507,15 @@ export default function HubOrderConfigModal({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
+              className="rounded-md border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100"
               disabled={submitting}
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="flex items-center gap-2 rounded-xl bg-slate-900 px-5 py-2 text-sm font-semibold text-white hover:bg-slate-800 dark:bg-slate-100 dark:text-slate-950 dark:hover:bg-slate-200"
-              disabled={submitting || !note.trim() || isLoading || formFiles.length === 0}
+              className="flex items-center gap-2 rounded-md bg-slate-900 px-5 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+              disabled={submitting || isLoading || formFiles.length === 0}
             >
               {submitting ? (
                 <>
@@ -723,6 +528,6 @@ export default function HubOrderConfigModal({
           </div>
         </div>
       </form>
-    </div>
+    </ModalPortal>
   );
 }

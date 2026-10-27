@@ -2,7 +2,7 @@ import pg from 'pg';
 import dotenv from 'dotenv';
 dotenv.config();
 
-import { query, executor, timestamp, number, isUuid, centreSelect } from './common.js';
+import { query, executor, timestamp, number, isUuid, centreSelect, withTransaction } from './common.js';
 import { mapDocument, mapPairingSession, mapAgent } from './mappers.js';
 
 export async function getNextConversionJobForAgent(hubId, client) {
@@ -12,6 +12,11 @@ export async function getNextConversionJobForAgent(hubId, client) {
      where d.hub_id = $1
        and d.requires_desktop_preparation = true
        and d.preparation_status = 'pending'
+       and (d.expires_at is null or d.expires_at > now())
+       and not exists (
+         select 1 from print_order_files f join print_orders o on o.id = f.order_id
+         where f.document_id = d.id and o.hub_id <> $1
+       )
      order by d.created_at asc
      limit 1`,
     [hubId]
@@ -97,6 +102,7 @@ export async function findPairingSessionByIdAndDevice(sessionId, deviceId, clien
 }
 
 export async function upsertAgentForPairing(session, hubId, client) {
+  if (!client) return withTransaction(tx => upsertAgentForPairing(session, hubId, tx));
   const result = await executor(client).query(
     `insert into agents (
        hub_id, agent_name, device_id, platform, version, status, paused, paired_at, revoked_at, created_at
@@ -109,15 +115,23 @@ export async function upsertAgentForPairing(session, hubId, client) {
        platform = excluded.platform,
        version = excluded.version,
        revoked_at = null,
-       paired_at = now()
+       paired_at = clock_timestamp()
+     where agents.hub_id = excluded.hub_id
      returning *`,
     [hubId, session.agentName, session.deviceId, session.platform || null, session.version || null]
   );
 
+  if (!result.rows[0]) {
+    const error = new Error('Device is already registered to another hub.');
+    error.statusCode = 409;
+    throw error;
+  }
+  await revokeActiveAgentTokens(result.rows[0].id, client);
   return mapAgent(result.rows[0]);
 }
 
 export async function upsertAgentForDesktopDevice(device, hubId, client) {
+  if (!client) return withTransaction(tx => upsertAgentForDesktopDevice(device, hubId, tx));
   const result = await executor(client).query(
     `insert into agents (
        hub_id, agent_name, device_id, platform, version, status, paused, paired_at, revoked_at, created_at
@@ -130,11 +144,18 @@ export async function upsertAgentForDesktopDevice(device, hubId, client) {
        platform = excluded.platform,
        version = excluded.version,
        revoked_at = null,
-       paired_at = coalesce(agents.paired_at, now())
+       paired_at = clock_timestamp()
+     where agents.hub_id = excluded.hub_id
      returning *`,
     [hubId, device.deviceName, device.deviceId, device.platform || null, device.version || null]
   );
 
+  if (!result.rows[0]) {
+    const error = new Error('Device is already registered to another hub.');
+    error.statusCode = 409;
+    throw error;
+  }
+  await revokeActiveAgentTokens(result.rows[0].id, client);
   return mapAgent(result.rows[0]);
 }
 
@@ -144,7 +165,7 @@ export async function claimPairingSession(sessionId, hubId, agentId, client) {
      set status = 'claimed',
          hub_id = $2,
          agent_id = $3,
-         claimed_at = now()
+         claimed_at = clock_timestamp()
      where id = $1
        and status = 'pending'
        and expires_at > now()
@@ -161,7 +182,7 @@ export async function approvePairingSession(sessionId, hubId, agentId, client) {
      set status = 'claimed',
          hub_id = $2,
          agent_id = $3,
-         claimed_at = now(),
+         claimed_at = clock_timestamp(),
          approved_at = now()
      where id = $1
        and status = 'pending'
@@ -190,12 +211,23 @@ export async function rejectPairingSession(sessionId, hubId, client) {
 }
 
 export async function markPairingSessionConfirmed(sessionId, client) {
+  if (!client) return withTransaction(tx => markPairingSessionConfirmed(sessionId, tx));
+  // Serialize token issuance with re-pairing and revocation of the agent.
+  await client.query(
+    `select a.id from agents a join agent_pairing_sessions s on s.agent_id = a.id
+     where s.id = $1 for update of a`, [sessionId]
+  );
   const result = await executor(client).query(
-    `update agent_pairing_sessions
+    `update agent_pairing_sessions s
      set status = 'confirmed'
-     where id = $1
-       and status = 'claimed'
-     returning *`,
+     where s.id = $1
+       and s.status = 'claimed'
+       and (case when s.approved_at is not null then coalesce(s.approval_expires_at, s.expires_at) else s.expires_at end) > now()
+       and exists (
+         select 1 from agents a where a.id = s.agent_id and a.hub_id = s.hub_id
+           and a.revoked_at is null and a.paired_at <= s.claimed_at
+       )
+     returning s.*`,
     [sessionId]
   );
 
@@ -243,14 +275,13 @@ export async function findActiveAgentByTokenHash(tokenHash, client) {
 export async function updateAgentHeartbeat(agentId, updates, client) {
   const result = await executor(client).query(
     `update agents
-     set status = coalesce($2, status),
-         paused = coalesce($3, paused),
-         platform = coalesce($4, platform),
-         version = coalesce($5, version),
+     set status = case when paused then 'paused' else $2 end,
+         platform = coalesce($3, platform),
+         version = coalesce($4, version),
          last_seen_at = now()
      where id = $1 and revoked_at is null
      returning *`,
-    [agentId, updates.status, updates.paused, updates.platform, updates.version]
+    [agentId, ['online', 'offline', 'busy'].includes(updates.status) ? updates.status : 'online', updates.platform, updates.version]
   );
 
   return mapAgent(result.rows[0]);
@@ -303,6 +334,7 @@ export async function setAgentPaused(agentId, hubId, paused, client) {
 }
 
 export async function revokeAgent(agentId, hubId, client) {
+  if (!client) return withTransaction(tx => revokeAgent(agentId, hubId, tx));
   const result = await executor(client).query(
     `update agents
      set revoked_at = now(),

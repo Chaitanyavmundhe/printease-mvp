@@ -11,7 +11,7 @@ function reject(message, code = 'BILL_NOT_READY') {
 
 // Early downloads/conversions do not use this policy. Money and print activation
 // require a complete bill for exactly the backend-verified printable files.
-export function assertTrustedOrderBill(order, files, { online = false } = {}) {
+export function assertTrustedOrderBill(order, files) {
   if (!order || ['cancelled', 'completed', 'printing'].includes(String(order.status).toLowerCase())) {
     reject('This order cannot start a new payment.');
   }
@@ -43,7 +43,6 @@ export function assertTrustedOrderBill(order, files, { online = false } = {}) {
     error.code = GUEST_PRINT_LIMIT_CODE;
     throw error;
   }
-  if (online && total === 0) reject('Online payment requires a positive amount.');
   return total;
 }
 

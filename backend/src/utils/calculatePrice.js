@@ -75,8 +75,10 @@ export function calculatePrintPricing({
 }) {
   if (!centre) throw new Error('Centre not found');
 
-  const copyCount = positiveInteger(copies, 0);
-  if (!copyCount) throw new Error('Copies must be a positive number');
+  const copyCount = Number(copies);
+  // Match the exposed print controls. Direct configuration requests must not
+  // bypass their 99-copy bound or overflow the persisted integer bill.
+  if (!Number.isSafeInteger(copyCount) || copyCount < 1 || copyCount > 99) throw new Error('Copies must be a whole number between 1 and 99');
 
   const normalizedColorType = colorType === 'color' ? 'color' : 'bw';
   const normalizedSideType = sideType === 'double' || sideType === 'duplex' ? 'double' : 'single';
@@ -94,10 +96,18 @@ export function calculatePrintPricing({
   else pricePerPage = centre.pricing.colorDouble;
 
   const rate = Number(pricePerPage);
+  if (pricePerPage === null || pricePerPage === undefined || !Number.isFinite(rate) || rate < 0 || rate > 10000) {
+    throw new Error('Verified centre pricing is unavailable.');
+  }
   const chargeUnit = chargeBy === 'sheet' ? physicalSheetCount : printablePageCount;
   const base = chargeUnit * rate;
   const watermarkCharge = watermarkEnabled ? Number(centre.pricing.watermarkCharge || 0) : 0;
   const totalAmount = base + watermarkCharge;
+  const totalAmountPaise = Math.round(totalAmount * 100);
+  if (!Number.isFinite(watermarkCharge) || watermarkCharge < 0 ||
+      !Number.isSafeInteger(totalAmountPaise) || totalAmountPaise < 0 || totalAmountPaise > 2147483647) {
+    throw new Error('Print configuration exceeds the supported bill amount.');
+  }
 
   return {
     originalPageCount: Number(originalPageCount),
@@ -117,7 +127,7 @@ export function calculatePrintPricing({
     watermarkCharge,
     serviceFee: 0,
     totalAmount,
-    totalAmountPaise: Math.round(totalAmount * 100)
+    totalAmountPaise
   };
 }
 

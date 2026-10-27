@@ -4,10 +4,12 @@ import { getSupabaseAdminClient } from '../config/supabase.js';
 
 function getBearerToken(req) {
   const header = req.headers.authorization;
-  if (header && header.startsWith('Bearer ')) {
-    return header.split(' ')[1];
+  if (header !== undefined) {
+    return typeof header === 'string' && /^Bearer \S+$/i.test(header)
+      ? header.slice(7)
+      : '';
   }
-  if (req.query.authToken) {
+  if (req.query?.authToken !== undefined) {
     return req.query.authToken;
   }
   return null;
@@ -17,7 +19,8 @@ async function findLegacyJwtUser(token) {
   if (!process.env.JWT_SECRET) return null;
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
+    if (typeof decoded.id !== 'string' || !decoded.id || !Number.isFinite(decoded.exp)) return null;
     return findUserById(decoded.id);
   } catch (error) {
     return null;
@@ -25,6 +28,7 @@ async function findLegacyJwtUser(token) {
 }
 
 async function getSupabaseSessionUser(token) {
+  if (typeof token !== 'string' || token.length < 20 || token.length > 4096) return null;
   try {
     const supabase = getSupabaseAdminClient();
     const { data, error } = await supabase.auth.getUser(token);
@@ -36,7 +40,7 @@ async function getSupabaseSessionUser(token) {
 }
 
 async function resolveUserFromBearer(token) {
-  if (!token || token.length < 20 || token.length > 4096) return null;
+  if (typeof token !== 'string' || token.length < 20 || token.length > 4096) return null;
 
   const legacyUser = await findLegacyJwtUser(token);
   if (legacyUser) return { user: legacyUser, supabaseUser: null, profileRequired: false };
@@ -83,7 +87,7 @@ export async function authMiddleware(req, res, next) {
 
 export async function optionalAuthMiddleware(req, res, next) {
   const token = getBearerToken(req);
-  if (!token) {
+  if (token === null) {
     next();
     return;
   }
@@ -92,9 +96,11 @@ export async function optionalAuthMiddleware(req, res, next) {
     const resolved = await resolveUserFromBearer(token);
 
     if (!resolved) {
-      req.authWarning = 'Invalid or expired optional token ignored';
-      next();
-      return;
+      return res.status(401).json({ success: false, message: 'Invalid or expired token' });
+    }
+
+    if (resolved.profileRequired) {
+      return res.status(428).json({ success: false, profileRequired: true, message: 'Complete your PrintEase profile before using this route' });
     }
 
     req.user = resolved.user || null;

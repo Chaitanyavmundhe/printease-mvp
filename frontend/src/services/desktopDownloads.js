@@ -1,4 +1,4 @@
-const RELEASE_API = 'https://api.github.com/repos/adityasomde/printease-desk/releases/latest';
+const RELEASE_API = 'https://api.github.com/repos/adityasomde/printease-desktop-releases/releases/latest';
 
 export function detectDesktopPlatform(userAgent = navigator.userAgent) {
   if (/windows|win32|win64/i.test(userAgent)) return 'windows';
@@ -14,7 +14,15 @@ export async function getLatestDesktopInstaller(platform, { fetchImpl = fetch } 
     headers: { Accept: 'application/vnd.github+json' },
     credentials: 'omit', cache: 'no-store', signal: AbortSignal.timeout(15000),
   });
-  if (!response.ok) throw new Error('Could not check the latest desktop release. Please retry.');
+  // A dependency-only repository has no /latest app release. Retrying cannot
+  // fix that, and falling back to a private repo/MSI would give the wrong file.
+  if (response.status === 404) {
+    throw new Error('No public desktop app release is available yet. The administrator must publish the Windows and Linux installers.');
+  }
+  if (response.status === 429 || (response.status === 403 && response.headers.get('x-ratelimit-remaining') === '0')) {
+    throw new Error('GitHub has temporarily limited release checks. Please try again later.');
+  }
+  if (!response.ok) throw new Error('GitHub could not provide release information. Please retry later.');
   const release = await response.json();
   const match = /^(?:desktop-)?v(\d+\.\d+\.\d+)$/.exec(release.tag_name || '');
   if (!match || release.draft || release.prerelease) throw new Error('A stable desktop release is not available.');
@@ -22,7 +30,7 @@ export async function getLatestDesktopInstaller(platform, { fetchImpl = fetch } 
   const name = platform === 'windows'
     ? `PrintEase-Desktop-Setup-${version}.exe`
     : `PrintEase-Desktop-${version}-x86_64.AppImage`;
-  const expected = `https://github.com/adityasomde/printease-desk/releases/download/${release.tag_name}/${name}`;
+  const expected = `https://github.com/adityasomde/printease-desktop-releases/releases/download/${release.tag_name}/${name}`;
   const asset = release.assets?.find(item => item.name === name && item.browser_download_url === expected && item.size > 0);
   if (!asset) throw new Error('The latest release does not have that installer yet. Please retry shortly.');
   return { url: expected, version, name };

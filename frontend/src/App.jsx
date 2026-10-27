@@ -1,4 +1,5 @@
 import AppRouter from "./AppRouter";
+import { useUserLocation } from "./hooks/useUserLocation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { emitOrderChanged } from "./utils/appEvents";
@@ -8,7 +9,6 @@ import { getPricePerPage } from "./utils/price";
 import { countSelectedPagesPreview, estimatePricePreview } from "./utils/printEstimate";
 import { getStoredAuth, isDesktop, onPrintersUpdated } from "./utils/desktopBridge";
 import { apiRequest, invalidateUserHistory, createDocumentSignedDownload, getOrderDetail, getOrderStatus, reprintOrder } from "./services/api";
-import { loadRazorpayCheckout } from "./utils/razorpay";
 import { saveOrderToLocalHistory } from "./utils/localHistory";
 import {
   clearSupabaseUrlSession,
@@ -43,8 +43,7 @@ export default function App() {
   const page = getPageFromPath(location.pathname);
   const [profileOpen, setProfileOpen] = useState(false);
   const [desktopAvailable, setDesktopAvailable] = useState(() => isDesktop());
-  const [userLocation, setUserLocation] = useState(null);
-  const [userLocationStatus, setUserLocationStatus] = useState("idle");
+  const { userLocation, userLocationStatus, requestUserLocation } = useUserLocation();
   const [authRole, setAuthRole] = useState("user");
   const [authMode, setAuthMode] = useState("login");
   const [currentUser, setCurrentUser] = useState(() => {
@@ -73,6 +72,7 @@ export default function App() {
   const usernameAbortController = useRef(null);
   const usernameSuggestionRequest = useRef(0);
   const ordersLoadRequestRef = useRef(0);
+  const sessionRestoreRequestRef = useRef(0);
   const [hubName, setHubName] = useState("");
   const [hubCode, setHubCode] = useState("");
   const [authError, setAuthError] = useState("");
@@ -111,10 +111,7 @@ export default function App() {
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [paymentError, setPaymentError] = useState("");
   const [pendingPayment, setPendingPayment] = useState(null);
-  const [paymentMethod, setPaymentMethod] = useState("manual");
-  const [upiQr, setUpiQr] = useState(null);
   const [orderAccessToken, setOrderAccessToken] = useState(() => localStorage.getItem("printease_order_access_token") || "");
-  const demoPaymentEnabled = import.meta.env.VITE_DEMO_PAYMENT_ENABLED === "true";
 
   const [centres, setCentres] = useState(initialCentres);
   const [orders, setOrders] = useState(initialOrders);
@@ -202,11 +199,15 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    const requestId = ++sessionRestoreRequestRef.current;
     async function restoreSession() {
       let token = localStorage.getItem("printease_token");
+      const isCurrentSession = () => requestId === sessionRestoreRequestRef.current &&
+        token === localStorage.getItem("printease_token");
 
       if (!token && isDesktop()) {
         const stored = await getStoredAuth();
+        if (requestId !== sessionRestoreRequestRef.current) return;
         const storedAuth = stored?.auth;
 
         if (stored?.success && storedAuth?.token && storedAuth?.user) {
@@ -224,6 +225,7 @@ export default function App() {
 
       try {
         const data = await apiRequest("/api/auth/me");
+        if (!isCurrentSession()) return;
 
         if (!data || !data.user) throw new Error("Invalid session response");
 
@@ -236,6 +238,7 @@ export default function App() {
         } catch (centreError) {
           console.error("Could not refresh centres during session restore:", centreError?.message || centreError);
         }
+        if (!isCurrentSession()) return;
 
         let signedInCentre = null;
 
@@ -270,6 +273,7 @@ export default function App() {
         };
 
         await persistAuthSession(token, finalUser);
+        if (!isCurrentSession()) return;
         setCurrentUser(finalUser);
 
         if (signedInCentre) {
@@ -280,6 +284,7 @@ export default function App() {
         const centresForOrders = freshCentres && freshCentres.length ? freshCentres : centres;
         await loadOrdersForSession(finalUser, centresForOrders);
       } catch (error) {
+        if (!isCurrentSession()) return;
         if (error.status === 428 || error.details?.profileRequired) {
           setAuthMode("profile");
           navigate("auth", { replace: true });
@@ -300,6 +305,9 @@ export default function App() {
     }
 
     restoreSession();
+    return () => {
+      if (sessionRestoreRequestRef.current === requestId) sessionRestoreRequestRef.current++;
+    };
   }, []);
 
   useEffect(() => {
@@ -359,63 +367,6 @@ export default function App() {
     hubActivityStore.refresh = () => loadOrdersForSession(currentUser, centres);
   }, [currentUser, centres]);
 
-  const requestUserLocation = useCallback(() => {
-    if (typeof navigator === "undefined" || !navigator.geolocation) {
-      setUserLocationStatus("unsupported");
-      return;
-    }
-
-    setUserLocationStatus("locating");
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setUserLocation({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude,
-          accuracy: position.coords.accuracy,
-        });
-        setUserLocationStatus("ready");
-      },
-      (error) => {
-        if (error.code === 1) {
-          setUserLocationStatus("denied");
-        } else if (error.code === 2) {
-          setUserLocationStatus("unavailable");
-        } else if (error.code === 3) {
-          setUserLocationStatus("timeout");
-        } else {
-          setUserLocationStatus("error");
-        }
-      },
-      { enableHighAccuracy: false, timeout: 15000, maximumAge: 120000 }
-    );
-  }, []);
-
-  useEffect(() => {
-    if (typeof navigator === "undefined" || !navigator.permissions || !navigator.geolocation) return undefined;
-
-    let cancelled = false;
-    let permissionStatus = null;
-    navigator.permissions
-      .query({ name: "geolocation" })
-      .then((status) => {
-        if (cancelled) return;
-        permissionStatus = status;
-        if (status.state === "granted") requestUserLocation();
-        status.onchange = () => {
-          if (status.state === "granted") requestUserLocation();
-          if (status.state === "denied") {
-            setUserLocation(null);
-            setUserLocationStatus("denied");
-          }
-        };
-      })
-      .catch(() => {});
-
-    return () => {
-      cancelled = true;
-      if (permissionStatus) permissionStatus.onchange = null;
-    };
-  }, [requestUserLocation]);
 
   const prioritizedCentres = useMemo(
     () => rankCentres(centres, { orders, userLocation }),
@@ -700,6 +651,7 @@ export default function App() {
       throw new Error("Supabase did not return a login session.");
     }
 
+    sessionRestoreRequestRef.current++;
     localStorage.setItem("printease_token", session.access_token);
     if (session.refresh_token) localStorage.setItem("printease_supabase_refresh_token", session.refresh_token);
 
@@ -767,6 +719,7 @@ export default function App() {
       clearCachedOrdersForUser(currentUser);
     }
 
+    sessionRestoreRequestRef.current++;
     localStorage.setItem("printease_token", data.token);
     localStorage.setItem("printease_user", JSON.stringify(nextUser));
     localStorage.removeItem("printease_supabase_refresh_token");
@@ -954,6 +907,7 @@ export default function App() {
 
   function logout() {
     const previousUser = currentUser;
+    sessionRestoreRequestRef.current++;
     ordersLoadRequestRef.current += 1;
     clearAuthSession();
     setCurrentUser(null);
@@ -963,6 +917,7 @@ export default function App() {
     setOrder(null);
     setBackendPrice(null);
     setPaymentError("");
+    setPaymentLoading(false);
     setOrderAccessToken("");
     setOrders([]);
     localStorage.removeItem("printease_active_order_id");
@@ -1023,6 +978,7 @@ export default function App() {
   }, [location.pathname, location.search, centres]);
 
   useEffect(() => {
+    let cancelled = false;
     async function restoreActiveOrder() {
       const params = new URLSearchParams(location.search);
       const urlOrderId = params.get("order") || params.get("orderId") || params.get("order_id");
@@ -1034,6 +990,7 @@ export default function App() {
 
       try {
         const data = await getOrderStatus(activeOrderId, { orderAccessToken });
+        if (cancelled) return;
         if (data && data.order) {
           const refreshedOrder = normalizeOrder(data.order, centres);
           const refreshedPrice = buildPaymentPriceFromOrder(data.order, backendPrice);
@@ -1049,12 +1006,14 @@ export default function App() {
           localStorage.setItem("printease_active_order_id", activeOrderId);
         }
       } catch (err) {
+        if (cancelled) return;
         console.error("Failed to restore active order:", err);
       }
     }
 
     restoreActiveOrder();
-  }, [location.search, centres, page]);
+    return () => { cancelled = true; };
+  }, [location.search, centres, page, currentUser?.id, orderAccessToken]);
 
   function startDirectUpload() {
     setSelectedCentre(null);
@@ -1352,148 +1311,58 @@ export default function App() {
   }
 
   async function handlePayment() {
+    // A request is intent, never collection. Ignore late responses after logout
+    // or an order switch instead of restoring another session's payment data.
+    const paymentGeneration = sessionRestoreRequestRef.current;
+    const paymentIdentity = JSON.stringify([
+      localStorage.getItem("printease_token"),
+      localStorage.getItem("printease_order_access_token"),
+      localStorage.getItem("printease_active_order_id"),
+    ]);
+    const isCurrentPayment = () => paymentGeneration === sessionRestoreRequestRef.current &&
+      paymentIdentity === JSON.stringify([
+        localStorage.getItem("printease_token"),
+        localStorage.getItem("printease_order_access_token"),
+        localStorage.getItem("printease_active_order_id"),
+      ]);
     if (!order?.backendId) {
       setPaymentError("Create a pending order before payment.");
       navigate("upload");
       return;
     }
-
-    if (paymentMethod === "manual" && pendingPayment?.orderId === order.backendId && pendingPayment?.method === "MANUAL_UPI_OR_CASH") {
+    if (pendingPayment?.orderId === order.backendId &&
+        ["MANUAL_UPI_OR_CASH", "MANUAL_PAYMENT_REQUEST"].includes(pendingPayment?.method)) {
       navigate("track");
       return;
     }
-
     setPaymentLoading(true);
     setPaymentError("");
-
-    if (paymentMethod === "manual") {
-      try {
-        const paymentData = await apiRequest("/api/payments/manual-request", {
-          method: "POST",
-          headers: orderAccessToken ? { "x-order-access-token": orderAccessToken } : {},
-          body: JSON.stringify({ orderId: order.backendId, orderAccessToken: orderAccessToken || undefined }),
-        });
-        const requestedOrder = normalizeOrder(paymentData.order || order, centres);
-        setOrder(requestedOrder);
-        setOrders((prev) => upsertOrder(prev, requestedOrder));
-        setLastOrdersUpdatedAt(new Date().toISOString());
-        emitOrderChanged();
-        invalidateUserHistory(currentUser?.id || "me");
-        setPendingPayment(paymentData.payment || {
-          id: `manual-${order.backendId}`,
-          orderId: order.backendId,
-          amount: order.amount,
-          method: "MANUAL_UPI_OR_CASH",
-          status: "pending",
-          createdAt: new Date().toISOString(),
-        });
-      } catch (error) {
-        setPaymentError(error.message || "Could not create pending payment request.");
-        setPaymentLoading(false);
-        return;
-      }
-
-      setUpiQr(selectedCentre?.upiQrImageUrl ? { imageUrl: selectedCentre.upiQrImageUrl, source: "centre" } : null);
-      setPaymentLoading(false);
-      navigate("track");
-      return;
-    }
-
     try {
-      let paymentData = null;
-
-      if (paymentMethod === "upi_qr") {
-        paymentData = await apiRequest("/api/payments/razorpay/upi-qr", {
-          method: "POST",
-          headers: orderAccessToken ? { "x-order-access-token": orderAccessToken } : {},
-          body: JSON.stringify({ orderId: order.backendId, orderAccessToken: orderAccessToken || undefined }),
-        });
-      } else {
-        paymentData = await apiRequest("/api/payments/razorpay/order", {
-          method: "POST",
-          headers: orderAccessToken ? { "x-order-access-token": orderAccessToken } : {},
-          body: JSON.stringify({ orderId: order.backendId, orderAccessToken: orderAccessToken || undefined }),
-        });
-      }
-
-      setPendingPayment(paymentData.payment || null);
-      setUpiQr(paymentData.qr || null);
-      if (paymentData.order) {
-        const requestedOrder = normalizeOrder(paymentData.order, centres);
-        setOrder(requestedOrder);
-        setOrders((prev) => upsertOrder(prev, requestedOrder));
-        setLastOrdersUpdatedAt(new Date().toISOString());
+      const paymentData = await apiRequest("/api/payments/manual-request", {
+        method: "POST",
+        headers: orderAccessToken ? { "x-order-access-token": orderAccessToken } : {},
+        body: JSON.stringify({ orderId: order.backendId, orderAccessToken: orderAccessToken || undefined }),
+      });
+      if (!isCurrentPayment()) return;
+      const requestedOrder = normalizeOrder(paymentData.order || order, centres);
+      setOrder(requestedOrder);
+      setOrders((prev) => upsertOrder(prev, requestedOrder));
+      setLastOrdersUpdatedAt(new Date().toISOString());
       emitOrderChanged();
-        invalidateUserHistory(currentUser?.id || "me");
-      }
-
-      if (paymentMethod === "razorpay" && paymentData.razorpay?.orderId) {
-        await loadRazorpayCheckout();
-
-        const razorpay = new window.Razorpay({
-          key: paymentData.razorpay.keyId,
-          amount: paymentData.razorpay.amount,
-          currency: paymentData.razorpay.currency,
-          name: paymentData.razorpay.name || "PrintEase",
-          description: paymentData.razorpay.description || "PrintEase order payment",
-          order_id: paymentData.razorpay.orderId,
-          prefill: paymentData.razorpay.prefill || {},
-          notes: paymentData.razorpay.notes || {},
-          handler: async function (response) {
-            try {
-              setPaymentLoading(true);
-              setPaymentError("");
-
-              const verifiedData = await apiRequest("/api/payments/razorpay/verify", {
-                method: "POST",
-                headers: orderAccessToken ? { "x-order-access-token": orderAccessToken } : {},
-                body: JSON.stringify({
-                  paymentId: paymentData.payment.id,
-                  razorpay_order_id: response.razorpay_order_id,
-                  razorpay_payment_id: response.razorpay_payment_id,
-                  razorpay_signature: response.razorpay_signature,
-                  orderAccessToken: orderAccessToken || undefined,
-                }),
-              });
-
-              const verifiedOrder = normalizeOrder(verifiedData.order || order, centres);
-              setOrder(verifiedOrder);
-              setOrders((prev) => upsertOrder(prev, verifiedOrder));
-              setLastOrdersUpdatedAt(new Date().toISOString());
-      emitOrderChanged();
-              invalidateUserHistory(currentUser?.id || "me");
-              // Checkout completion is not proof of capture. Preserve pending
-              // state/reconciliation warnings instead of inviting another charge.
-              setPendingPayment(verifiedData.paymentPending ? verifiedData.payment : null);
-              if (verifiedData.paymentPending || verifiedData.reconciliationRequired) {
-                setPaymentError(verifiedData.message || "Payment is awaiting confirmation. Do not pay again yet.");
-              }
-              setUpiQr(null);
-              navigate("track");
-            } catch (error) {
-              setPaymentError(error.message || "Payment verification failed.");
-            } finally {
-              setPaymentLoading(false);
-            }
-          },
-          modal: {
-            ondismiss: function () {
-              setPaymentError("Payment was not completed. You can retry from tracking page or pay at the shop.");
-              setPaymentLoading(false);
-            },
-          },
-        });
-
-        razorpay.open();
-      } else if (paymentMethod === "upi_qr") {
-        navigate("track");
-      }
+      invalidateUserHistory(currentUser?.id || "me");
+      setPendingPayment(paymentData.payment || {
+        id: `manual-${order.backendId}`,
+        orderId: order.backendId,
+        amount: requestedOrder.amount,
+        method: "MANUAL_PAYMENT_REQUEST",
+        status: "pending",
+        createdAt: new Date().toISOString(),
+      });
+      navigate("track");
     } catch (error) {
-      setPaymentError(error.message || "Could not initialize payment. Manual payment is still available.");
+      if (isCurrentPayment()) setPaymentError(error.message || "Could not create pending payment request.");
     } finally {
-      if (paymentMethod !== "razorpay") {
-        setPaymentLoading(false);
-      }
+      if (isCurrentPayment()) setPaymentLoading(false);
     }
   }
 
@@ -1519,20 +1388,16 @@ export default function App() {
         };
     setOrder(paymentOrder);
     if (nextCentre) setSelectedCentre(nextCentre);
-    setPendingPayment({
-      id: `manual-${paymentOrder.backendId || paymentOrder.id}`,
-      orderId: paymentOrder.backendId || paymentOrder.id,
-      amount: paymentOrder.amount,
-      method: "MANUAL_UPI_OR_CASH",
-      status: "pending",
-      createdAt: new Date().toISOString(),
-    });
-    setUpiQr(nextCentre?.upiQrImageUrl ? { imageUrl: nextCentre.upiQrImageUrl } : null);
+    // Opening a saved order is not a payment request. Let the customer submit
+    // the real request rather than inventing a local "pending payment" record.
+    setPendingPayment(null);
+    setBackendPrice(null);
     setPaymentError("");
 
     const activeOrderId = paymentOrder.backendId || paymentOrder.id;
     localStorage.setItem("printease_active_order_id", activeOrderId);
-    navigate(`track?order=${activeOrderId}`);
+    const requested = String(paymentOrder.paymentStatus || "").toLowerCase() === "requested";
+    navigate(`${requested ? "track" : "payment"}?order=${activeOrderId}`);
   }
 
   async function reprintWithSettings(historyOrder) {
@@ -1774,143 +1639,6 @@ export default function App() {
     }
   }
 
-  async function startRazorpayForExistingOrder(existingOrder = order) {
-    if (!existingOrder?.backendId) {
-      setPaymentError("No backend order available for payment.");
-      return;
-    }
-
-    setPaymentLoading(true);
-    setPaymentError("");
-
-    try {
-      const paymentData = await apiRequest("/api/payments/razorpay/order", {
-        method: "POST",
-        headers: orderAccessToken ? { "x-order-access-token": orderAccessToken } : {},
-        body: JSON.stringify({ orderId: existingOrder.backendId, orderAccessToken: orderAccessToken || undefined }),
-      });
-
-      setPendingPayment(paymentData.payment || null);
-      if (paymentData.order) {
-        const requestedOrder = normalizeOrder(paymentData.order, centres);
-        setOrder(requestedOrder);
-        setOrders((prev) => upsertOrder(prev, requestedOrder));
-        setLastOrdersUpdatedAt(new Date().toISOString());
-      emitOrderChanged();
-        invalidateUserHistory(currentUser?.id || "me");
-      }
-      await loadRazorpayCheckout();
-
-      const razorpay = new window.Razorpay({
-        key: paymentData.razorpay.keyId,
-        amount: paymentData.razorpay.amount,
-        currency: paymentData.razorpay.currency,
-        name: paymentData.razorpay.name || "PrintEase",
-        description: paymentData.razorpay.description || "PrintEase order payment",
-        order_id: paymentData.razorpay.orderId,
-        prefill: paymentData.razorpay.prefill || {},
-        notes: paymentData.razorpay.notes || {},
-        handler: async function (response) {
-          try {
-            setPaymentLoading(true);
-            setPaymentError("");
-            const verifiedData = await apiRequest("/api/payments/razorpay/verify", {
-              method: "POST",
-              headers: orderAccessToken ? { "x-order-access-token": orderAccessToken } : {},
-              body: JSON.stringify({
-                paymentId: paymentData.payment.id,
-                razorpay_order_id: response.razorpay_order_id,
-                razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_signature: response.razorpay_signature,
-                orderAccessToken: orderAccessToken || undefined,
-              }),
-            });
-
-            const nextOrder = normalizeOrder(verifiedData.order || existingOrder, centres);
-            setOrder(nextOrder);
-            setOrders((prev) => upsertOrder(prev, nextOrder));
-            setLastOrdersUpdatedAt(new Date().toISOString());
-      emitOrderChanged();
-            invalidateUserHistory(currentUser?.id || "me");
-            setPendingPayment(null);
-            setUpiQr(null);
-          } catch (error) {
-            setPaymentError(error.message || "Payment verification failed.");
-          } finally {
-            setPaymentLoading(false);
-          }
-        },
-        modal: {
-          ondismiss: function () {
-            setPaymentError("Payment was not completed. You can retry or pay manually at the shop.");
-            setPaymentLoading(false);
-          },
-        },
-      });
-
-      razorpay.open();
-    } catch (error) {
-      setPaymentError(error.message || "Could not start Razorpay payment.");
-      setPaymentLoading(false);
-    }
-  }
-
-  async function createUpiQrForExistingOrder(existingOrder = order) {
-    if (!existingOrder?.backendId) {
-      setPaymentError("No backend order available for UPI QR.");
-      return;
-    }
-
-    setPaymentLoading(true);
-    setPaymentError("");
-
-    try {
-      const paymentData = await apiRequest("/api/payments/razorpay/upi-qr", {
-        method: "POST",
-        headers: orderAccessToken ? { "x-order-access-token": orderAccessToken } : {},
-        body: JSON.stringify({ orderId: existingOrder.backendId, orderAccessToken: orderAccessToken || undefined }),
-      });
-
-      setPendingPayment(paymentData.payment || null);
-      setUpiQr(paymentData.qr || null);
-      if (paymentData.order) {
-        const requestedOrder = normalizeOrder(paymentData.order, centres);
-        setOrder(requestedOrder);
-        setOrders((prev) => upsertOrder(prev, requestedOrder));
-        setLastOrdersUpdatedAt(new Date().toISOString());
-      emitOrderChanged();
-        invalidateUserHistory(currentUser?.id || "me");
-      }
-    } catch (error) {
-      setPaymentError(error.message || "Could not create UPI QR.");
-    } finally {
-      setPaymentLoading(false);
-    }
-  }
-
-  async function handleVerifyDemoPayment() {
-    if (!pendingPayment?.id) return;
-    setPaymentLoading(true);
-    setPaymentError("");
-    try {
-      const data = await apiRequest("/api/payments/verify-demo", {
-        method: "POST",
-        body: JSON.stringify({ paymentId: pendingPayment.id, demoSuccess: true })
-      });
-      const verifiedOrder = normalizeOrder(data.order || order, centres);
-      setOrder(verifiedOrder);
-      setOrders(prev => upsertOrder(prev, verifiedOrder));
-      setLastOrdersUpdatedAt(new Date().toISOString());
-      emitOrderChanged();
-      invalidateUserHistory(currentUser?.id || "me");
-      setPendingPayment(null);
-      setUpiQr(null);
-    } catch (error) {
-      setPaymentError(error.message || "Demo verification failed");
-    } finally {
-      setPaymentLoading(false);
-    }
-  }
 
   async function updateOrderStatus(orderId, nextStatus) {
     const existingOrder = orders.find((item) => item.id === orderId || item.backendId === orderId);
@@ -2062,10 +1790,10 @@ export default function App() {
       watermarkType, setWatermarkType, watermarkText, setWatermarkText, watermarkPosition, setWatermarkPosition,
       watermarkOpacity, setWatermarkOpacity, watermarkFontSize, setWatermarkFontSize, watermarkRotation, setWatermarkRotation,
       preparePayment, paymentLoading, paymentError, reprintSourceDocuments, setReprintSourceDocuments, reprintDocumentExpired,
-      pendingPayment, paymentMethod, setPaymentMethod, upiQr, handlePayment, handleVerifyDemoPayment,
-      demoPaymentEnabled, order, updateOrderStatus,
+      pendingPayment, handlePayment,
+      order, updateOrderStatus,
       hubOrders, currentHub, updateCentrePrice, updateCentrePayment, updateCentreAfterOrderSettings, updateProfile,
-      startDirectUpload, orders, centres, startRazorpayForExistingOrder, createUpiQrForExistingOrder, openPaymentRequest,
+      startDirectUpload, orders, centres, openPaymentRequest,
       reprintWithSettings, reprintWithSameSettings,
       prioritizedCentres, selectCentreAndUpload, selectCentreByCode, loadOrdersForSession, applySavedOrderUpdate,
       userLocation, userLocationStatus, requestUserLocation,

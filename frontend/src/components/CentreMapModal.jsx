@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { getCurrentLocation, locationErrorMessage } from "../utils/location";
 import { MapPin, X, Upload, Navigation, AlertCircle } from "lucide-react";
 import "leaflet/dist/leaflet.css";
 
@@ -79,12 +80,14 @@ function buildPopupHtml(centre) {
   `;
 }
 
-export default function CentreMapModal({ centres, onClose, onSelectCentre, focusCentre, initialUserLocation = null }) {
+export default function CentreMapModal({ centres, onClose, onSelectCentre, focusCentre, initialUserLocation = null, requestUserLocation }) {
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const userMarkerRef = useRef(null);
   const [userLocation, setUserLocation] = useState(initialUserLocation);
-  const [locationDenied, setLocationDenied] = useState(false);
+  const [locationError, setLocationError] = useState("");
+  const locationRequest = useRef(null);
+  useEffect(() => () => locationRequest.current?.abort(), []);
   const [locating, setLocating] = useState(false);
 
   const mappable = centres.filter(
@@ -191,27 +194,33 @@ export default function CentreMapModal({ centres, onClose, onSelectCentre, focus
     mapInstanceRef.current.setView([focusCentre.latitude, focusCentre.longitude], 16);
   }, [focusCentre]);
 
-  function locateMe() {
-    if (!navigator.geolocation) {
-      setLocationDenied(true);
-      return;
-    }
+  async function locateMe() {
+    locationRequest.current?.abort();
+    const controller = new AbortController();
+    locationRequest.current = controller;
     setLocating(true);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const { latitude, longitude } = pos.coords;
-        setUserLocation({ latitude, longitude });
-        setLocating(false);
-        const map = mapInstanceRef.current;
-        if (!map) return;
-        map.setView([latitude, longitude], 14);
-        showUserLocation(map, { latitude, longitude }, true);
-      },
-      () => {
-        setLocating(false);
-        setLocationDenied(true);
+    setLocationError("");
+    try {
+      const position = requestUserLocation
+        ? await requestUserLocation({ signal: controller.signal, throwOnError: true })
+        : await getCurrentLocation({ signal: controller.signal });
+      if (controller.signal.aborted) return;
+      if (!position) {
+        setLocationError("Location was not available. Check browser permissions, system location services and Wi-Fi, then retry.");
+        return;
       }
-    );
+      const { latitude, longitude } = position;
+      setUserLocation(position);
+      const map = mapInstanceRef.current;
+      if (map) {
+        map.setView([latitude, longitude], 14);
+        showUserLocation(map, position, true);
+      }
+    } catch (error) {
+      if (!controller.signal.aborted) setLocationError(locationErrorMessage(error));
+    } finally {
+      if (!controller.signal.aborted) setLocating(false);
+    }
   }
 
   return (
@@ -261,10 +270,10 @@ export default function CentreMapModal({ centres, onClose, onSelectCentre, focus
         </div>
 
         {/* Privacy note */}
-        {locationDenied && (
+        {locationError && (
           <div className="flex items-center gap-2 border-b bg-amber-50 px-5 py-2 text-sm text-amber-700">
             <AlertCircle size={14} />
-            Location permission denied. Map still shows all public centres.
+            {locationError} Map still shows all public centres.
           </div>
         )}
 

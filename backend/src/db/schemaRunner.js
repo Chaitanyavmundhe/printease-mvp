@@ -1,11 +1,21 @@
 import { readdir, readFile } from 'fs/promises';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { query } from '../config/db.js';
+import { withTransaction } from '../config/db.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+// Schema DDL and its migration ledger must share one connection and commit.
+// A transaction-scoped lock also serializes overlapping Render starts without
+// relying on session locks (which are unsafe behind a transaction pooler).
 export async function applySchema() {
+  return withTransaction(async (client) => {
+    await client.query('select pg_advisory_xact_lock(178423, 1)');
+    return applySchemaOnClient(client);
+  });
+}
+
+async function applySchemaOnClient(client) {
   console.log('[DB CHECK STARTED]');
 
   try {
@@ -25,8 +35,8 @@ export async function applySchema() {
     for (const match of matches) {
       try {
         // Check the actual type of the referenced table's id column, if it exists
-        const res = await query(
-          `select udt_name from information_schema.columns where table_name = $1 and column_name = 'id' limit 1`,
+        const res = await client.query(
+          `select udt_name from information_schema.columns where table_schema = current_schema() and table_name = $1 and column_name = 'id' limit 1`,
           [match.refTable]
         );
 
@@ -37,15 +47,15 @@ export async function applySchema() {
           adjustedSql = adjustedSql.replace(match.full, replacement);
         }
       } catch (err) {
-        // If anything goes wrong while introspecting, skip and continue — we'll attempt to apply original SQL
-        console.warn('[DB SCHEMA ADJUST] could not inspect referenced table', match.refTable, err?.message || err);
+        // A failed query aborts this transaction; do not run guessed DDL afterward.
+        throw err;
       }
     }
 
-    await query(adjustedSql);
+    await client.query(adjustedSql);
     console.log('[DB SCHEMA APPLIED]');
 
-    await query(`
+    await client.query(`
       CREATE TABLE IF NOT EXISTS schema_migrations (
         version text PRIMARY KEY,
         applied_at timestamptz NOT NULL DEFAULT now()
@@ -61,7 +71,7 @@ export async function applySchema() {
       for (const file of sqlFiles) {
         const version = file.replace('.sql', '');
         
-        const { rows } = await query('SELECT version FROM schema_migrations WHERE version = $1', [version]);
+        const { rows } = await client.query('SELECT version FROM schema_migrations WHERE version = $1', [version]);
         if (rows.length > 0) {
           console.log(`[DB MIGRATION] Skipping ${file} (already applied)`);
           continue;
@@ -70,15 +80,8 @@ export async function applySchema() {
         console.log(`[DB MIGRATION] Running ${file}...`);
         const migrationSql = await readFile(join(migrationsDir, file), 'utf8');
         
-        await query('BEGIN');
-        try {
-          await query(migrationSql);
-          await query('INSERT INTO schema_migrations (version) VALUES ($1) ON CONFLICT DO NOTHING', [version]);
-          await query('COMMIT');
-        } catch (err) {
-          await query('ROLLBACK');
-          throw err;
-        }
+        await client.query(migrationSql);
+        await client.query('INSERT INTO schema_migrations (version) VALUES ($1)', [version]);
       }
     } catch (err) {
       if (err.code !== 'ENOENT') {

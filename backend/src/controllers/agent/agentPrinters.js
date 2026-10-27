@@ -273,7 +273,16 @@ function normalizePrinterStatus(condition) {
 }
 
 export const syncPrinters = asyncHandler(async (req, res) => {
-  const printers = Array.isArray(req.body.printers) ? req.body.printers : [];
+  const printers = req.body.printers;
+  if (!Array.isArray(printers) || printers.length > 100 || printers.some(printer =>
+    !printer || typeof printer !== 'object' || Array.isArray(printer) ||
+    typeof (printer.printerName || printer.name) !== 'string' ||
+    !(printer.printerName || printer.name).trim() ||
+    (printer.printerName || printer.name).length > 255 ||
+    (printer.lastCheckedAt && !Number.isFinite(Date.parse(printer.lastCheckedAt)))
+  )) {
+    return res.status(400).json({ success: false, message: 'A valid printer list of at most 100 printers is required.' });
+  }
   const normalizedPrinters = printers
     .map((printer) => {
       const rawCondition = String(printer.condition || '').trim().toLowerCase();
@@ -294,7 +303,19 @@ export const syncPrinters = asyncHandler(async (req, res) => {
     })
     .filter((printer) => printer.printerName);
 
-  const savedPrinters = await replaceAgentPrinters(req.agent.id, req.agent.hubId, normalizedPrinters);
+  const savedPrinters = await withTransaction(async client => {
+    // The delete/insert replacement must be serialized per agent, not interleaved
+    // with another sync or a revocation that leaves stale printer state behind.
+    const active = await client.query(
+      'select id from agents where id = $1 and hub_id = $2 and revoked_at is null for update',
+      [req.agent.id, req.agent.hubId]
+    );
+    if (!active.rows[0]) return null;
+    return replaceAgentPrinters(req.agent.id, req.agent.hubId, normalizedPrinters, client);
+  });
+  if (!savedPrinters) {
+    return res.status(401).json({ success: false, message: 'Agent is revoked or unavailable' });
+  }
 
   res.json({
     success: true,

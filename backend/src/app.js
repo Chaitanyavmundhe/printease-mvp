@@ -21,6 +21,8 @@ import desktopRoutes from './routes/desktopRoutes.js';
 import statsRoutes from './routes/stats.js';
 import systemRoutes from './routes/systemRoutes.js';
 import { globalRateLimit } from './middleware/rateLimitMiddleware.js';
+import { isAllowedPreviewOrigin } from './config/originPolicy.js';
+import { MAX_UPLOAD_SIZE_BYTES } from './constants/upload.js';
 
 const app = express();
 
@@ -59,21 +61,7 @@ const allowedOrigins = new Set([
     : localDevOrigins)
 ].map(normalizeOrigin).filter(Boolean));
 function isAllowedVercelPreviewOrigin(origin) {
-  if (process.env.ALLOW_VERCEL_PREVIEW_ORIGINS !== 'true') return false;
-  try {
-    const url = new URL(origin);
-
-    if (url.protocol !== 'https:') return false;
-    if (!url.hostname.endsWith('.vercel.app')) return false;
-
-    return (
-      url.hostname.includes('printease') ||
-      url.hostname.includes('printhubdesi') ||
-      url.hostname.includes('printease-mvp')
-    );
-  } catch {
-    return false;
-  }
+  return isAllowedPreviewOrigin(origin);
 }
 function isAllowedDesktopOrigin(origin) {
   if (!origin) return false;
@@ -100,7 +88,7 @@ app.use(helmet({
       fontSrc: ["'self'", "https:", "data:"],
       objectSrc: ["'none'"],
       mediaSrc: ["'self'"],
-      frameSrc: ["'self'", "https://checkout.razorpay.com"]
+      frameSrc: ["'self'"]
     }
   } : false
 }));
@@ -129,21 +117,25 @@ app.use(cors({
       note: 'Allowed origins include production Vercel, local Vite dev, trusted desktop app origin, and permitted preview URLs.'
     });
 
-    return callback(new Error(`CORS blocked for origin: ${origin}`));
+    const error = new Error('Origin is not allowed.');
+    error.statusCode = 403;
+    return callback(error);
   },
   credentials: true
 }));
-app.use(express.json({
-  limit: '2mb',
-  verify: (req, _res, buf) => {
-    if (req.originalUrl === '/api/payments/razorpay/webhook') {
-      req.rawBody = buf.toString('utf8');
-    }
-  }
-}));
-app.use(express.urlencoded({ extended: true }));
-app.use(morgan('dev'));
+// Reject exhausted callers before parsing their JSON body. Route-specific
+// limits still run after parsing/authentication with their existing keys.
 app.use(globalRateLimit);
+app.use('/api', (_req, res, next) => {
+  // Authenticated data, capability URLs and changing payment/job state must not
+  // survive in a shared browser/proxy cache or be reused across account changes.
+  res.set('Cache-Control', 'no-store');
+  next();
+});
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true }));
+morgan.token('safe-path', req => req.path);
+app.use(morgan(':method :safe-path :status :response-time ms - :res[content-length]'));
 
 app.get('/', (req, res) => {
   res.json({
@@ -188,7 +180,7 @@ app.use('/api/system', systemRoutes);
 app.use((req, res) => {
   res.status(404).json({
     success: false,
-    message: `Route not found: ${req.method} ${req.originalUrl}`
+    message: `Route not found: ${req.method} ${req.path}`
   });
 });
 
@@ -220,13 +212,15 @@ app.use((err, req, res, next) => {
     code: err.code,
     constraint: err.constraint,
     stack: err.stack,
-    route: req.originalUrl,
+    route: req.path,
     method: req.method
   });
 
   const databaseMessage = getDatabaseErrorMessage(err);
-  const uploadMessage = err.code === 'LIMIT_FILE_SIZE' ? 'Uploaded file is too large. Maximum size is 10MB.' : null;
-  const status = err.code === 'LIMIT_FILE_SIZE' ? 413 : err.status || err.statusCode || 500;
+  const uploadMessage = err.code === 'LIMIT_FILE_SIZE'
+    ? `Uploaded file is too large. Maximum size is ${MAX_UPLOAD_SIZE_BYTES / (1024 * 1024)}MB.`
+    : String(err.code || '').startsWith('LIMIT_') ? 'Upload request exceeds the allowed file or field limits.' : null;
+  const status = uploadMessage ? (err.code === 'LIMIT_FILE_SIZE' ? 413 : 400) : err.status || err.statusCode || 500;
 
   const isProduction = process.env.NODE_ENV === 'production';
   const genericMessage = 'An unexpected error occurred.';

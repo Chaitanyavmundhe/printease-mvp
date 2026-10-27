@@ -45,4 +45,12 @@ describe('upload and reassignment security', () => {
     expect(repo.assignOwnedDocumentHub).toHaveBeenCalledWith('foreign-document', 'hub', { userId: 'attacker', guestTokenHash: null });
     expect(res.status).toHaveBeenCalledWith(404);
   });
+
+  it('removes orphaned storage objects if document persistence fails', async () => {
+    const remove = vi.fn().mockResolvedValue({});
+    getSupabaseAdminClient.mockReturnValue({ storage: { from: () => ({ upload: vi.fn().mockResolvedValue({}), remove }) } });
+    repo.createDocument.mockRejectedValue(new Error('database unavailable'));
+    await expect(uploadDocument({ files: { document: [{ ...pdf, mimetype: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' }] }, body: {}, headers: {}, query: {} }, response())).rejects.toThrow('database unavailable');
+    expect(remove).toHaveBeenCalledWith([expect.any(String)]);
+  });
 });

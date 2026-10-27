@@ -20,10 +20,9 @@ describe('trusted payment bill', () => {
     expect(() => assertTrustedOrderBill({ ...order, userId: null }, [{ ...file, printablePageCount: 6 }])).toThrow(/Login/);
     expect(assertTrustedOrderBill({ ...order, userId: null }, [{ ...file, printablePageCount: 5 }])).toBe(200);
   });
-  it('permits genuinely free manual bills but never a zero online charge', () => {
+  it('permits genuinely free manual bills', () => {
     const free = { ...order, totalAmountPaise: 0, amount: 0 };
     expect(assertTrustedOrderBill(free, [{ ...file, lineAmountPaise: 0 }])).toBe(0);
-    expect(() => assertTrustedOrderBill(free, [{ ...file, lineAmountPaise: 0 }], { online: true })).toThrow(/positive/);
   });
   it('rejects a payment created against another configuration version', () => {
     expect(() => assertPaymentMatchesBill({ amount: 2, providerPayload: { printeaseBill: { amountPaise: 200, configVersion: 1 } } }, order)).toThrow(/older bill/);

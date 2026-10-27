@@ -332,7 +332,7 @@ export const getNextJob = asyncHandler(async (req, res) => {
 });
 
 export const getPredownloadCandidates = asyncHandler(async (req, res) => {
-  const limit = Math.min(30, Math.max(1, Number(req.query.limit) || 15));
+  const limit = Math.min(30, Math.max(1, Math.trunc(Number(req.query.limit)) || 15));
   const candidates = await listPendingPaymentOrderFilesForAgentPredownload(req.agent.hubId, { limit });
 
   const files = await Promise.all(candidates.map(async (candidate) => {

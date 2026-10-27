@@ -3,7 +3,8 @@
  * NO Leaflet. NO map UI. NO map library imports.
  * Hub can toggle location visibility, edit address fields, and open the web app for full map.
  */
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { getCurrentLocation, locationErrorMessage, validCoordinates } from "../utils/location";
 import { MapPin, ToggleLeft, ToggleRight, Save, ExternalLink, Navigation, CheckCircle2, AlertCircle } from "lucide-react";
 import { apiRequest } from "../services/api";
 import { openExternalUrl, isDesktop } from "../utils/desktopBridge";
@@ -27,6 +28,8 @@ export default function HubLocationCard({ currentCentre }) {
   const [saveMessage, setSaveMessage] = useState("");
   const [saveError, setSaveError] = useState("");
   const [locating, setLocating] = useState(false);
+  const locationRequest = useRef(null);
+  useEffect(() => () => locationRequest.current?.abort(), []);
 
   const lastUpdated = currentCentre?.mapUpdatedAt
     ? new Date(currentCentre.mapUpdatedAt).toLocaleString()
@@ -41,7 +44,12 @@ export default function HubLocationCard({ currentCentre }) {
       const lat = latitude.trim() ? Number(latitude) : null;
       const lng = longitude.trim() ? Number(longitude) : null;
 
-      if (locationEnabled && (lat === null || lng === null)) {
+      if ((lat !== null && (!Number.isFinite(lat) || Math.abs(lat) > 90)) ||
+          (lng !== null && (!Number.isFinite(lng) || Math.abs(lng) > 180))) {
+        throw new Error("Enter a valid latitude (-90 to 90) and longitude (-180 to 180).");
+      }
+
+      if (locationEnabled && !validCoordinates(lat, lng)) {
         setSaveError("Latitude and longitude are required when map exposure is enabled.");
         setSaving(false);
         return;
@@ -83,40 +91,24 @@ export default function HubLocationCard({ currentCentre }) {
     }
   }
 
-  function handleUseMyLocation() {
-    if (!navigator.geolocation) {
-      setSaveError("Geolocation is not supported by this browser.");
-      return;
-    }
+  async function handleUseMyLocation() {
+    locationRequest.current?.abort();
+    const controller = new AbortController();
+    locationRequest.current = controller;
     setLocating(true);
     setSaveError("");
     setSaveMessage("");
-
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setLatitude(String(pos.coords.latitude.toFixed(7)));
-        setLongitude(String(pos.coords.longitude.toFixed(7)));
-        setLocating(false);
-        setSaveMessage("Current coordinates retrieved successfully.");
-      },
-      (error) => {
-        let msg = "Could not get your location. Enter coordinates manually.";
-        if (error.code === error.PERMISSION_DENIED) {
-          msg = "Location permission denied. Please allow location permissions in browser settings.";
-        } else if (error.code === error.POSITION_UNAVAILABLE) {
-          msg = "Location position is unavailable. Check your device GPS/network connection.";
-        } else if (error.code === error.TIMEOUT) {
-          msg = "Location request timed out. Please try again.";
-        }
-        setSaveError(msg);
-        setLocating(false);
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 12000,
-        maximumAge: 0
-      }
-    );
+    try {
+      const position = await getCurrentLocation({ signal: controller.signal });
+      if (controller.signal.aborted) return;
+      setLatitude(position.latitude.toFixed(7));
+      setLongitude(position.longitude.toFixed(7));
+      setSaveMessage("Coordinates retrieved. Review them and save to publish your shop location.");
+    } catch (error) {
+      if (!controller.signal.aborted) setSaveError(locationErrorMessage(error));
+    } finally {
+      if (!controller.signal.aborted) setLocating(false);
+    }
   }
 
   async function handleOpenWebApp() {
@@ -149,6 +141,10 @@ export default function HubLocationCard({ currentCentre }) {
             {locationEnabled ? "Live on Map" : "Hidden"}
           </span>
           <button
+            type="button"
+            role="switch"
+            aria-label="Show shop on map"
+            aria-checked={locationEnabled}
             onClick={() => setLocationEnabled((v) => !v)}
             className={`transition-all duration-300 transform active:scale-90 ${
               locationEnabled ? "text-emerald-600" : "text-slate-300 hover:text-slate-400"
@@ -239,7 +235,7 @@ export default function HubLocationCard({ currentCentre }) {
               className="flex items-center justify-center gap-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white w-full py-3.5 text-sm font-bold active:scale-[0.98] disabled:opacity-50 transition-all shadow-md hover:shadow-lg mt-auto"
             >
               <Navigation size={15} className={locating ? "animate-spin" : ""} />
-              {locating ? "Detecting Coordinates..." : "Use Current Location"}
+              {locating ? (isDesktop() ? "Share location in your browser..." : "Detecting Coordinates...") : "Use Current Location"}
             </button>
           </div>
         </div>

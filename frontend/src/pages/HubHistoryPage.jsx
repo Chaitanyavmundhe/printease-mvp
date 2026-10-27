@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { BarChart3, Download, Eye, FileText, IndianRupee, Printer, ShieldCheck, X, Search, Filter, ArrowUpDown } from "lucide-react";
 import Card from "../components/Card";
-import InlineDocumentPreview from "../components/InlineDocumentPreview";
+import DocumentPreviewModal from "../components/DocumentPreviewModal";
+import ModalPortal from "../components/ModalPortal";
+import { getPreviewKind } from "../utils/documentPreview";
 import Metric from "../components/Metric";
 import StatusBadge from "../components/StatusBadge";
 import { downloadDocumentBlob, getOrderDocuments } from "../services/api";
@@ -325,8 +327,8 @@ export default function HubHistoryPage({ currentHub, hubOrders }) {
 
       {/* Document Modal */}
       {documentModalOrder && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/50 p-2 sm:items-center sm:p-4">
-          <div className="relative flex h-auto max-h-[90dvh] w-full max-w-3xl flex-col rounded-t-3xl sm:rounded-3xl bg-white p-6 shadow-2xl overflow-hidden sm:max-h-[90vh]">
+        <ModalPortal onClose={() => { setDocumentModalOrder(null); setDocumentPreview(null); }} label="Order Documents" className="flex items-center justify-center bg-slate-950/50 p-2 sm:p-4">
+          <div className="relative flex h-[90dvh] min-h-0 w-full max-w-4xl flex-col overflow-hidden rounded-lg bg-white p-4 shadow-xl">
             <div className="flex shrink-0 items-start justify-between gap-4 border-b pb-3 mb-4">
               <div>
                 <h3 className="text-xl font-bold text-slate-900">Order Documents</h3>
@@ -384,35 +386,14 @@ export default function HubHistoryPage({ currentHub, hubOrders }) {
 
             {agentError && <p className="mt-4 text-sm font-semibold text-rose-600 shrink-0">{agentError}</p>}
           </div>
-        </div>
+        </ModalPortal>
       )}
 
-      {documentPreview && (
-        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-slate-950/70 p-2 backdrop-blur-sm sm:items-center sm:p-4">
-          <div className="relative flex max-h-[90dvh] w-full max-w-5xl flex-col rounded-t-3xl sm:rounded-3xl bg-white p-4 shadow-2xl overflow-hidden sm:max-h-[92vh]">
-            <div className="flex shrink-0 items-center justify-between gap-3 border-b pb-3 mb-4">
-              <h3 className="truncate pr-4 font-bold text-slate-900">{documentPreview.name}</h3>
-              <button
-                type="button"
-                onClick={() => setDocumentPreview(null)}
-                className="rounded-full border p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
-                aria-label="Close preview"
-              >
-                <X size={20} />
-              </button>
-            </div>
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 py-1" style={{ WebkitOverflowScrolling: "touch" }}>
-              <InlineDocumentPreview
-                url={documentPreview.url}
-                fileName={documentPreview.name}
-                fileType={documentPreview.fileType}
-                textContent={documentPreview.textContent}
-                onDownload={() => openSignedDocument({ documentId: documentPreview.documentId, fileName: documentPreview.name }, "download")}
-              />
-            </div>
-          </div>
-        </div>
-      )}
+      {documentPreview && <DocumentPreviewModal isOpen onClose={() => setDocumentPreview(null)} blobUrl={documentPreview.url}
+        previewKind={getPreviewKind(documentPreview.fileType, documentPreview.name)} fileName={documentPreview.name}
+        fileType={documentPreview.fileType} textContent={documentPreview.textContent}
+        onDownload={() => openSignedDocument({ documentId: documentPreview.documentId, fileName: documentPreview.name }, "download")} />}
+
     </div>
   );
 }

@@ -33,7 +33,7 @@ export const previewDocument = asyncHandler(async (req, res) => {
 
     const preferConverted = req.query.converted === 'true';
     // Keep pending conversion explicit; do not preview the original as a PDF.
-    if (preferConverted && !context.document.printReadyStoragePath) {
+    if (preferConverted && (!context.document.printReadyStoragePath || !context.document.printReadySha256)) {
       return res.status(425).json({ success: false, message: 'The verified converted PDF is not ready yet.' });
     }
     const isConverted = preferConverted && context.document.printReadyStoragePath;
@@ -66,14 +66,14 @@ export const previewDocument = asyncHandler(async (req, res) => {
     res.setHeader("Content-Type", safeMime);
     res.setHeader("Content-Disposition", disposition);
     res.setHeader("X-Content-Type-Options", "nosniff");
-    res.setHeader("Cache-Control", "private, max-age=60");
+    res.setHeader("Cache-Control", "private, no-store");
     return res.send(buffer);
 
   } catch (error) {
     if (error.status) {
       return res.status(error.status).json({ success: false, message: error.message });
     }
-    return res.status(500).json({ success: false, message: error.message || "Failed to preview document." });
+    return res.status(500).json({ success: false, message: "Failed to preview document." });
   }
 });
 
@@ -95,7 +95,7 @@ export const downloadDocument = asyncHandler(async (req, res) => {
     });
 
     const preferConverted = req.query.converted === 'true';
-    if (preferConverted && !context.document.printReadyStoragePath) {
+    if (preferConverted && (!context.document.printReadyStoragePath || !context.document.printReadySha256)) {
       return res.status(425).json({ success: false, message: 'The verified converted PDF is not ready yet.' });
     }
     const isConverted = preferConverted && context.document.printReadyStoragePath;
@@ -128,12 +128,13 @@ export const downloadDocument = asyncHandler(async (req, res) => {
     res.setHeader("Content-Type", safeMime);
     res.setHeader("Content-Disposition", disposition);
     res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Cache-Control", "private, no-store");
     return res.send(buffer);
 
   } catch (error) {
     if (error.status) {
       return res.status(error.status).json({ success: false, message: error.message });
     }
-    return res.status(500).json({ success: false, message: error.message || "Failed to download document." });
+    return res.status(500).json({ success: false, message: "Failed to download document." });
   }
 });

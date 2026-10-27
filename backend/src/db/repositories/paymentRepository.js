@@ -30,7 +30,7 @@ export async function createPayment(payment, client) {
       payment.id,
       payment.orderId,
       payment.amount,
-      payment.method || payment.gateway || 'RAZORPAY',
+      payment.method || payment.gateway || 'MANUAL_PAYMENT_REQUEST',
       payment.transactionId || payment.gatewayPaymentId || payment.gatewayOrderId || null,
       payment.status,
       payment.createdAt || null,

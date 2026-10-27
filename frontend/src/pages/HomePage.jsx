@@ -20,7 +20,7 @@ import QRScanner from "../components/QRScanner";
 const CentreMapModal = lazy(() => import("../components/CentreMapModal"));
 
 const SCANNER_MODE_KEY = "printease_scanner_mode";
-const LATEST_DESKTOP_RELEASE_URL = "https://github.com/adityasomde/printease-desk/releases/latest";
+const LATEST_DESKTOP_RELEASE_URL = "https://github.com/adityasomde/printease-desktop-releases/releases/latest";
 const SCANNER_MODES = new Set(["ready", "transparent", "classic"]);
 
 function getSavedScannerMode() {
@@ -415,6 +415,7 @@ export default function HomePage({
             onSelectCentre={(centre) => selectCentreAndUpload(centre)}
             focusCentre={mapCentreToFocus}
             initialUserLocation={userLocation}
+            requestUserLocation={requestUserLocation}
           />
         </Suspense>
       )}

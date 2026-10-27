@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs';
+import crypto from 'node:crypto';
 import { pool } from '../config/db.js';
 import jwt from 'jsonwebtoken';
 import {
@@ -233,51 +234,50 @@ async function loginWithPassword(req, res) {
     return res.status(400).json({ success: false, message: 'Username/email and password are required.' });
   }
 
-  if (password.length > 128) {
+  if (password.length > 128 || identifier.length > 320) {
     return res.status(400).json({ success: false, message: 'Invalid username/email or password.' });
   }
   
-  const normalizedId = identifier.toLowerCase();
+  const normalizedId = isEmail(identifier) ? identifier.toLowerCase() : normalizeUsername(identifier);
+  const user = await findUserByIdentifier(normalizedId);
+  // Username, email and punctuation aliases all consume the same account budget.
+  const attemptKey = user?.id ? `user:${user.id}` : `unknown:${crypto.createHash('sha256').update(normalizedId).digest('hex')}`;
 
   try {
+    // Reserve an attempt before bcrypt, atomically across concurrent requests.
+    // Expired locks and inactive windows reset instead of locking forever.
     const attemptCheck = await pool.query(
-      'SELECT attempt_count, locked_until FROM login_attempts WHERE identifier = $1',
-      [normalizedId]
+      `INSERT INTO login_attempts (identifier, attempt_count, last_attempt_at)
+       VALUES ($1, 1, now())
+       ON CONFLICT (identifier) DO UPDATE
+       SET attempt_count = CASE
+             WHEN login_attempts.last_attempt_at <= now() - interval '15 minutes' THEN 1
+             ELSE login_attempts.attempt_count + 1 END,
+           locked_until = CASE
+             WHEN login_attempts.last_attempt_at <= now() - interval '15 minutes' THEN null
+             WHEN login_attempts.attempt_count + 1 >= 5 THEN now() + interval '15 minutes'
+             ELSE null END,
+           last_attempt_at = now()
+       WHERE login_attempts.locked_until IS NULL OR login_attempts.locked_until <= now()
+       RETURNING attempt_count`,
+      [attemptKey]
     );
 
-    if (attemptCheck.rows.length > 0) {
-      const { attempt_count, locked_until } = attemptCheck.rows[0];
-      if (locked_until && new Date(locked_until) > new Date()) {
-        return res.status(401).json({ success: false, message: 'Account temporarily locked due to too many failed attempts. Try again later.' });
-      }
+    if (!attemptCheck.rows.length) {
+      return res.status(401).json({ success: false, message: 'Invalid username/email or password.' });
     }
   } catch (error) {
-    console.error('Failed to check login attempts', error);
+    return res.status(503).json({ success: false, message: 'Login is temporarily unavailable. Please try again later.' });
   }
 
-  const user = await findUserByIdentifier(identifier);
   const isMatch = user && user.passwordHash ? await bcrypt.compare(password, user.passwordHash) : false;
 
   if (!isMatch) {
-    try {
-      await pool.query(
-        `INSERT INTO login_attempts (identifier, attempt_count, last_attempt_at)
-         VALUES ($1, 1, now())
-         ON CONFLICT (identifier) DO UPDATE
-         SET attempt_count = login_attempts.attempt_count + 1,
-             locked_until = CASE WHEN login_attempts.attempt_count + 1 >= 5 THEN now() + interval '15 minutes' ELSE null END,
-             last_attempt_at = now()`,
-        [normalizedId]
-      );
-    } catch (error) {
-      console.error('Failed to update login attempts', error);
-    }
-
     return res.status(401).json({ success: false, message: 'Invalid username/email or password.' });
   }
 
   try {
-    await pool.query('DELETE FROM login_attempts WHERE identifier = $1', [normalizedId]);
+    await pool.query('DELETE FROM login_attempts WHERE identifier = $1', [attemptKey]);
   } catch (error) {
     // Ignore cleanup errors
   }

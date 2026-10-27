@@ -51,6 +51,11 @@ export function canAccessOrder(user, order, req = null) {
   if (user?.role === 'user' && order.userId === user.id) return true;
 
   if (!order.userId) {
+    // Possession of a capability is not indefinite authorization. Document
+    // downloads already enforce expiry in SQL; order reads and payment intent
+    // must enforce the same boundary, including legacy rows with no expiry.
+    const expiresAt = new Date(order.expiresAt).getTime();
+    if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) return false;
     const providedToken = req ? getOrderAccessToken(req) : '';
     if (!providedToken) return false;
     if (order.guestToken && providedToken === order.guestToken) return true;

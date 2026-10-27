@@ -40,10 +40,10 @@ export default function AppRouter(props) {
     watermarkType, setWatermarkType, watermarkText, setWatermarkText, watermarkPosition, setWatermarkPosition,
     watermarkOpacity, setWatermarkOpacity, watermarkFontSize, setWatermarkFontSize, watermarkRotation, setWatermarkRotation,
     preparePayment, paymentLoading, paymentError, reprintSourceDocuments, setReprintSourceDocuments, reprintDocumentExpired,
-    pendingPayment, paymentMethod, setPaymentMethod, upiQr, handlePayment, handleVerifyDemoPayment,
-    demoPaymentEnabled, order, updateOrderStatus,
+    pendingPayment, handlePayment,
+    order, updateOrderStatus,
     hubOrders, currentHub, updateCentrePrice, updateCentrePayment, updateCentreAfterOrderSettings, updateProfile,
-    startDirectUpload, orders, centres, startRazorpayForExistingOrder, createUpiQrForExistingOrder, openPaymentRequest,
+    startDirectUpload, orders, centres, openPaymentRequest,
     reprintWithSettings, reprintWithSameSettings,
     prioritizedCentres, selectCentreAndUpload, selectCentreByCode, loadOrdersForSession, applySavedOrderUpdate,
     userLocation, userLocationStatus, requestUserLocation,
@@ -244,7 +244,7 @@ return (
             path={ROUTES.payment}
             element={
               selectedCentre && order ? (
-                <PaymentPage currentUser={currentUser} startLogin={startLogin} selectedCentre={selectedCentre} documentName={documentName} pages={pages} copies={copies} backendPrice={backendPrice} order={order} refreshActivePaymentOrder={refreshActivePaymentOrder} paymentMethod={paymentMethod} setPaymentMethod={setPaymentMethod} handlePayment={handlePayment} paymentLoading={paymentLoading} paymentError={paymentError} />
+                <PaymentPage currentUser={currentUser} startLogin={startLogin} selectedCentre={selectedCentre} documentName={documentName} pages={pages} copies={copies} backendPrice={backendPrice} order={order} refreshActivePaymentOrder={refreshActivePaymentOrder} handlePayment={handlePayment} paymentLoading={paymentLoading} paymentError={paymentError} />
               ) : (
                 <RouteNotice title="Payment Not Ready" message="Please select a centre and upload a document first." actionLabel="Select Centre" onAction={() => navigate("centre")} />
               )
@@ -257,12 +257,9 @@ return (
                 order={order}
                 lastUpdatedAt={lastOrdersUpdatedAt}
                 pendingPayment={pendingPayment}
-                upiQr={upiQr}
                 centreUpiId={selectedCentre?.upiId}
                 centreUpiQrImageUrl={selectedCentre?.upiQrImageUrl}
-                onPayOnline={startRazorpayForExistingOrder}
-                onCreateUpiQr={createUpiQrForExistingOrder}
-                onSimulateVerifiedPayment={demoPaymentEnabled ? handleVerifyDemoPayment : null}
+                onRequestPayment={() => openPaymentRequest(order)}
                 paymentLoading={paymentLoading}
                 paymentError={paymentError}
               />

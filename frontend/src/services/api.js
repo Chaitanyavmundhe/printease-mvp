@@ -37,6 +37,30 @@ export class ApiError extends Error {
   }
 }
 
+function getPrivateIdentity() {
+  return JSON.stringify([
+    localStorage.getItem("printease_token"),
+    localStorage.getItem("printease_order_access_token"),
+  ]);
+}
+
+function assertPrivateIdentity(identity) {
+  if (getPrivateIdentity() !== identity) {
+    throw new ApiError("Session changed. Please try again.", 401);
+  }
+}
+
+function privateCacheKey(key) {
+  return `${getPrivateIdentity()}:${key}`;
+}
+
+async function getPrivateCachedJson(key, fetcher, options) {
+  const identity = getPrivateIdentity();
+  const data = await getCachedJson(privateCacheKey(key), fetcher, options);
+  assertPrivateIdentity(identity);
+  return data;
+}
+
 function joinApiUrl(base, endpoint) {
   const cleanBase = base.replace(/\/+$/, "");
   const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
@@ -246,27 +270,6 @@ export function collectManualPayment(orderId, { method = "cash", transactionNote
   });
 }
 
-export function createRazorpayOrder(printOrderId) {
-  return apiRequest("/api/payments/razorpay/order", {
-    method: "POST",
-    body: JSON.stringify({ orderId: printOrderId }),
-  });
-}
-
-export function verifyRazorpayPayment(payload = {}) {
-  return apiRequest("/api/payments/razorpay/verify", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-}
-
-export function createRazorpayUpiQr(printOrderId) {
-  return apiRequest("/api/payments/razorpay/upi-qr", {
-    method: "POST",
-    body: JSON.stringify({ orderId: printOrderId }),
-  });
-}
-
 export function sendOrderToAgent(orderId, target = {}) {
   return apiRequest(`/api/hub-agents/orders/${orderId}/send-to-agent`, {
     method: "POST",
@@ -296,7 +299,7 @@ export function reprintOrder(orderId, options = {}) {
 }
 
 export function getUserHistory({ force = false, userId = "me" } = {}) {
-  return getCachedJson(
+  return getPrivateCachedJson(
     `user-history:${userId}`,
     () => apiRequest("/api/user/history?compact=true&limit=20"),
     {
@@ -307,7 +310,7 @@ export function getUserHistory({ force = false, userId = "me" } = {}) {
 }
 
 export function invalidateUserHistory(userId = "me") {
-  invalidateCache(`user-history:${userId}`);
+  invalidateCache(privateCacheKey(`user-history:${userId}`));
 }
 
 /**
@@ -315,7 +318,7 @@ export function invalidateUserHistory(userId = "me") {
  * Cached per order ID for 5 minutes so repeat clicks don't re-fetch.
  */
 export function getOrderDetail(orderId) {
-  return getCachedJson(
+  return getPrivateCachedJson(
     `order-detail:${orderId}`,
     () => apiRequest(`/api/user/history/${encodeURIComponent(orderId)}`).then((data) => data.order),
     { ttlMs: 5 * 60 * 1000 }
@@ -323,7 +326,7 @@ export function getOrderDetail(orderId) {
 }
 
 export function invalidateOrderDetail(orderId) {
-  invalidateCache(`order-detail:${orderId}`);
+  invalidateCache(privateCacheKey(`order-detail:${orderId}`));
 }
 
 export function createDocumentSignedDownload(documentId, converted = false) {
@@ -387,8 +390,7 @@ async function readMatchingDesktopPreview(documentId, document) {
 async function fetchSignedDocumentBlob(documentId, converted = false, { preferDesktopCache = false } = {}) {
   // Private blobs cannot outlive their login/capability identity in memory.
   // Clear on identity change and reject an older request that finishes afterward.
-  const identity = localStorage.getItem("printease_token") ||
-    localStorage.getItem("printease_order_access_token") || "anonymous";
+  const identity = getPrivateIdentity();
   if (documentBlobIdentity !== identity) {
     documentBlobCache.clear();
     documentBlobIdentity = identity;
@@ -423,6 +425,7 @@ async function fetchSignedDocumentBlob(documentId, converted = false, { preferDe
   if (converted && !(await typedBlob.slice(0, 5).text()).startsWith("%PDF-")) {
     throw new Error("The converted printable PDF is not ready. Please retry after preparation finishes.");
   }
+  assertPrivateIdentity(identity);
   if (documentBlobIdentity !== identity) throw new ApiError("Session changed. Open the document again.", 401);
   cacheDocumentBlob(cacheKey, typedBlob);
   return typedBlob;

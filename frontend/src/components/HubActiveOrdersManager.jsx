@@ -15,7 +15,9 @@ import {
   XCircle,
 } from "lucide-react";
 import HubOrderConfigModal from "./HubOrderConfigModal";
-import InlineDocumentPreview from "./InlineDocumentPreview";
+import DocumentPreviewModal from "./DocumentPreviewModal";
+import ModalPortal from "./ModalPortal";
+import { getPreviewKind } from "../utils/documentPreview";
 import StatusBadge from "./StatusBadge";
 import { hubStatusOptions } from "../data/demoData";
 import {
@@ -416,19 +418,20 @@ export default function HubActiveOrdersManager({
 
   async function handleSaveConfig(payload) {
     const orderId = documentModalOrder.backendId || documentModalOrder.id;
-    try {
-      const data = await apiRequest(`/api/hubs/orders/${orderId}/configuration`, {
-        method: "PATCH",
-        body: JSON.stringify(payload),
-      });
-      const savedOrder = typeof onOrderSaved === "function" && data.order ? onOrderSaved(data.order) : null;
-      if (!savedOrder && typeof refreshOrders === "function") await refreshOrders();
-      if (data.order || savedOrder) setDocumentModalOrder((prev) => ({ ...prev, ...(savedOrder || data.order) }));
-      const docsData = await getOrderDocuments(orderId);
-      setOrderDocuments(Array.isArray(docsData.documents) ? docsData.documents : []);
-    } catch (error) {
-      throw new Error(error.message || "Failed to update configuration");
-    }
+    const data = await apiRequest(`/api/hubs/orders/${encodeURIComponent(orderId)}/configuration`, {
+      method: "PATCH", body: JSON.stringify(payload),
+    });
+    if (!data.success || !data.order) throw new Error(data.message || "Configuration was not saved.");
+    const savedOrder = typeof onOrderSaved === "function" ? onOrderSaved(data.order) : null;
+    setDocumentModalOrder(prev => ({ ...prev, ...(savedOrder || data.order) }));
+    // The PATCH response is authoritative. A later optional refresh must not
+    // turn an already committed save into an apparent failure/duplicate retry.
+    if (Array.isArray(data.files)) setOrderDocuments(prev => prev.map(file => {
+      const updated = data.files.find(item => String(item.id) === String(file.id));
+      return updated ? { ...file, ...updated, amountPaise: updated.lineAmountPaise ?? updated.amountPaise ?? file.amountPaise } : file;
+    }));
+    setMessage("Configuration saved. The order now uses the updated settings and bill.");
+    if (!savedOrder && typeof refreshOrders === "function") Promise.resolve().then(refreshOrders).catch(() => {});
   }
 
   async function openSignedDocument(document, mode = "download") {
@@ -830,9 +833,9 @@ export default function HubActiveOrdersManager({
         </div>
       )}
 
-      {documentModalOrder && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/50 p-2 sm:items-center sm:p-4">
-          <div className="max-h-[90dvh] w-full max-w-4xl overflow-y-auto overscroll-contain rounded-t-3xl sm:rounded-3xl bg-white p-4 shadow-2xl sm:max-h-[92vh] sm:p-6" style={{ WebkitOverflowScrolling: "touch" }}>
+      {documentModalOrder && !configModalOpen && (
+        <ModalPortal onClose={() => { setDocumentModalOrder(null); setDocumentPreview(null); }} label="Order Documents" className="flex items-center justify-center bg-slate-950/50 p-2 sm:p-4">
+          <div data-testid="order-documents-scroll" className="max-h-[92dvh] w-full max-w-4xl overflow-y-auto overscroll-contain rounded-lg bg-white p-4 shadow-xl sm:p-5" style={{ WebkitOverflowScrolling: "touch" }}>
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h3 className="text-xl font-bold">Order Documents</h3>
@@ -875,25 +878,15 @@ export default function HubActiveOrdersManager({
                   </div>
                 </div>
               ))}
-              {documentPreview && (
-                <div className="rounded-2xl border bg-slate-50 p-3">
-                  <div className="mb-3 flex items-center justify-between gap-3">
-                    <p className="truncate text-sm font-semibold text-slate-900">{documentPreview.name}</p>
-                    <button type="button" onClick={() => setDocumentPreview(null)} className="rounded-xl border bg-white px-3 py-2 text-xs font-semibold">Close preview</button>
-                  </div>
-                  <InlineDocumentPreview
-                    url={documentPreview.url}
-                    fileName={documentPreview.name}
-                    fileType={documentPreview.fileType}
-                    textContent={documentPreview.textContent}
-                    onDownload={() => openSignedDocument({ documentId: documentPreview.documentId, fileName: documentPreview.name }, "download")}
-                  />
-                </div>
-              )}
+
             </div>
           </div>
-        </div>
+        </ModalPortal>
       )}
+
+      {documentPreview && <DocumentPreviewModal isOpen onClose={() => setDocumentPreview(null)} blobUrl={documentPreview.url}
+        previewKind={getPreviewKind(documentPreview.fileType, documentPreview.name)} fileName={documentPreview.name} fileType={documentPreview.fileType} textContent={documentPreview.textContent}
+        onDownload={() => openSignedDocument({ documentId: documentPreview.documentId, fileName: documentPreview.name }, "download")} />}
 
       {documentModalOrder && (
         <HubOrderConfigModal

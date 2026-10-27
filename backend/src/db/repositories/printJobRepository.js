@@ -85,7 +85,7 @@ export async function findPrintJobForAgent(jobId, agentId, hubId, client) {
      from print_jobs
      where id = $1
        and hub_id = $2
-       and (agent_id = $3 or agent_id is null)
+       and agent_id = $3
      limit 1`,
     [jobId, hubId, agentId]
   );
@@ -203,7 +203,25 @@ export async function updatePrintJobStatus(jobId, hubId, updates, client) {
   if (!order) return null;
   const locked = await client.query('select * from print_jobs where id = $1 for update', [jobId]);
   const current = mapPrintJob(locked.rows[0]);
-  if (!current || (current.agentId && current.agentId !== updates.agentId)) return null;
+  if (!current || current.hubId !== hubId || !updates.agentId || current.agentId !== updates.agentId) return null;
+  const agent = await client.query(
+    'select * from agents where id = $1 and hub_id = $2 and revoked_at is null for share',
+    [updates.agentId, hubId]
+  );
+  if (!agent.rows[0]) return null;
+  const advancing = ['accepted', 'downloading', 'printing', 'submitted_to_printer', 'completed'].includes(updates.status);
+  if (advancing && (agent.rows[0].paused ||
+      !['verified', 'collected'].includes(String(order.paymentStatus || '').toLowerCase()) ||
+      ['paused', 'refund requested', 'ready for pickup', 'collected'].includes(String(order.status || '').toLowerCase()))) {
+    const error = new Error('Print job is not authorized for paid printing.');
+    error.statusCode = 409;
+    throw error;
+  }
+  if (['completed', 'failed', 'cancelled'].includes(current.status) && order.status !== current.status) {
+    const error = new Error('Stale terminal print report does not match the current order state.');
+    error.statusCode = 409;
+    throw error;
+  }
   assertPrintJobTransition(current, updates.status, order);
   const result = await executor(client).query(
     `update print_jobs
@@ -217,7 +235,7 @@ export async function updatePrintJobStatus(jobId, hubId, updates, client) {
          failed_at = case when $3 in ('failed', 'cancelled') then now() else failed_at end
      where id = $1
        and hub_id = $2
-       and ($6::uuid is null or agent_id = $6 or agent_id is null)
+       and agent_id = $6
      returning *`,
     [
       jobId,

@@ -1,28 +1,19 @@
 import express from 'express';
-import {
-  createRazorpayOrder,
-  createRazorpayUpiQr,
-  createManualPaymentRequest,
-  getPaymentConfig,
-  razorpayWebhook,
-  verifyDemoPayment,
-  verifyRazorpayPayment
-} from '../controllers/paymentController.js';
-import { authMiddleware, optionalAuthMiddleware } from '../middleware/authMiddleware.js';
+import { createManualPaymentRequest, getPaymentConfig } from '../controllers/paymentController.js';
+import { optionalAuthMiddleware } from '../middleware/authMiddleware.js';
 import { paymentRateLimit } from '../middleware/rateLimitMiddleware.js';
 
 const router = express.Router();
-
-router.post('/razorpay/webhook', razorpayWebhook);
 router.get('/config', getPaymentConfig);
 router.post('/manual-request', optionalAuthMiddleware, paymentRateLimit, createManualPaymentRequest);
-router.post('/razorpay/order', optionalAuthMiddleware, paymentRateLimit, createRazorpayOrder);
-router.post('/razorpay/verify', optionalAuthMiddleware, paymentRateLimit, verifyRazorpayPayment);
-router.post('/razorpay/upi-qr', optionalAuthMiddleware, paymentRateLimit, createRazorpayUpiQr);
 
-/**
- * Compatibility only. Disabled unless DEMO_PAYMENT_ENABLED=true.
- */
-router.post('/verify-demo', authMiddleware, paymentRateLimit, verifyDemoPayment);
-
+// Old clients/webhooks fail closed, regardless of stale gateway/demo env flags.
+// No provider SDK, signature callback or payment mutation runs here.
+router.use(['/razorpay', '/verify-demo'], (_req, res) => {
+  res.status(410).json({
+    success: false,
+    code: 'ONLINE_PAYMENTS_REMOVED',
+    message: 'Online and demo payments are unavailable. Request manual payment at the centre.',
+  });
+});
 export default router;

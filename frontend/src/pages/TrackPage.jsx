@@ -1,4 +1,4 @@
-import { CheckCircle, Clock, CreditCard, QrCode, XCircle } from "lucide-react";
+import { CheckCircle, Clock, XCircle } from "lucide-react";
 import Card from "../components/Card";
 import Row from "../components/Row";
 
@@ -33,8 +33,7 @@ function normalizeStatus(status) {
 }
 
 function isPaymentPending(order) {
-  const value = String(order?.status || "").toLowerCase();
-  return ["payment_requested", "bill_confirmed"].includes(value);
+  return !["verified", "collected", "paid"].includes(String(order?.paymentStatus || "").toLowerCase());
 }
 
 
@@ -43,13 +42,9 @@ export default function TrackPage({
   order,
   lastUpdatedAt,
   pendingPayment,
-  upiQr,
   centreUpiId,
   centreUpiQrImageUrl,
-  onPayOnline,
-  onCreateUpiQr,
-  onSimulateVerifiedPayment,
-  paymentLoading,
+  onRequestPayment,
   paymentError,
 }) {
   if (!order) return <Card>No active order found.</Card>;
@@ -58,8 +53,7 @@ export default function TrackPage({
   const activeIndex = orderStatuses.indexOf(currentStatus);
   const paymentPending = isPaymentPending(order);
   const isCancelled = String(order.status).toLowerCase() === "cancelled";
-  const razorpayQrImageUrl = upiQr?.source === "centre" ? "" : upiQr?.imageUrl || upiQr?.image_url || "";
-  const centreQrImageUrl = centreUpiQrImageUrl || (upiQr?.source === "centre" ? upiQr?.imageUrl || upiQr?.image_url : "");
+  const centreQrImageUrl = centreUpiQrImageUrl;
 
   return (
     <Card className="mx-auto max-w-2xl p-4 sm:p-6">
@@ -97,42 +91,18 @@ export default function TrackPage({
           <div className="flex items-start gap-3">
             <Clock className="mt-0.5" size={20} />
             <div>
-              <p className="font-semibold">Payment request pending</p>
-              <p className="mt-1">Pay via centre UPI, cash at the counter, or Razorpay. The print hub owner can manually confirm collection before printing starts.</p>
+              <p className="font-semibold">{String(order.paymentStatus).toLowerCase() === "requested" ? "Payment request pending" : "Payment not yet collected"}</p>
+              <p className="mt-1">Pay cash or use the centre UPI. Only the print centre can confirm receipt; creating a request does not mark payment collected.</p>
               {pendingPayment?.createdAt && <p className="mt-2 text-xs">Request opened: {new Date(pendingPayment.createdAt).toLocaleString()}</p>}
             </div>
           </div>
 
-          <div className="mt-4 flex flex-wrap gap-3">
-            <button
-              type="button"
-              onClick={() => onPayOnline && onPayOnline()}
-              disabled={paymentLoading}
-              className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 font-semibold text-white disabled:bg-slate-400"
-            >
-              <CreditCard size={16} /> {paymentLoading ? "Starting..." : "Pay Online"}
+          {onRequestPayment && String(order.paymentStatus).toLowerCase() !== "requested" && (
+            <button type="button" onClick={onRequestPayment}
+              className="mt-4 rounded-lg bg-teal-700 px-4 py-2 font-semibold text-white">
+              Request Payment
             </button>
-
-            <button
-              type="button"
-              onClick={() => onCreateUpiQr && onCreateUpiQr()}
-              disabled={paymentLoading}
-              className="inline-flex items-center gap-2 rounded-xl border bg-white px-4 py-2 font-semibold text-slate-900 disabled:opacity-50"
-            >
-              <QrCode size={16} /> Generate UPI QR
-            </button>
-
-            {onSimulateVerifiedPayment && pendingPayment?.id && (
-              <button
-                type="button"
-                onClick={onSimulateVerifiedPayment}
-                disabled={paymentLoading}
-                className="inline-flex items-center gap-2 rounded-xl border border-dashed bg-white px-4 py-2 font-semibold text-slate-700 disabled:opacity-50"
-              >
-                Dev Only: Simulate Verified Payment
-              </button>
-            )}
-          </div>
+          )}
 
           <div className="mt-4 rounded-2xl border bg-white p-4">
             <p className="font-semibold">Centre UPI</p>
@@ -144,13 +114,6 @@ export default function TrackPage({
               </div>
             )}
           </div>
-
-          {razorpayQrImageUrl && (
-            <div className="mt-4 rounded-2xl border bg-white p-4 text-center">
-              <img src={razorpayQrImageUrl} alt="Razorpay UPI QR" className="mx-auto h-48 w-48 object-contain" />
-              <p className="mt-2 text-xs text-slate-500">Scan this QR to pay. Status updates after Razorpay confirms payment.</p>
-            </div>
-          )}
 
           {paymentError && <p className="mt-3 font-semibold text-rose-700">{paymentError}</p>}
         </div>

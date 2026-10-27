@@ -2,6 +2,78 @@ import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import { Blob as NodeBlob } from 'node:buffer';
 import { createHash, webcrypto } from 'node:crypto';
 
+it.each(['history', 'detail'])('isolates cached %s across login and guest identities', async kind => {
+  const fetch = vi.fn().mockImplementation(async () => new Response(JSON.stringify({
+    orders: [{ id: localStorage.getItem('printease_token') || localStorage.getItem('printease_order_access_token') }],
+    order: { id: localStorage.getItem('printease_token') || localStorage.getItem('printease_order_access_token') },
+  }), { headers: { 'content-type': 'application/json' } }));
+  vi.stubGlobal('fetch', fetch);
+  const api = await import('../api');
+  const read = () => kind === 'history' ? api.getUserHistory() : api.getOrderDetail('same-order');
+  for (const identity of ['account-a', 'account-b', null]) {
+    if (identity) localStorage.setItem('printease_token', identity);
+    else localStorage.removeItem('printease_token');
+    localStorage.setItem('printease_order_access_token', 'guest-one');
+    const data = await read();
+    expect(kind === 'history' ? data.orders[0].id : data.id).toBe(identity || 'guest-one');
+    await read();
+  }
+  expect(fetch).toHaveBeenCalledTimes(3);
+  localStorage.setItem('printease_order_access_token', 'guest-two');
+  const data = await read();
+  expect(kind === 'history' ? data.orders[0].id : data.id).toBe('guest-two');
+  expect(fetch).toHaveBeenCalledTimes(4);
+});
+
+it.each(['history', 'detail', 'blob'])('rejects late private %s after logout without a second request', async kind => {
+  let release;
+  const pending = new Promise(resolve => { release = resolve; });
+  const fetch = vi.fn().mockReturnValue(pending);
+  vi.stubGlobal('fetch', fetch);
+  const api = await import('../api');
+  localStorage.setItem('printease_token', 'account-a');
+  const request = kind === 'history' ? api.getUserHistory()
+    : kind === 'detail' ? api.getOrderDetail('private-order') : api.downloadDocumentBlob('private-doc');
+  const rejected = expect(request).rejects.toMatchObject({ status: 401 });
+  localStorage.removeItem('printease_token');
+  if (kind === 'blob') {
+    fetch.mockResolvedValue(new Response('%PDF-private'));
+    release(new Response(JSON.stringify({ signedUrl: 'https://private-storage/document' }), { headers: { 'content-type': 'application/json' } }));
+  } else {
+    release(new Response(JSON.stringify({ orders: [], order: { id: 'private-order' } }), { headers: { 'content-type': 'application/json' } }));
+  }
+  await rejected;
+});
+
+it('invalidates private history and detail in the current credential scope', async () => {
+  const fetch = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ orders: [], order: {} }), { headers: { 'content-type': 'application/json' } }));
+  vi.stubGlobal('fetch', fetch);
+  const api = await import('../api');
+  localStorage.setItem('printease_token', 'account-a');
+  await api.getUserHistory({ userId: 'a' });
+  await api.getOrderDetail('one');
+  api.invalidateUserHistory('a');
+  api.invalidateOrderDetail('one');
+  await api.getUserHistory({ userId: 'a' });
+  await api.getOrderDetail('one');
+  expect(fetch).toHaveBeenCalledTimes(4);
+});
+
+it('includes guest capability changes even while a login token is present', async () => {
+  const fetch = vi.fn().mockImplementation(async url => String(url).includes('signed-download')
+    ? new Response(JSON.stringify({ signedUrl: 'https://private-storage/document' }), { headers: { 'content-type': 'application/json' } })
+    : new Response('%PDF-private'));
+  vi.stubGlobal('fetch', fetch);
+  const api = await import('../api');
+  localStorage.setItem('printease_token', 'account-a');
+  localStorage.setItem('printease_order_access_token', 'guest-one');
+  await api.downloadDocumentBlob('same-doc');
+  localStorage.setItem('printease_order_access_token', 'guest-two');
+  await api.downloadDocumentBlob('same-doc');
+  expect(fetch).toHaveBeenCalledTimes(4);
+});
+
+
 beforeEach(() => { vi.resetModules(); localStorage.clear(); vi.stubGlobal('Blob', NodeBlob); });
 afterEach(() => { vi.unstubAllGlobals(); delete window.printeaseDesktop; });
 

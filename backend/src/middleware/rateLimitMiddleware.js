@@ -67,6 +67,11 @@ export function rateLimit({
       const ts = now.getTime();
       pruneFallback(ts);
       const existing = memoryFallback.get(key);
+      // Do not evict active counters: cycling identities must not reset a limit.
+      if (!existing && memoryFallback.size >= MAX_KEYS) {
+        res.setHeader('Retry-After', String(Math.ceil(windowMs / 1000)));
+        return res.status(429).json({ success: false, message });
+      }
       const bucket = existing && existing.resetAt > ts
         ? existing
         : { count: 0, resetAt: ts + windowMs };
@@ -105,7 +110,6 @@ export const authRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: Number(process.env.AUTH_RATE_LIMIT_PER_15_MINUTES || 20),
   keyPrefix: 'auth',
-  keyGenerator: (req) => String(req.body?.identifier || req.body?.username || req.body?.email || '').trim().toLowerCase(),
   message: 'Too many login or signup attempts. Please wait and try again.'
 });
 

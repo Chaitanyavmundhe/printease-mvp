@@ -17,6 +17,7 @@ import {
   updateDocumentPreparation,
   findDocumentById,
   findOrderIdsByDocumentId,
+  mapDocument,
   withTransaction,
   query
 } from '../../db/repository.js';
@@ -49,16 +50,42 @@ const JOB_STATUS_TO_ORDER_STATUS = {
   [PRINT_JOB_STATUSES.CANCELLED]: 'cancelled'
 };
 
-async function agentCanPrepareDocument(documentId, hubId, document = null) {
-  if (document && document.hubId === hubId) {
-    return true;
-  }
-  const orderIds = await findOrderIdsByDocumentId(documentId);
+async function agentCanPrepareDocument(documentId, hubId, document = null, client = null) {
+  if (!hubId || (document?.hubId && document.hubId !== hubId)) return false;
+  const orderIds = await findOrderIdsByDocumentId(documentId, client);
+  let belongsToHub = document?.hubId === hubId;
   for (const orderId of orderIds) {
-    const order = await findOrderByIdOrCode(orderId);
-    if (order?.centreId === hubId) return true;
+    const order = await findOrderByIdOrCode(orderId, client);
+    // A global conversion artifact cannot be mutated by one of several hubs.
+    if (!order || order.centreId !== hubId) return false;
+    belongsToHub = true;
   }
-  return false;
+  return belongsToHub;
+}
+
+async function lockPreparationContext(documentId, req, client, orderId = null) {
+  const orderIds = await findOrderIdsByDocumentId(documentId, client);
+  if (orderId && !orderIds.includes(orderId)) {
+    const error = new Error('Document is not part of this order.');
+    error.statusCode = 409;
+    throw error;
+  }
+  for (const id of [...orderIds].sort()) {
+    const order = await findOrderByIdOrCode(id, client, { forUpdate: true });
+    if (!order || order.centreId !== req.agent.hubId) {
+      const error = new Error('Document does not belong exclusively to this hub.');
+      error.statusCode = 403;
+      throw error;
+    }
+  }
+  const locked = await client.query('select * from documents where id = $1 for update', [documentId]);
+  const document = mapDocument(locked.rows[0]);
+  if (!document || !(await agentCanPrepareDocument(documentId, req.agent.hubId, document, client))) {
+    const error = new Error('Document is no longer available to this hub.');
+    error.statusCode = 403;
+    throw error;
+  }
+  return document;
 }
 
 function normalizePreparationStatus(value) {
@@ -533,6 +560,7 @@ export const reportPreparationResult = asyncHandler(async (req, res) => {
 
   try {
     const { document, updatedOrders } = await withTransaction(async (client) => {
+      await lockPreparationContext(documentId, req, client);
       const updatedDocument = await updateDocumentPreparation(documentId, {
         preparedPageCount,
         preparationStatus,
@@ -576,7 +604,7 @@ export const reportPreparationResult = asyncHandler(async (req, res) => {
 });
 
 export const getPendingVerificationJobs = asyncHandler(async (req, res) => {
-  const limit = Math.min(30, Math.max(1, Number(req.query.limit) || 15));
+  const limit = Math.min(30, Math.max(1, Math.trunc(Number(req.query.limit)) || 15));
   const candidates = await listPendingBillVerificationJobsForAgent(req.agent.hubId, { limit });
   
   const files = await Promise.all(candidates.map(async (candidate) => {
@@ -621,6 +649,10 @@ export const getPendingVerificationJobs = asyncHandler(async (req, res) => {
 export const reportVerificationResult = asyncHandler(async (req, res) => {
   const { jobId } = req.params; // jobId is orderId here
   const { documentId, errorCode, errorMessage } = req.body;
+  const targetOrder = await findOrderByIdOrCode(jobId);
+  if (!targetOrder || targetOrder.centreId !== req.agent.hubId) {
+    return res.status(404).json({ success: false, message: 'Order not found for this hub.' });
+  }
   const validation = await validateAgentDocumentPreparationInput({
     documentId,
     hubId: req.agent.hubId,
@@ -639,7 +671,7 @@ export const reportVerificationResult = asyncHandler(async (req, res) => {
   });
   // Hub membership alone is insufficient: verification must target this order's
   // document, not another upload owned by the same hub.
-  const files = await listOrderFiles(jobId);
+  const files = await listOrderFiles(targetOrder.id);
   if (!files.some(file => file.documentId === documentId)) {
     return res.status(404).json({ success: false, message: 'Document is not part of this order.' });
   }
@@ -669,6 +701,7 @@ export const reportVerificationResult = asyncHandler(async (req, res) => {
   let reportedDocument = null;
   try {
     const { document, order: updatedOrder } = await withTransaction(async (client) => {
+      await lockPreparationContext(documentId, req, client, targetOrder.id);
       const updatedDocument = await updateDocumentPreparation(documentId, {
         preparedPageCount,
         preparationStatus,
@@ -683,6 +716,16 @@ export const reportVerificationResult = asyncHandler(async (req, res) => {
         return { document: null, order: null };
       }
 
+      if (preparationStatus === 'failed') {
+        await client.query(
+          `update print_orders set status = 'cancelled',
+             price_snapshot = jsonb_set(coalesce(price_snapshot, '{}'::jsonb), '{message}', $1::jsonb)
+           where id = $2 and hub_id = $3
+             and lower(coalesce(payment_status, '')) not in ('verified', 'collected', 'paid')
+             and status in ('draft_uploaded', 'payment_requested')`,
+          [JSON.stringify(errorMessage || 'Document conversion failed. Please save as PDF and try again.'), targetOrder.id, req.agent.hubId]
+        );
+      }
       if (preparationStatus !== 'prepared') {
         return { document: updatedDocument, order: null };
       }
@@ -690,7 +733,7 @@ export const reportVerificationResult = asyncHandler(async (req, res) => {
       // Keep verification and bill confirmation atomic. A failed bill refresh
       // should not leave this document permanently marked prepared.
       const confirmedOrder = await confirmOrderBillInTransaction({
-        orderId: jobId,
+        orderId: targetOrder.id,
         hubId: req.agent.hubId,
         client
       });
@@ -709,23 +752,6 @@ export const reportVerificationResult = asyncHandler(async (req, res) => {
   } catch (err) {
     console.error(`[AgentController] Error confirming bill for order ${jobId}:`, err);
     return res.status(409).json({ success: false, message: err.message || 'Failed to confirm bill' });
-  }
-
-  if (preparationStatus === 'failed') {
-    const failMessage = errorMessage || 'Document conversion failed. Please save as PDF and try again.';
-    try {
-      await query(
-        `update print_orders 
-         set status = 'cancelled', 
-             price_snapshot = jsonb_set(coalesce(price_snapshot, '{}'::jsonb), '{message}', $1::jsonb)
-         where id = $2 and hub_id = $3
-           and payment_status not in ('verified', 'collected')
-           and status not in ('printing', 'completed', 'cancelled')`,
-        [JSON.stringify(failMessage), jobId, req.agent.hubId]
-      );
-    } catch (err) {
-      console.error(`[AgentController] Error cancelling failed order ${jobId}:`, err);
-    }
   }
 
   res.json({ success: true, document: reportedDocument });

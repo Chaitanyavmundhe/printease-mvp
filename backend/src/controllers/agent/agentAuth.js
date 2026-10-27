@@ -160,7 +160,8 @@ export const confirmPairing = asyncHandler(async (req, res) => {
     return res.status(403).json({ success: false, message: 'Pairing request was rejected' });
   }
 
-  if (new Date(session.expiresAt).getTime() <= Date.now()) {
+  const expiresAt = session.approvedAt ? (session.approvalExpiresAt || session.expiresAt) : session.expiresAt;
+  if (new Date(expiresAt).getTime() <= Date.now()) {
     return res.status(410).json({ success: false, paired: false, message: 'Pairing session expired' });
   }
 
@@ -229,6 +230,10 @@ export const heartbeat = asyncHandler(async (req, res) => {
     platform: req.body.platform || req.agent.platform,
     version: req.body.version || req.agent.version
   });
+
+  if (!agent) {
+    return res.status(401).json({ success: false, message: 'Agent is revoked or unavailable' });
+  }
 
   res.json({
     success: true,

@@ -57,6 +57,22 @@ export const uploadDocument = asyncHandler(async (req, res) => {
     });
   }
 
+  let guestToken = null;
+  let guestTokenHash = null;
+  let expiresAt = null;
+  if (!req.user) {
+    guestToken = req.headers?.['x-order-access-token'] || req.query?.token || createGuestToken();
+    guestTokenHash = hashGuestToken(guestToken);
+    if (!guestTokenHash) {
+      return res.status(400).json({ success: false, message: 'Invalid guest access token.' });
+    }
+    expiresAt = getGuestExpiry();
+  }
+
+  if (req.body.hubId && !(await findCentreById(req.body.hubId))) {
+    return res.status(404).json({ success: false, message: 'Centre not found' });
+  }
+
   const supabase = getSupabaseAdminClient();
   const bucket = getSupabaseBucketName();
   let pageCount = null;
@@ -130,8 +146,7 @@ export const uploadDocument = asyncHandler(async (req, res) => {
     console.error('Supabase upload failed:', uploadError);
     return res.status(500).json({
       success: false,
-      message: 'Failed to upload document to secure storage',
-      error: uploadError.message
+      message: 'Failed to upload document to secure storage'
     });
   }
 
@@ -162,20 +177,9 @@ export const uploadDocument = asyncHandler(async (req, res) => {
     }
   }
 
-  let guestToken = null;
-  let guestTokenHash = null;
-  let expiresAt = null;
-
-  if (!req.user) {
-    guestToken = req.headers['x-order-access-token'] || req.query.token;
-    if (!guestToken) {
-      guestToken = createGuestToken();
-    }
-    guestTokenHash = hashGuestToken(guestToken);
-    expiresAt = getGuestExpiry();
-  }
-
-  const document = await createDocument({
+  let document;
+  try {
+    document = await createDocument({
     id: documentId,
     userId: req.user?.id || null,
     fileName: originalName,
@@ -202,7 +206,14 @@ export const uploadDocument = asyncHandler(async (req, res) => {
     expiresAt,
     hubId: req.body.hubId || null,
     createdAt: new Date().toISOString()
-  });
+    });
+  } catch (error) {
+    // Storage and Postgres cannot share a transaction. Compensate for failed
+    // persistence so unauthenticated uploads cannot accumulate orphaned files.
+    const paths = [storagePath, printReadyStoragePath].filter(Boolean);
+    await supabase.storage.from(bucket).remove(paths).catch(() => {});
+    throw error;
+  }
 
   res.status(201).json({
     success: true,

@@ -85,8 +85,8 @@ export const createOrder = asyncHandler(async (req, res) => {
       ? documentIds.map((id) => ({ documentId: id }))
       : [{ documentId, documentName, pages, selectedPages, copies, colorType, sideType, paperSize, pagesPerSheet, orientation, printDpi, scaleMode, marginMode, watermarkEnabled }];
 
-  if (!submittedFiles.length) {
-    return res.status(400).json({ success: false, message: 'At least one document and copies are required' });
+  if (!submittedFiles.length || submittedFiles.length > 100 || submittedFiles.some(file => !file || typeof file !== 'object' || Array.isArray(file))) {
+    return res.status(400).json({ success: false, message: 'Provide between 1 and 100 document configurations.' });
   }
 
   const resolvedFiles = [];
@@ -156,6 +156,16 @@ export const createOrder = asyncHandler(async (req, res) => {
         marginMode,
         watermarkEnabled
       });
+
+      const submittedCopies = Number(submittedPrintOptions.copies ?? 1);
+      if (!Number.isSafeInteger(submittedCopies) || submittedCopies < 1 || submittedCopies > 99) {
+        throw new Error('Copies must be a whole number between 1 and 99');
+      }
+      // Pending Office files cannot yet validate page ranges against a PDF, but
+      // still need bounded settings before early conversion stores their draft.
+      if (String(submittedPrintOptions.pages?.range || '').length > 100) {
+        throw new Error('Page range is too long. Use at most 100 characters.');
+      }
 
       if (isPending) {
         pricedFiles.push({

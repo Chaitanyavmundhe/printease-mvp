@@ -6,7 +6,6 @@ afterEach(cleanup);
 
 test("shows manual payment request and calls handlePayment", async () => {
   const handlePayment = vi.fn();
-  const setPaymentMethod = vi.fn();
 
   const props = {
     selectedCentre: { name: "Test Centre", upiId: "test@upi", upiQrImageUrl: "https://example.com/qr.png" },
@@ -16,8 +15,6 @@ test("shows manual payment request and calls handlePayment", async () => {
     copies: 1,
     backendPrice: null,
     order: { backendId: 123, amount: 50 },
-    paymentMethod: "manual",
-    setPaymentMethod,
     handlePayment,
     paymentLoading: false,
     paymentError: "",
@@ -32,37 +29,26 @@ test("shows manual payment request and calls handlePayment", async () => {
   fireEvent.click(requestBtn);
   expect(handlePayment).toHaveBeenCalled();
 
-  fireEvent.click(screen.getByRole("button", { name: /pay online/i }));
-  expect(setPaymentMethod).toHaveBeenCalledWith("razorpay");
-
-  fireEvent.click(screen.getByRole("button", { name: /upi qr/i }));
-  expect(setPaymentMethod).toHaveBeenCalledWith("upi_qr");
+  expect(screen.queryByRole("button", { name: /pay online|generate upi|simulate/i })).toBeNull();
+  expect(screen.getByText(/request stays pending|only opens a pending request/i)).toBeTruthy();
 });
 
-test("shows Razorpay payment button when online method is selected", async () => {
+test("keeps limited loginless manual payment and requires login above the limit", () => {
   const handlePayment = vi.fn();
-
-  render(
-    <PaymentPage
-      selectedCentre={{ name: "Test Centre", upiId: "test@upi" }}
-      currentUser={{ id: "user-1", role: "user", name: "Test User" }}
-      documentName="MyDoc.pdf"
-      pages={2}
-      copies={1}
-      backendPrice={null}
-      order={{ backendId: 123, amount: 50 }}
-      paymentMethod="razorpay"
-      setPaymentMethod={vi.fn()}
-      handlePayment={handlePayment}
-      paymentLoading={false}
-      paymentError=""
-    />
-  );
-
-  fireEvent.click(screen.getByRole("button", { name: /^pay ₹50\.00$/i }));
-  expect(handlePayment).toHaveBeenCalled();
-  expect(screen.queryByText(/request stays pending/i)).toBeNull();
-  expect(screen.queryByText(/has not added a UPI/i)).toBeNull();
+  const startLogin = vi.fn();
+  const props = { selectedCentre: { name: "Centre" }, documentName: "file.pdf", copies: 1,
+    order: { amount: 10, status: "bill_confirmed" }, handlePayment, startLogin };
+  const { rerender } = render(<PaymentPage {...props} pages={1} />);
+  fireEvent.click(screen.getByRole("button", { name: /request payment/i }));
+  expect(handlePayment).toHaveBeenCalledTimes(1);
+  expect(startLogin).not.toHaveBeenCalled();
+  rerender(<PaymentPage {...props} pages={6} />);
+  fireEvent.click(screen.getByRole("button", { name: /request payment/i }));
+  expect(startLogin).toHaveBeenCalledWith("user");
+  expect(handlePayment).toHaveBeenCalledTimes(1);
+  rerender(<PaymentPage {...props} currentUser={{ id: "u" }} pages={6} />);
+  fireEvent.click(screen.getByRole("button", { name: /request payment/i }));
+  expect(handlePayment).toHaveBeenCalledTimes(2);
 });
 
 test("keeps a multi-file breakdown and the verified total without internal labels", () => {

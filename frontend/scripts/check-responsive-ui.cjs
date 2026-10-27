@@ -26,7 +26,7 @@ async function mockApi(context, origin, sessionUser = user) {
     if (url.origin === origin) return route.continue();
     if (url.hostname === "api.github.com" && url.pathname.endsWith("/releases/latest")) {
       assert(!route.request().headers().authorization, "Account token must not go to GitHub");
-      return route.fulfill({ contentType: "application/json", body: JSON.stringify({ tag_name: "desktop-v0.1.999", draft: false, prerelease: false, assets: [{ name: "PrintEase-Desktop-Setup-0.1.999.exe", size: 7, browser_download_url: "https://github.com/adityasomde/printease-desk/releases/download/desktop-v0.1.999/PrintEase-Desktop-Setup-0.1.999.exe" }] }) });
+      return route.fulfill({ contentType: "application/json", body: JSON.stringify({ tag_name: "v0.1.999", draft: false, prerelease: false, assets: [{ name: "PrintEase-Desktop-Setup-0.1.999.exe", size: 7, browser_download_url: "https://github.com/adityasomde/printease-desktop-releases/releases/download/v0.1.999/PrintEase-Desktop-Setup-0.1.999.exe" }] }) });
     }
     if (url.hostname === "github.com" && url.pathname.endsWith("/PrintEase-Desktop-Setup-0.1.999.exe")) return route.fulfill({ contentType: "application/octet-stream", headers: { "Content-Disposition": 'attachment; filename="PrintEase-Desktop-Setup-0.1.999.exe"' }, body: "fixture" });
     if (!url.pathname.startsWith("/api/")) return route.abort();
@@ -43,7 +43,12 @@ async function mockApi(context, origin, sessionUser = user) {
       latest = { ...payload, id: "ui-order", orderCode: "UI-TEST-ONLY", status: "bill_confirmed", billStatus: "confirmed", amount: total, createdAt: new Date().toISOString(), priceSnapshot: { breakdown: files }, documents: files };
       data = { success: true, order: latest, orderFiles: files, price: { totalAmount: total, files, originalPageCount: files.length * 2, selectedPageCount: files.length * 2 } };
     } else if (url.pathname === "/api/orders/ui-order") data = { success: true, order: latest };
-    else if (/\/payments?\//.test(url.pathname)) throw new Error("Test must not submit payment.");
+    else if (url.pathname === "/api/payments/manual-request") {
+      assert.equal(route.request().method(), "POST");
+      assert.equal(route.request().postDataJSON().orderId, latest.id);
+      latest = { ...latest, status: "payment_requested", paymentStatus: "requested" };
+      data = { success: true, order: latest, payment: { id: "ui-manual", orderId: latest.id, method: "MANUAL_PAYMENT_REQUEST", status: "pending" } };
+    } else if (url.pathname.startsWith("/api/payments/")) throw new Error("Only a fixture manual request is allowed.");
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(data) });
   });
 }
@@ -235,15 +240,19 @@ async function noIntersection(first, second, label) {
         assert(Math.abs(initial.y - scrolled.y) <= 1, `${label} payment action moved while scrolling`);
         await noIntersection(page.locator(".pe-manual-payment-notice"), actions, `${label} manual notice hidden by fixed payment action`);
       }
-      assert.equal(await page.getByRole("button", { name: /Manual Request/ }).getAttribute("aria-pressed"), "true");
-      await page.getByRole("button", { name: /Pay Online/ }).click();
-      assert.equal(await page.getByRole("button", { name: /Pay Online/ }).getAttribute("aria-pressed"), "true");
-      await page.getByRole("button", { name: /Manual Request/ }).click();
+      assert.equal(await page.getByRole("button", { name: /Pay Online|Generate UPI|Simulate Verified/i }).count(), 0);
+      await page.getByText("Cash or centre UPI", { exact: true }).waitFor();
       const pay = page.getByRole("button", { name: /^Request Payment/ });
       assert.equal(await pay.isEnabled(), true);
       await pay.scrollIntoViewIfNeeded();
       if (width < 768) await noIntersection(pay, page.getByRole("navigation", { name: "Mobile navigation" }), "Payment action overlaps navigation");
       await page.screenshot({ path: path.join(evidence, `${label}-payment.png`), fullPage: true });
+      await pay.click();
+      await page.getByRole("heading", { name: "Order Tracking", exact: true }).waitFor();
+      await page.getByText("Payment request pending", { exact: true }).waitFor();
+      assert.equal(await page.getByText(/Payment completed\\./).count(), 0, "Request must not claim payment collection");
+      assert.equal(await page.getByRole("button", { name: /Pay Online|Generate UPI|Simulate/i }).count(), 0);
+      await checkWidth(page, `${label} manual tracking`);
       await page.getByRole("navigation", { name: width < 768 ? "Mobile navigation" : "Main navigation" }).getByRole("button", { name: width < 768 ? "History" : "Print History", exact: true }).click();
       await page.locator(".pe-history-summary").waitFor();
       const stats = page.locator(".pe-history-summary > *").filter({ visible: true });

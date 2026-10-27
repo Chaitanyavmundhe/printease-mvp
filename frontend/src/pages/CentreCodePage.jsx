@@ -124,6 +124,7 @@ export default function CentreCodePage({
             onSelectCentre={(centre) => selectCentreAndUpload(centre)}
             focusCentre={mapCentreToFocus}
             initialUserLocation={userLocation}
+            requestUserLocation={requestUserLocation}
           />
         </Suspense>
       )}

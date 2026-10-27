@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useId } from "react";
 import { X, Download, FileText, Image, FileCode, AlertCircle, Loader2, Settings, Eye } from "lucide-react";
 import InlineDocumentFrame from "./InlineDocumentFrame";
+import ModalPortal from "./ModalPortal";
 import FileSettingsPanel from "./upload/FileSettingsPanel";
 import { getDocumentPreviewBlob } from "../services/api";
 import { isPreviewPending } from "../utils/documentPreview";
@@ -25,6 +26,8 @@ export default function DocumentPreviewModal({
   continueLabel = "Continue",
   continueDisabled = false,
 }) {
+  const titleId = useId();
+  const canEditSettings = Boolean(config && onChangeConfig);
   const [internalBlobUrl, setInternalBlobUrl] = useState("");
   const [isFetching, setIsFetching] = useState(false);
   const [fetchError, setFetchError] = useState("");
@@ -80,29 +83,6 @@ export default function DocumentPreviewModal({
   const activeBlobUrl = blobUrl || internalBlobUrl;
   const loading = externalLoading || isFetching;
   const error = externalError || fetchError;
-  // Prevent body scrolling when modal is open
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
-    }
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, [isOpen]);
-
-  // Handle escape key
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === "Escape" && isOpen) {
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, onClose]);
-
   if (!isOpen) return null;
   const isPdfPreview = previewKind === "pdf" && activeBlobUrl && !loading && !error;
 
@@ -120,44 +100,41 @@ export default function DocumentPreviewModal({
   const renderIcon = () => {
     switch (previewKind) {
       case "image":
-        return <Image className="h-12 w-12 text-blue-500" />;
+        return <Image className="h-6 w-6 text-blue-500" />;
       case "text":
-        return <FileCode className="h-12 w-12 text-green-500" />;
+        return <FileCode className="h-6 w-6 text-green-500" />;
       case "pdf":
-        return <FileText className="h-12 w-12 text-rose-500" />;
+        return <FileText className="h-6 w-6 text-rose-500" />;
       default:
-        return <FileText className="h-12 w-12 text-slate-500" />;
+        return <FileText className="h-6 w-6 text-slate-500" />;
     }
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm transition-opacity duration-300">
+    <ModalPortal onClose={onClose} labelledBy={titleId} className="flex items-center justify-center bg-slate-950/50 p-0 sm:p-3">
       
       {/* Modal Container: Full Screen Print Dialog Style */}
       <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="document-preview-title"
-        className="relative flex h-[100dvh] w-screen max-w-[1400px] flex-col overflow-hidden rounded-none bg-white shadow-2xl md:h-[95dvh] md:w-[95vw] md:flex-row-reverse md:rounded-2xl"
+        className="relative flex h-[100vh] h-[100dvh] min-h-0 w-full max-w-[1600px] flex-col overflow-hidden bg-white shadow-xl sm:h-[96dvh] sm:rounded-lg md:flex-row-reverse"
       >
         
         {/* Right Main Area / Top Area: Preview */}
-        <div className="relative flex h-[42dvh] shrink-0 flex-col overflow-hidden border-b border-slate-200 bg-slate-200/80 md:h-auto md:min-h-0 md:flex-1 md:border-b-0 md:border-l">
+        <div className={`relative flex min-h-0 flex-col overflow-hidden bg-slate-100 ${canEditSettings ? "h-[42dvh] shrink-0 border-b border-slate-200 md:h-auto md:flex-1 md:border-b-0 md:border-l" : "flex-1"}`}>
           
           {/* Top Bar for filename and actions */}
-          <div className="absolute left-0 right-0 top-0 z-10 flex items-start justify-between gap-3 bg-gradient-to-b from-slate-900/70 to-transparent px-3 py-3 pb-8 sm:px-4">
-            <div className="flex min-w-0 items-center gap-2 text-white drop-shadow-md">
+          <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-white px-3 py-2 sm:px-4">
+            <div className="flex min-w-0 items-center gap-2 text-slate-900">
               <div className="hidden sm:block">{renderIcon()}</div>
               <div className="min-w-0">
-                <p id="document-preview-title" className="truncate text-xs font-medium sm:text-sm">{fileName}</p>
+                <p id={titleId} className="truncate text-xs font-medium sm:text-sm">{fileName}</p>
                 <p className="text-xs opacity-80">{fileSize > 0 ? formatSize(fileSize) : ""}</p>
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-2 sm:gap-3">
-              {!loading && !error && (
+              {onDownload && !loading && !error && (
                 <button
                   onClick={onDownload}
-                  className="flex min-h-9 items-center gap-2 rounded-md bg-white/20 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm backdrop-blur-md transition hover:bg-white/30 sm:px-3"
+                  className="flex min-h-9 items-center gap-2 rounded-md border border-slate-300 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 sm:px-3"
                 >
                   <Download className="h-3.5 w-3.5" />
                   <span className="hidden sm:inline">Download</span>
@@ -166,7 +143,7 @@ export default function DocumentPreviewModal({
               <button
                 onClick={onClose}
                 aria-label="Close preview"
-                className="flex min-h-9 items-center gap-2 rounded-md bg-rose-600/90 px-2.5 py-1.5 text-xs font-bold text-white shadow-sm backdrop-blur-md transition hover:bg-rose-500 sm:px-3"
+                className="flex min-h-9 items-center gap-2 rounded-md border border-slate-300 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 sm:px-3"
               >
                 <X className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">Close</span>
@@ -174,7 +151,7 @@ export default function DocumentPreviewModal({
             </div>
           </div>
 
-          <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden p-2 pt-12 sm:p-8 sm:pt-14">
+          <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden">
             {loading ? (
               <div className="flex flex-col items-center gap-3">
                 <Loader2 className="h-8 w-8 animate-spin text-slate-500" />
@@ -240,7 +217,7 @@ export default function DocumentPreviewModal({
         </div>
 
         {/* Sidebar / Bottom Area: Print Settings */}
-        <div className="flex min-h-0 flex-1 flex-col bg-slate-50 md:h-full md:w-[340px] md:shrink-0">
+        {canEditSettings && <div className="flex min-h-0 flex-1 flex-col bg-slate-50 md:h-full md:w-[340px] md:flex-none">
           <div className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 py-3 md:px-5 md:py-4">
             <h2 className="text-base font-bold text-slate-800 md:text-lg">Print settings</h2>
           </div>
@@ -265,12 +242,6 @@ export default function DocumentPreviewModal({
               Cancel
             </button>
             <div className="flex min-w-0 gap-2">
-              <button
-                onClick={onClose}
-                className="rounded-md border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 transition shadow-sm hidden md:block"
-              >
-                Done
-              </button>
               {onContinue && (
                 <button
                   onClick={() => {
@@ -293,8 +264,8 @@ export default function DocumentPreviewModal({
               )}
             </div>
           </div>
-        </div>
+        </div>}
       </div>
-    </div>
+    </ModalPortal>
   );
 }

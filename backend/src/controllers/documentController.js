@@ -47,7 +47,7 @@ export const createSignedDownload = asyncHandler(async (req, res) => {
   if (error || !data?.signedUrl) {
     return res.status(502).json({
       success: false,
-      message: error?.message || 'Could not create signed download URL'
+      message: 'Could not create signed download URL'
     });
   }
 

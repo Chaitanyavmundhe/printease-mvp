@@ -468,6 +468,10 @@ const getCentreOrders = asyncHandler(async (req, res) => {
 });
 
 export const collectCashPayment = asyncHandler(async (req, res) => {
+  if (typeof req.body?.method !== 'string' ||
+      (req.body.autoPrintAfterCollection !== undefined && typeof req.body.autoPrintAfterCollection !== 'boolean')) {
+    return res.status(400).json({ success: false, message: 'Provide a cash/manual_upi method and a boolean auto-print setting.' });
+  }
   const result = await processManualCollection({
     orderId: req.params.id,
     hubId: req.user?.centreId || req.user?.hubId,
@@ -476,8 +480,10 @@ export const collectCashPayment = asyncHandler(async (req, res) => {
     autoPrintAfterCollection: req.body.autoPrintAfterCollection !== false
   });
 
-  if (result.error === 'INVALID_METHOD') {
-    return res.status(400).json({ success: false, message: result.message });
+  // An unrequested bill is a domain conflict, not a successful cash collection.
+  // Keep the UI from showing "collected" when the service intentionally did nothing.
+  if (result.error) {
+    return res.status(result.error === 'INVALID_METHOD' ? 400 : 409).json({ success: false, code: result.error, message: result.message });
   }
 
   if (result?.notFound) {

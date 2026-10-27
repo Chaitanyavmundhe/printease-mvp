@@ -1,30 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Clock, CreditCard, QrCode, CircleX } from "lucide-react";
+import { Clock, CircleX } from "lucide-react";
 import Card from "../components/Card";
 import CheckoutSummary from "../components/payment/CheckoutSummary";
 import { buildPaymentPriceFromOrder } from "../utils/paymentOrderPricing";
 import { useBottomBarInset } from "../hooks/useBottomBarInset";
-
-const paymentOptions = [
-  {
-    id: "manual",
-    title: "Manual Request",
-    description: "Cash or the centre's UPI.",
-    icon: Clock,
-  },
-  {
-    id: "razorpay",
-    title: "Pay Online",
-    description: "Checkout with Razorpay.",
-    icon: CreditCard,
-  },
-  {
-    id: "upi_qr",
-    title: "Online UPI QR",
-    description: "A payment QR for this order.",
-    icon: QrCode,
-  },
-];
 
 function formatCurrency(value) {
   const num = Number(value);
@@ -69,8 +48,6 @@ export default function PaymentPage({
   backendPrice,
   order,
   refreshActivePaymentOrder,
-  paymentMethod = "manual",
-  setPaymentMethod,
   handlePayment,
   paymentLoading,
   paymentError,
@@ -154,21 +131,10 @@ export default function PaymentPage({
     handlePayment();
   };
 
-  const buttonLabel =
-    isPricingPending
-      ? "Preparing verified bill..."
-      : paymentMethod === "razorpay"
-      ? `Pay ${formatCurrency(amount)}`
-      : paymentMethod === "upi_qr"
-        ? `Generate UPI QR · ${formatCurrency(amount)}`
-        : `Request Payment · ${formatCurrency(amount)}`;
-  const loadingLabel =
-    paymentMethod === "razorpay"
-      ? "Opening Razorpay..."
-      : paymentMethod === "upi_qr"
-        ? "Creating QR..."
-        : "Creating request...";
-  const ButtonIcon = paymentMethod === "razorpay" ? CreditCard : paymentMethod === "upi_qr" ? QrCode : Clock;
+  const buttonLabel = isPricingPending
+    ? "Preparing verified bill..."
+    : `Request Payment · ${formatCurrency(amount)}`;
+  const loadingLabel = "Creating request...";
 
   const isDisabled = paymentLoading || isPricingPending || !amount || amount <= 0 || isCancelled;
 
@@ -194,37 +160,12 @@ export default function PaymentPage({
         <h2 className="text-xl sm:text-2xl font-bold min-w-0">Payment</h2>
         <CheckoutSummary centreName={selectedCentre?.name} documentName={documentName} pages={pages} copies={copies} price={effectivePrice} amount={amount} displayMoney={displayMoney} displayValue={displayValue} />
 
-        {/* Payment method selector */}
-        <div role="group" aria-label="Payment method" className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
-          {paymentOptions.map((option) => {
-            const Icon = option.icon;
-            const active = paymentMethod === option.id;
-
-            return (
-              <button
-                key={option.id}
-                type="button"
-                aria-pressed={active}
-                onClick={() => {
-                  if (!currentUser && option.id !== "manual") {
-                    startLogin("user");
-                  } else {
-                    setPaymentMethod?.(option.id);
-                  }
-                }}
-                className={`pe-payment-method border p-4 text-left transition ${
-                  active ? "border-teal-700 bg-teal-50 text-teal-900" : "bg-white hover:border-slate-400"
-                }`}
-              >
-                <Icon size={20} />
-                <p className="mt-2 font-semibold sm:mt-3">{option.title}</p>
-                <p className={`mt-1 text-xs ${active ? "text-slate-200" : "text-slate-500"}`}>{option.description}</p>
-              </button>
-            );
-          })}
+        <div className="mt-5 border-b pb-3">
+          <p className="font-semibold">Cash or centre UPI</p>
+          <p className="mt-1 text-sm text-slate-600">Request payment, then pay the centre directly.</p>
         </div>
 
-        {paymentMethod === "manual" && (centreUpi || upiQrUrl) && <div className="mt-4 border-t pt-4">
+        {(centreUpi || upiQrUrl) && <div className="mt-4 border-t pt-4">
           {centreUpi && <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between min-w-0">
             <div className="min-w-0">
               <p className="font-semibold">UPI ID</p>
@@ -241,9 +182,9 @@ export default function PaymentPage({
         </div>}
 
         {/* Warning notice */}
-        {paymentMethod === "manual" && <p className="pe-manual-payment-notice mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+        <p className="pe-manual-payment-notice mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
           Your request stays pending until the centre confirms payment.
-        </p>}
+        </p>
 
         {/* Validation: zero amount */}
         {conversionFailed && (
@@ -288,7 +229,7 @@ export default function PaymentPage({
           onClick={handlePaymentClick}
           className="pe-primary-button flex w-full items-center justify-center gap-2 px-3 py-3 transition disabled:cursor-not-allowed sm:px-4"
         >
-          <ButtonIcon size={18} className="shrink-0" /> <span className="break-words">{paymentLoading ? loadingLabel : buttonLabel}</span>
+          <Clock size={18} className="shrink-0" /> <span className="break-words">{paymentLoading ? loadingLabel : buttonLabel}</span>
         </button>
       </div>
     </div>

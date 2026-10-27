@@ -56,13 +56,16 @@ export async function fetchDocumentBuffer({ storagePath }) {
   // Fetch metadata first to enforce size limit guard
   const { data: metadata, error: metaError } = await supabase.storage
     .from(getSupabaseBucketName())
-    .getMetadata(storagePath);
+    .info(storagePath);
     
   if (metaError) {
-    throw { status: 502, message: metaError.message || "Failed to retrieve storage file metadata" };
+    throw { status: 502, message: "Failed to retrieve storage file metadata" };
   }
 
-  const sizeBytes = metadata?.size || 0;
+  const sizeBytes = metadata?.size;
+  if (!Number.isSafeInteger(sizeBytes) || sizeBytes < 0) {
+    throw { status: 502, message: "Invalid storage file metadata" };
+  }
   if (sizeBytes > MAX_PREVIEW_SIZE_BYTES) {
     throw { status: 413, message: `File size exceeds the limit (${(MAX_PREVIEW_SIZE_BYTES / (1024 * 1024)).toFixed(0)}MB) for same-tab rendering.` };
   }
@@ -72,9 +75,15 @@ export async function fetchDocumentBuffer({ storagePath }) {
     .download(storagePath);
 
   if (error || !data) {
-    throw { status: 502, message: error?.message || "Failed to retrieve document from Supabase storage" };
+    throw { status: 502, message: "Failed to retrieve document from private storage" };
   }
 
+  if (!Number.isSafeInteger(data.size) || data.size < 0 || data.size > MAX_PREVIEW_SIZE_BYTES) {
+    throw { status: 413, message: "Document exceeds the preview size limit" };
+  }
   const arrayBuffer = await data.arrayBuffer();
+  if (arrayBuffer.byteLength > MAX_PREVIEW_SIZE_BYTES) {
+    throw { status: 413, message: "Document exceeds the preview size limit" };
+  }
   return Buffer.from(arrayBuffer);
 }
