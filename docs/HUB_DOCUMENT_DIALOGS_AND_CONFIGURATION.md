@@ -84,4 +84,3 @@ configuration eligibility rules. No Supabase migration is required.
 Physical printer output, target-machine Windows rendering and device location
 services still require manual acceptance testing. A working Linux test is not a
 claim that every Windows printer driver or installation was hardware-tested.
-

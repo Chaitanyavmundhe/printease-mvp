@@ -43,4 +43,3 @@ it("keeps body scrolling locked until the last nested dialog closes", () => {
   cleanup();
   expect(document.body.style.overflow).toBe(original);
 });
-

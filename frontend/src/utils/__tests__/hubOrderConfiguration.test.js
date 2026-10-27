@@ -44,4 +44,3 @@ describe("hub configuration transport", () => {
     expect(calculatePrintPricingLocal({ ...args, copies: "" }).reason).toBe("INVALID_COPIES");
   });
 });
-

@@ -135,4 +135,3 @@ Build warnings: large existing vendor chunks remain; no risky chunking/lazy-load
 - node-postgres SSL URL option override warning: https://node-postgres.com/features/ssl
 
 These notes supersede readiness percentages and unconditional fraud-proof claims in pasted third-party assessments.
-

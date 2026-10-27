@@ -70,4 +70,3 @@ export function useUserLocation() {
 
   return { userLocation, userLocationStatus, requestUserLocation };
 }
-

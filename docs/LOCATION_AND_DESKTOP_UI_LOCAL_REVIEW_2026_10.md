@@ -118,4 +118,3 @@ No Windows installer or Linux release package was built for this local UI task.
 5. Reopen desktop: Home should open, with the existing login/session retained.
 6. Review navigation, all table columns, Auto-print after cash collected and every
    banner setting. No production payment or print is needed for visual review.
-

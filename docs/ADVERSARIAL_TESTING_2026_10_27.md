@@ -90,4 +90,3 @@ Busy uploads currently return a retryable error; no new automatic frontend retry
 Already-issued signed storage URLs retain their short TTL; these fixes do not revoke issued URLs instantly.
 The earlier production-hardening document remains the release-gate checklist.
 No new Supabase migration is required for the fixes in this pass. The previously prepared status-constraint migration remains pending production review.
-

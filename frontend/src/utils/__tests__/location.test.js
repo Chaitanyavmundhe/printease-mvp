@@ -88,4 +88,3 @@ describe("private location requests", () => {
     expect(window.printeaseDesktop.cancelBrowserLocation).toHaveBeenCalledOnce();
   });
 });
-

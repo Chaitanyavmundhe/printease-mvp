@@ -51,4 +51,3 @@ describe("location lifecycle", () => {
     expect(result.current.userLocation.latitude).toBe(20);
   });
 });
-

@@ -119,4 +119,3 @@ export async function getCurrentLocation({ automatic = false, signal } = {}) {
       { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }, signal);
   }
 }
-

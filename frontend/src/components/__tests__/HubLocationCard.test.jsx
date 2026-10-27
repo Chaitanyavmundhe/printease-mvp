@@ -37,4 +37,3 @@ describe("shop location privacy and validation", () => {
     expect(apiRequest).not.toHaveBeenCalled();
   });
 });
-
