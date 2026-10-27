@@ -71,7 +71,8 @@ logout. Production builds are regenerated, including desktop frontend-dist. The
 responsive browser check intercepts every external request and submits only a
 fixture manual request.
 
-This is a local change; it does not publish a desktop release or deploy hosting.
+The initial implementation was local. Subsequent user-authorized publication is
+recorded in RELEASE_0_1_115_PUBLISHED.md, including the pending Render rollout.
 
 ### Local verification results
 
